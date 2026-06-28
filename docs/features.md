@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-28 — Fix #8: src/lib/http.ts (TDD)
+
+- Added `src/lib/http.ts`: the locked HTTP contract for Route Handlers, built on `next/server` + `zod` and reusing `src/lib/errors.ts` (no duplicated error definitions). Exports the `HandlerContext`/`Handler` types, `json`, `route`, `parseBody`, and `parseQuery`.
+- `json(data, status = 200)` is the JSON success helper (`NextResponse.json`). `route(handler)` wraps a handler: awaits Next 16 async `params`, builds a `HandlerContext` (`params`, plus `userId`/`role` as `null` placeholders for Phase 2 auth), and catches thrown errors — `AppError` renders as its `ErrorEnvelope` + status, `ZodError` maps to a 400 `BAD_REQUEST` envelope, and anything else is masked as a 500 `SERVER_ERROR` (full detail logged server-side only, never leaked to the client).
+- `parseBody(req, schema)` parses+validates a JSON body (throws `badRequest` on non-JSON or schema failure); `parseQuery(req, schema)` validates `nextUrl.searchParams` (throws `badRequest` on failure). `Role` is imported type-only so it is erased at runtime.
+- Followed strict TDD: wrote `src/lib/http.test.ts` first (confirmed RED — module not found), then implemented to GREEN. 10 tests cover `json` status/body, `parseBody` valid/invalid/non-JSON, `parseQuery` present/missing params, and `route` rendering AppError envelopes, ZodError -> 400, awaited param passthrough, and 500 masking that does not leak the internal message.
+
 ## 2026-06-28 — Fix #7: src/lib/errors.ts (TDD)
 
 - Added `src/lib/errors.ts`: the locked Errors contract. Exports the `ErrorEnvelope` type (`{ error: { code, message, details? } }`) and the `AppError` class (extends `Error`, carries readonly `code`/`status`/`details`, sets `name = "AppError"`).
