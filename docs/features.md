@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-28 — Fix #3: Local infra: docker-compose + .env.example
+
+- Added `docker-compose.yml` (dev only) defining Postgres 17, Redis 7, and MinIO services with mapped ports (5432, 6379, 9000/9001) and named volumes (`pgdata`, `miniodata`).
+- Added `.env.example` documenting the full environment contract with placeholders only: app/session/encryption, Postgres + shadow DB URLs, Redis, seeded admin, Stellar testnet, payment rail (mock/PDAX), and S3-compatible object storage (MinIO dev).
+
 ## 2026-06-28 — Fix #2: Tailwind v4 CSS-first theme, fonts, and root layout
 
 - Added `postcss.config.mjs` wiring the `@tailwindcss/postcss` plugin for Tailwind v4.
