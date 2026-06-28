@@ -1,0 +1,12 @@
+node_modules
+.next
+src/generated
+prisma/migrations
+pnpm-lock.yaml
+
+# authored project specs / generated planning docs (not Prettier-managed)
+AGENT.md
+BRAND.md
+SPEC.md
+auto-dev.md
+docs/superpowers
