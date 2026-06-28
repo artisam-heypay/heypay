@@ -1,0 +1,224 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client" // Prisma 7 Rust-free generator
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  PAYER
+  MERCHANT
+}
+
+// only XLM enabled in v1
+enum PaymentAsset {
+  XLM
+  USDC
+  USDT
+}
+
+enum PaymentStatus {
+  CREATED
+  QUOTED
+  AUTHORIZED
+  STELLAR_SUBMITTED
+  STELLAR_CONFIRMED
+  PDAX_TRADING
+  PDAX_TRADED
+  PAYOUT_SUBMITTED
+  SETTLED
+  FAILED
+  REFUND_PENDING
+  REFUNDED
+}
+
+enum WalletTxType {
+  PREFUND_DEPOSIT
+  PAYMENT_DEBIT
+  REFUND_CREDIT
+  ADJUSTMENT
+}
+
+enum MerchantStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  SUSPENDED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String // argon2id
+  role         Role
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  wallet       CustodialWallet?
+  merchant     Merchant?
+  sessions     Session[]
+  paymentsMade Payment[]        @relation("PayerPayments")
+  auditLogs    AuditLog[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // store a hash of the session token, never the raw token
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  ip        String?
+  userAgent String?
+
+  @@index([userId])
+}
+
+model CustodialWallet {
+  id               String              @id @default(cuid())
+  userId           String              @unique
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stellarPublicKey String              @unique // G...
+  encryptedSecret  String // envelope-encrypted S... (AES-256-GCM)
+  secretKeyVersion Int                 @default(1) // for key rotation
+  // cached balance from Horizon; source of truth is Horizon + ledger
+  cachedXlmBalance Decimal             @default(0) @db.Decimal(20, 7)
+  reservedXlm      Decimal             @default(0) @db.Decimal(20, 7) // in-flight payments
+  lastSyncedAt     DateTime?
+  createdAt        DateTime            @default(now())
+  walletTxs        WalletTransaction[]
+}
+
+model WalletTransaction {
+  id            String          @id @default(cuid())
+  walletId      String
+  wallet        CustodialWallet @relation(fields: [walletId], references: [id])
+  type          WalletTxType
+  amountXlm     Decimal         @db.Decimal(20, 7) // signed: + credit, - debit
+  balanceAfter  Decimal         @db.Decimal(20, 7)
+  stellarTxHash String?         @unique
+  paymentId     String?
+  memo          String?
+  createdAt     DateTime        @default(now())
+
+  @@index([walletId, createdAt])
+}
+
+model Merchant {
+  id           String         @id @default(cuid())
+  userId       String         @unique
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName String
+  logoKey      String? // S3 object key
+  status       MerchantStatus @default(DRAFT)
+
+  // QRPH
+  qrphRaw          String // raw decoded EMVCo string
+  qrphImageKey     String? // uploaded image (optional)
+  qrphMerchantName String? // tag 59
+  qrphMerchantCity String? // tag 60
+  qrphMerchantId   String? // acquirer/merchant identifier
+  qrphAcquirerId   String?
+  qrphCountry      String? @default("PH") // tag 58
+  qrphCurrency     String? @default("608") // tag 53 (PHP=608)
+
+  // settlement bank account (receives PHP)
+  settlementBankCode String // e.g. BPI, BDO, GCASH, MAYA
+  settlementBankName String
+  accountName        String
+  accountNumber      String // store encrypted; mask in UI
+  accountNumberLast4 String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments Payment[]
+
+  @@index([status])
+}
+
+model ExchangeRateSnapshot {
+  id        String   @id @default(cuid())
+  pair      String // "XLMPHP"
+  rate      Decimal  @db.Decimal(20, 8) // 1 XLM = rate PHP
+  source    String   @default("PDAX")
+  fetchedAt DateTime @default(now())
+
+  @@index([pair, fetchedAt])
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  reference  String   @unique // human-facing TXN-XXXX
+  payerId    String
+  payer      User     @relation("PayerPayments", fields: [payerId], references: [id])
+  merchantId String
+  merchant   Merchant @relation(fields: [merchantId], references: [id])
+
+  asset         PaymentAsset @default(XLM)
+  amountPhp     Decimal      @db.Decimal(14, 2) // requested PHP amount
+  quotedRate    Decimal      @db.Decimal(20, 8) // locked XLM→PHP rate
+  amountXlm     Decimal      @db.Decimal(20, 7) // XLM debited from payer
+  networkFeeXlm Decimal      @default(0) @db.Decimal(20, 7)
+  pdaxFeePhp    Decimal      @default(0) @db.Decimal(14, 2)
+  netSettledPhp Decimal?     @db.Decimal(14, 2) // PHP actually paid out
+
+  status        PaymentStatus @default(CREATED)
+  failureReason String?
+
+  // external references
+  stellarTxHash  String? @unique
+  pdaxTradeRef   String?
+  pdaxCashoutRef String?
+
+  quoteExpiresAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  settledAt      DateTime?
+
+  events PaymentEvent[]
+
+  @@index([payerId, createdAt])
+  @@index([merchantId, createdAt])
+  @@index([status])
+}
+
+model PaymentEvent {
+  id         String         @id @default(cuid())
+  paymentId  String
+  payment    Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  fromStatus PaymentStatus?
+  toStatus   PaymentStatus
+  detail     Json?
+  createdAt  DateTime       @default(now())
+
+  @@index([paymentId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  action    String // e.g. "merchant.create"
+  target    String? // entity id
+  metadata  Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
+}
+
+model IdempotencyKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  scope     String // e.g. "payment.create"
+  response  Json?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
