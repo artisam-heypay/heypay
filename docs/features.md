@@ -2,6 +2,19 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-28 — Fix #7: src/lib/errors.ts (TDD)
+
+- Added `src/lib/errors.ts`: the locked Errors contract. Exports the `ErrorEnvelope` type (`{ error: { code, message, details? } }`) and the `AppError` class (extends `Error`, carries readonly `code`/`status`/`details`, sets `name = "AppError"`).
+- Added the additive `AppError.toEnvelope()` helper that renders an `ErrorEnvelope`, omitting `details` entirely when it is `undefined` (does not change the contract signature).
+- Exported the convenience constructors mapping to their HTTP statuses: `badRequest` (400, accepts `details`), `unauthorized` (401), `forbidden` (403), `notFound` (404), `conflict` (409, accepts `details`), `tooManyRequests` (429), and `serverError` (500), each with sensible default messages.
+- Followed strict TDD: wrote `src/lib/errors.test.ts` first (confirmed RED — module not found), then implemented to GREEN. 4 tests cover `AppError` field carriage + `instanceof Error`, envelope rendering with/without details, status-code mapping for all constructors, and details passthrough for `badRequest`/`conflict`.
+
+## 2026-06-28 — Fix #6: vitest config + src/lib/money.ts (TDD)
+
+- Added `vitest.config.ts` (node environment, `@/` alias resolved via `vite-tsconfig-paths`, test include globs for `src/**/*.test.ts` and `tests/**/*.test.ts`), wiring up the project's first test suite so `pnpm test` runs.
+- Added `src/lib/money.ts`: the locked Money contract built on `decimal.js` (re-exported `Decimal`, global precision headroom of 40 with explicit per-format rounding). Exports `dec` (constructs/validates a `Decimal`, throws on NaN/Infinity), `formatXlm` (7dp half-up), `formatPhp` (2dp half-up), `displayPhp` (`₱` + thousands grouping, sign-aware), `displayXlm` (`… XLM` suffix), `phpToXlm` (php / rate at 7dp ROUND_UP so the payer always covers, throws on non-positive rate), and `availableXlm` (cached minus reserved).
+- Followed strict TDD: wrote `src/lib/money.test.ts` first (confirmed RED — module not found), then implemented to GREEN. 10 tests across `dec`, `formatXlm`, `formatPhp`, `displayPhp`/`displayXlm`, `phpToXlm`, and `availableXlm` cover string/number/Decimal construction, NaN/Infinity rejection, exact decimal-place rendering, half-up vs round-up rounding (no float drift), thousands grouping, and the non-positive-rate guard.
+
 ## 2026-06-28 — Fix #5: Idempotent seed (admin + optional demo)
 
 - Added `prisma/seed.ts` (run via the `prisma.config.ts` seed wiring `tsx prisma/seed.ts`): a self-contained seed using its own `@prisma/adapter-pg`-backed `PrismaClient` and an inline argon2id `hashPassword` helper (Phase 2 will centralize hashing).
