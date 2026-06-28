@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-28 — Fix #6: vitest config + src/lib/money.ts (TDD)
+
+- Added `vitest.config.ts` (node environment, `@/` alias resolved via `vite-tsconfig-paths`, test include globs for `src/**/*.test.ts` and `tests/**/*.test.ts`), wiring up the project's first test suite so `pnpm test` runs.
+- Added `src/lib/money.ts`: the locked Money contract built on `decimal.js` (re-exported `Decimal`, global precision headroom of 40 with explicit per-format rounding). Exports `dec` (constructs/validates a `Decimal`, throws on NaN/Infinity), `formatXlm` (7dp half-up), `formatPhp` (2dp half-up), `displayPhp` (`₱` + thousands grouping, sign-aware), `displayXlm` (`… XLM` suffix), `phpToXlm` (php / rate at 7dp ROUND_UP so the payer always covers, throws on non-positive rate), and `availableXlm` (cached minus reserved).
+- Followed strict TDD: wrote `src/lib/money.test.ts` first (confirmed RED — module not found), then implemented to GREEN. 10 tests across `dec`, `formatXlm`, `formatPhp`, `displayPhp`/`displayXlm`, `phpToXlm`, and `availableXlm` cover string/number/Decimal construction, NaN/Infinity rejection, exact decimal-place rendering, half-up vs round-up rounding (no float drift), thousands grouping, and the non-positive-rate guard.
+
 ## 2026-06-28 — Fix #5: Idempotent seed (admin + optional demo)
 
 - Added `prisma/seed.ts` (run via the `prisma.config.ts` seed wiring `tsx prisma/seed.ts`): a self-contained seed using its own `@prisma/adapter-pg`-backed `PrismaClient` and an inline argon2id `hashPassword` helper (Phase 2 will centralize hashing).
