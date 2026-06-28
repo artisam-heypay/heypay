@@ -18,6 +18,7 @@
     "allowJs": true,
     "plugins": [{ "name": "next" }],
     "paths": {
+      "@/generated/prisma": ["./src/generated/prisma/client.ts"],
       "@/*": ["./src/*"]
     }
   },
