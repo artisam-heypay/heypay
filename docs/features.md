@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #12: Redis token-bucket rate limiter (TDD)
+
+- Added `src/server/auth/rate-limit.ts`: `rateLimit(key, { limit, windowSec })` enforces a per-identity token bucket on the `redis` singleton. Refill + consume is one atomic Lua `EVAL` (HMGET tokens/ts → refill by elapsed × rate, capped at capacity, consume one, HSET, PEXPIRE) so concurrent requests can't race the bucket. Throws `tooManyRequests()` (429) when the bucket is empty. `import "server-only"` module.
+- Added `tests/helpers/fake-redis.ts`: an in-memory ioredis stand-in (get/set/del/incr/expire + a token-bucket `eval` emulation) for deterministic unit tests.
+- Followed strict TDD: wrote `tests/server/auth/rate-limit.test.ts` first (RED), then implemented to GREEN. 3 tests cover allow-up-to-limit-then-429, refill after the window elapses (mocked clock), and per-key independence.
+- Deviation: the plan's test factory closed over a top-level `fake` variable, which Vitest's hoisted `vi.mock` cannot reference (`Cannot access 'fake' before initialization`). Reworked the mock to construct the fake inside the factory and retrieve that same instance via the mocked import — behavior identical, hoisting-safe.
+
 ## 2026-06-28 — Fix #8: src/lib/http.ts (TDD)
 
 - Added `src/lib/http.ts`: the locked HTTP contract for Route Handlers, built on `next/server` + `zod` and reusing `src/lib/errors.ts` (no duplicated error definitions). Exports the `HandlerContext`/`Handler` types, `json`, `route`, `parseBody`, and `parseQuery`.
