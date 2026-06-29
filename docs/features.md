@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #20: Horizon singleton (TDD)
+
+- Added `src/server/stellar/horizon.ts`: `getHorizon()` lazily constructs a cached `Horizon.Server` from `STELLAR_HORIZON_URL` (allowing HTTP only for `http://` URLs), throwing if the URL is unset. `getNetworkPassphrase()` returns an explicit `STELLAR_NETWORK_PASSPHRASE` override when present, else `Networks.PUBLIC` for mainnet / `Networks.TESTNET` otherwise. `__resetHorizonForTests()` drops the cache. `import "server-only"` module.
+- Installed `@stellar/stellar-sdk` (16.x) and `sodium-native` (fast ed25519 signing, auto-detected by stellar-base) — the Stellar foundation for the wallet service.
+- Followed strict TDD: wrote `tests/server/stellar/horizon.test.ts` first (RED), then implemented to GREEN. 5 tests cover singleton caching, the testnet/mainnet passphrase selection, the explicit override, and the missing-URL guard.
+
 ## 2026-06-29 — Fix #19: AES-256-GCM envelope encryption (TDD)
 
 - Added `src/server/crypto/envelope.ts`: `encryptSecret(plaintext)` / `decryptSecret(payload)` using AES-256-GCM with a self-describing payload `v<version>:<base64 iv>:<base64 tag>:<base64 ciphertext>`. A versioned keyring is built from `ENCRYPTION_MASTER_KEY` (current, format `base64:<32-byte key>`) + `ENCRYPTION_KEY_VERSION`, plus optional historical `ENCRYPTION_MASTER_KEY_V<n>` keys so rotation can still decrypt legacy ciphertext. Random 12-byte IV per call; auth tag verified on decrypt (tamper → throw). `__resetKeyringForTests()` clears the cached keyring. Module is `import "server-only"`.
