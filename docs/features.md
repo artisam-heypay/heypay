@@ -2,6 +2,24 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #14: signup route + client-IP helper (TDD, integration)
+
+- Added `src/lib/net.ts`: `clientIp(req)` — first `X-Forwarded-For` hop, else `X-Real-IP`, else `"unknown"`.
+- Added `src/app/api/auth/signup/route.ts`: `POST /api/auth/signup {username, password, role}`. Enforces same-origin (CSRF), rate-limits per IP (5/hour), validates input with Zod (`username` 3–32 `[a-zA-Z0-9_.]`, `password` 8–200, `role ∈ {PAYER, MERCHANT}`), rejects duplicate usernames with 409, hashes the password (argon2id), and creates the user + (for PAYER) a `CustodialWallet` via `walletService.generate()` in a single transaction. Then opens a session cookie and writes an `auth.signup` audit entry; returns `201 {user}`.
+- Followed strict TDD: wrote `tests/api/auth/signup.test.ts` first (RED), then implemented to GREEN against the live Postgres (redis + `walletService` mocked). 5 tests cover MERCHANT signup (no wallet) + session cookie, PAYER signup provisioning a custodial wallet, duplicate-username 409, invalid-role 400, and short-password 400.
+- Deviation (test-only): reworked the redis `vi.mock` to be hoisting-safe (construct the fake inside the hoisted factory, retrieve via the mocked import) — the plan's factory referenced a top-level variable Vitest cannot access.
+
+## 2026-06-29 — Fix #21: custodial Stellar WalletService (TDD)
+
+- Added `src/server/stellar/wallet.ts`: the locked `WalletService` over an injectable `Horizon.Server` (`createWalletService(server?, passphrase?)` resolves Horizon/passphrase lazily so importing never hits the network; `walletService` is the env-wired singleton). `generate()` builds a random keypair and returns the public key + envelope-encrypted secret + key version. `getBalance()` reads the native balance (0 on a 404/unfunded account). `sendXlm()` decrypts the secret in-memory only, builds a native payment with a text memo, fetches the base fee, sets a 180s timeout, signs, and submits — amount formatted to 7dp via `formatXlm`. `confirmTx()` polls the tx until it appears in the ledger (success/failure definitive; bounded retries). `listIncomingPayments()` pages native payments addressed to the account and advances the cursor past every scanned record. `import "server-only"` module.
+- Followed strict TDD: wrote `tests/server/stellar/wallet.test.ts` first (RED), then implemented to GREEN with a chainable fake Horizon server. 7 tests cover key generation (valid G-key + decryptable S-seed), native-balance parsing, the unfunded-404 → 0 case, the built/signed/submitted payment (memo, native asset, 7dp amount, timebounds), confirm true/false, and incoming-payment filtering + cursor advance. Added a `describe.skipIf` testnet+friendbot integration test (`wallet.integration.test.ts`) that only runs with `RUN_STELLAR_IT=1` so `pnpm vitest run` stays offline-safe.
+
+## 2026-06-29 — Fix #20: Horizon singleton (TDD)
+
+- Added `src/server/stellar/horizon.ts`: `getHorizon()` lazily constructs a cached `Horizon.Server` from `STELLAR_HORIZON_URL` (allowing HTTP only for `http://` URLs), throwing if the URL is unset. `getNetworkPassphrase()` returns an explicit `STELLAR_NETWORK_PASSPHRASE` override when present, else `Networks.PUBLIC` for mainnet / `Networks.TESTNET` otherwise. `__resetHorizonForTests()` drops the cache. `import "server-only"` module.
+- Installed `@stellar/stellar-sdk` (16.x) and `sodium-native` (fast ed25519 signing, auto-detected by stellar-base) — the Stellar foundation for the wallet service.
+- Followed strict TDD: wrote `tests/server/stellar/horizon.test.ts` first (RED), then implemented to GREEN. 5 tests cover singleton caching, the testnet/mainnet passphrase selection, the explicit override, and the missing-URL guard.
+
 ## 2026-06-29 — Fix #19: AES-256-GCM envelope encryption (TDD)
 
 - Added `src/server/crypto/envelope.ts`: `encryptSecret(plaintext)` / `decryptSecret(payload)` using AES-256-GCM with a self-describing payload `v<version>:<base64 iv>:<base64 tag>:<base64 ciphertext>`. A versioned keyring is built from `ENCRYPTION_MASTER_KEY` (current, format `base64:<32-byte key>`) + `ENCRYPTION_KEY_VERSION`, plus optional historical `ENCRYPTION_MASTER_KEY_V<n>` keys so rotation can still decrypt legacy ciphertext. Random 12-byte IV per call; auth tag verified on decrypt (tamper → throw). `__resetKeyringForTests()` clears the cached keyring. Module is `import "server-only"`.
