@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #35: quote domain (`createQuote`) (TDD)
+
+- Added `src/server/payments/quote.ts`: `createQuote({payerId, merchantId, amountPhp})` locks an XLM→PHP rate and opens a `QUOTED` payment. Verifies the merchant is `ACTIVE` (else `notFound` 404) and the payer wallet exists; fetches the rate via `rail.getQuote` wrapped in `withRetry`; computes `amountXlm = phpToXlm(amountPhp, rate)` (ROUND_UP 7dp so the payer covers) plus the `STELLAR_BASE_FEE_XLM` (0.0000100 XLM); checks `availableXlm = cached − reserved ≥ required` (else `conflict` 409, no payment created). In one transaction it writes an `ExchangeRateSnapshot`, the `Payment` (`status QUOTED`, fresh `TXN-` reference, quoted rate/amounts/expiry), and the `CREATED → QUOTED` `PaymentEvent`. `import "server-only"` module.
+- Followed strict TDD: wrote `src/server/payments/quote.test.ts` first (RED), then implemented to GREEN against the live Postgres (`rail` mocked at rate 12). 3 tests cover the happy path (ROUND_UP amount + base fee + persisted QUOTED payment + snapshot + event), insufficient-funds 409 (no payment row), and non-ACTIVE-merchant 404.
+- Note: dropped the plan snippet's `{ label }` option on the `withRetry` call — the shipped `RetryOptions` (Sprint 4) has no `label` field, so passing it would fail strict typecheck; behavior is unchanged.
+
 ## 2026-06-30 — Fix #34: settlement state machine (TDD)
 
 - Added `src/server/payments/state-machine.ts`: the authoritative `Payment` lifecycle. `TRANSITIONS` is the legal edge table (`CREATED → QUOTED → AUTHORIZED → STELLAR_SUBMITTED → STELLAR_CONFIRMED → PDAX_TRADING → PDAX_TRADED → PAYOUT_SUBMITTED → SETTLED`; pre-XLM failures → `FAILED`; once XLM has left the wallet, failures branch `… → REFUND_PENDING → REFUNDED`). `TERMINAL` (`SETTLED`/`FAILED`/`REFUNDED`), `XLM_MOVED` (states where XLM already left), `canTransition`, `isTerminal`, and `nextStep` (happy-path successor for the worker, or `null`). `applyTransition(client, payment, toStatus, detail?)` validates the edge (throws `conflict()` 409 on an illegal one), updates `Payment.status`, and writes a `PaymentEvent` — accepts any `Prisma.TransactionClient`, so callers pass `db` outside a tx or `tx` inside `db.$transaction`. `import "server-only"` module.
