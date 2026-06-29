@@ -24,7 +24,14 @@ export function makeFakeRedis() {
       return 1;
     },
     // Emulates the token-bucket Lua script: eval(script, numKeys, key, limit, windowSec, nowMs)
-    async eval(_script: string, _numKeys: number, key: string, limit: string, win: string, now: string) {
+    async eval(
+      _script: string,
+      _numKeys: number,
+      key: string,
+      limit: string,
+      win: string,
+      now: string,
+    ) {
       const capacity = Number(limit);
       const window = Number(win);
       const t = Number(now);

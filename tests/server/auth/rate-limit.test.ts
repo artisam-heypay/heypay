@@ -30,9 +30,13 @@ describe("rateLimit", () => {
 
   it("refills after the window elapses", async () => {
     await rateLimit("k", { limit: 1, windowSec: 60 });
-    await expect(rateLimit("k", { limit: 1, windowSec: 60 })).rejects.toMatchObject({ status: 429 });
+    await expect(rateLimit("k", { limit: 1, windowSec: 60 })).rejects.toMatchObject({
+      status: 429,
+    });
 
-    (Date.now as unknown as { mockReturnValue: (n: number) => void }).mockReturnValue(1_000_000 + 60_000);
+    (Date.now as unknown as { mockReturnValue: (n: number) => void }).mockReturnValue(
+      1_000_000 + 60_000,
+    );
     await expect(rateLimit("k", { limit: 1, windowSec: 60 })).resolves.toBeUndefined();
   });
 
