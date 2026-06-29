@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #37: pollUntil + BullMQ queues + enqueueSettle (TDD)
+
+- Extended `src/lib/retry.ts` with `pollUntil(fn, done, opts?)`: calls `fn` until `done(value)` is true (default 30 attempts × 1s), returning the last value or throwing a labelled timeout. (`withRetry`/`withTimeout`/`CircuitBreaker` from Sprint 4 are unchanged and remain covered by `tests/lib/retry.test.ts`.)
+- Added `src/server/queue/queues.ts`: the locked queue layer over **BullMQ** on a shared `ioredis` connection (`maxRetriesPerRequest: null`). `QUEUE_NAMES` (`settle`/`deposit-poll`/`reconcile`), the three `Queue` singletons (exponential backoff, bounded `removeOnComplete/Fail`), `bullConnection`, and `enqueueSettle(paymentId)` which enqueues the next settlement step with **`jobId = \`${paymentId}:${status}\``** so BullMQ dedupes a repeat of the same step (idempotent worker hand-off). `import "server-only"`module. Installed`bullmq`.
+- Followed strict TDD: wrote `src/lib/retry.test.ts` (pollUntil) and `src/server/queue/queues.test.ts` (RED), then implemented to GREEN. 4 tests cover pollUntil resolve/timeout and the `QUEUE_NAMES` contract + the `paymentId:status` jobId (bullmq + ioredis mocked).
+- Deviations (test-only): bullmq/ioredis mocks use **classes** (queues.ts constructs them with `new`, and Vitest can't `new` an arrow-function mock impl); the bullmq `connection` is cast (its bundled ioredis types differ from the app's). Reordered ahead of #36 confirm, which imports `enqueueSettle`.
+
 ## 2026-06-30 — Fix #35: quote domain (`createQuote`) (TDD)
 
 - Added `src/server/payments/quote.ts`: `createQuote({payerId, merchantId, amountPhp})` locks an XLM→PHP rate and opens a `QUOTED` payment. Verifies the merchant is `ACTIVE` (else `notFound` 404) and the payer wallet exists; fetches the rate via `rail.getQuote` wrapped in `withRetry`; computes `amountXlm = phpToXlm(amountPhp, rate)` (ROUND_UP 7dp so the payer covers) plus the `STELLAR_BASE_FEE_XLM` (0.0000100 XLM); checks `availableXlm = cached − reserved ≥ required` (else `conflict` 409, no payment created). In one transaction it writes an `ExchangeRateSnapshot`, the `Payment` (`status QUOTED`, fresh `TXN-` reference, quoted rate/amounts/expiry), and the `CREATED → QUOTED` `PaymentEvent`. `import "server-only"` module.
