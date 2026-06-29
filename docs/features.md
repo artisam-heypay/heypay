@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #28: retry / timeout / circuit-breaker resilience utilities (TDD)
+
+- Added `src/lib/retry.ts`: a dependency-free resilience toolkit used to wrap external calls (PDAX in Sprint 4, worker jobs in Phase 5). `withTimeout(p, ms)` races a promise against a per-attempt timeout (`TimeoutError`; `ms <= 0` disables). `withRetry(fn, opts)` retries with exponential backoff + full jitter (`retries`/`baseMs`/`maxMs`/`timeoutMs`/`jitter`/`isRetryable`), with injectable `sleepImpl`/`randomImpl` for deterministic tests; throws the last error after exhausting retries or on a non-retryable error. `CircuitBreaker` (`closed`/`open`/`half-open`) opens after `failureThreshold` failures, fast-fails with `CircuitOpenError` while open, half-opens after `resetMs`, and closes again on the next success (injectable `nowImpl`).
+- Followed strict TDD: wrote `tests/lib/retry.test.ts` first (RED), then implemented to GREEN. 9 tests cover retry success-after-failures, give-up-and-throw-last, `isRetryable=false`, per-attempt timeout, exponential+capped backoff sequence, `withTimeout` win/lose races, and circuit-breaker open/fast-fail + half-open→close.
+
 ## 2026-06-28 — Fix #8: src/lib/http.ts (TDD)
 
 - Added `src/lib/http.ts`: the locked HTTP contract for Route Handlers, built on `next/server` + `zod` and reusing `src/lib/errors.ts` (no duplicated error definitions). Exports the `HandlerContext`/`Handler` types, `json`, `route`, `parseBody`, and `parseQuery`.
