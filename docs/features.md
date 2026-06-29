@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #11: CSRF / same-origin guard (TDD)
+
+- Added `src/server/auth/csrf.ts`: `assertSameOrigin(req)` rejects cross-origin state-changing requests. Safe methods (GET/HEAD/OPTIONS) always pass. Primary signal is the browser-set `Sec-Fetch-Site` header (`same-origin`/`same-site` allowed, `cross-site` → `forbidden()` 403). When absent, falls back to comparing the `Origin` header against `APP_URL`; a missing or foreign/invalid Origin throws `forbidden()`. Module is `import "server-only"`.
+- Re-used the `server-only` Vitest alias + `tests/helpers/server-only-stub.ts` so the guard unit-tests cleanly under Node (shared with the other Sprint 2 auth modules).
+- Followed strict TDD: wrote `tests/server/auth/csrf.test.ts` first (RED — module not found), then implemented to GREEN. 5 tests cover safe-method passthrough, same-origin allow, cross-site 403, Origin fallback (foreign rejected / same allowed), and the no-signal rejection.
+
 ## 2026-06-28 — Fix #8: src/lib/http.ts (TDD)
 
 - Added `src/lib/http.ts`: the locked HTTP contract for Route Handlers, built on `next/server` + `zod` and reusing `src/lib/errors.ts` (no duplicated error definitions). Exports the `HandlerContext`/`Handler` types, `json`, `route`, `parseBody`, and `parseQuery`.
