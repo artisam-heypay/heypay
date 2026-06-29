@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #19: AES-256-GCM envelope encryption (TDD)
+
+- Added `src/server/crypto/envelope.ts`: `encryptSecret(plaintext)` / `decryptSecret(payload)` using AES-256-GCM with a self-describing payload `v<version>:<base64 iv>:<base64 tag>:<base64 ciphertext>`. A versioned keyring is built from `ENCRYPTION_MASTER_KEY` (current, format `base64:<32-byte key>`) + `ENCRYPTION_KEY_VERSION`, plus optional historical `ENCRYPTION_MASTER_KEY_V<n>` keys so rotation can still decrypt legacy ciphertext. Random 12-byte IV per call; auth tag verified on decrypt (tamper → throw). `__resetKeyringForTests()` clears the cached keyring. Module is `import "server-only"`.
+- Re-used the `server-only` Vitest alias + `tests/helpers/server-only-stub.ts`.
+- Followed strict TDD: wrote `tests/server/crypto/envelope.test.ts` first (RED), then implemented to GREEN. 6 tests cover round-trip, distinct IV per call, tampered-tag rejection, malformed-payload rejection, missing-version-key rejection, and rotation (decrypt v1 legacy after rotating to v2).
+- Deviation from the plan's verbatim snippet: hardened `decryptSecret` to satisfy the repo's strict TS (`noUncheckedIndexedAccess`) — the `split(":")` parts are destructured and explicitly guarded for `undefined` before use, instead of indexing `parts[0..3]` directly. Behavior is identical; only type-safety was added.
 ## 2026-06-29 — Fix #11: CSRF / same-origin guard (TDD)
 
 - Added `src/server/auth/csrf.ts`: `assertSameOrigin(req)` rejects cross-origin state-changing requests. Safe methods (GET/HEAD/OPTIONS) always pass. Primary signal is the browser-set `Sec-Fetch-Site` header (`same-origin`/`same-site` allowed, `cross-site` → `forbidden()` 403). When absent, falls back to comparing the `Origin` header against `APP_URL`; a missing or foreign/invalid Origin throws `forbidden()`. Module is `import "server-only"`.
