@@ -87,7 +87,7 @@ describe("withTimeout", () => {
 
 describe("CircuitBreaker", () => {
   it("opens after the failure threshold then rejects fast", async () => {
-    let now = 0;
+    const now = 0; // never advanced in this test — the breaker stays open within resetMs
     const cb = new CircuitBreaker({ failureThreshold: 2, resetMs: 1000, nowImpl: () => now });
     const boom = () => Promise.reject(new Error("down"));
     await expect(cb.exec(boom)).rejects.toThrow("down");
