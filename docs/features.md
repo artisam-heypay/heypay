@@ -2,6 +2,14 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #16: session / logout / password routes (TDD)
+
+- Added `src/app/api/auth/session/route.ts`: `GET /api/auth/session` → `{ user | null }` from the current session.
+- Added `src/app/api/auth/logout/route.ts`: `POST /api/auth/logout` → same-origin guard, revokes the session row + clears the cookie (`destroySession`), writes an `auth.logout` audit when a user was present, returns `204`.
+- Added `src/app/api/auth/password/route.ts`: `POST /api/auth/password {currentPassword, newPassword}` → re-auth required (`requireUser`), per-user rate limit (5/15min), verifies the current password (401 on mismatch), hashes the new one, **revokes all sessions and issues a fresh one for this device** (privilege-change rotation), audits `auth.password.change`, returns `204`.
+- Followed strict TDD: wrote `tests/api/auth/session-logout-password.test.ts` first (RED), then implemented to GREEN against the live Postgres (redis mocked). 5 tests cover session null/loaded, logout 204 + revoke + cookie clear, wrong-current-password 401, successful change (new hash verifies, sessions rotated to exactly one), and password-change requiring auth (401 logged out).
+- Deviation (test-only): redis `vi.mock` made hoisting-safe.
+
 ## 2026-06-29 — Fix #14: signup route + client-IP helper (TDD, integration)
 
 - Added `src/lib/net.ts`: `clientIp(req)` — first `X-Forwarded-For` hop, else `X-Real-IP`, else `"unknown"`.
