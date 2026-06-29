@@ -15,5 +15,8 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
     globals: false,
+    // Load .env (DATABASE_URL, REDIS_URL, ENCRYPTION_*) so integration tests can
+    // reach the local docker-compose services.
+    setupFiles: ["dotenv/config"],
   },
 });
