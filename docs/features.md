@@ -8,6 +8,10 @@ A running log of completed work, newest entries on top. Each entry references th
 - Re-used the `server-only` Vitest alias + `tests/helpers/server-only-stub.ts`.
 - Followed strict TDD: wrote `tests/server/crypto/envelope.test.ts` first (RED), then implemented to GREEN. 6 tests cover round-trip, distinct IV per call, tampered-tag rejection, malformed-payload rejection, missing-version-key rejection, and rotation (decrypt v1 legacy after rotating to v2).
 - Deviation from the plan's verbatim snippet: hardened `decryptSecret` to satisfy the repo's strict TS (`noUncheckedIndexedAccess`) — the `split(":")` parts are destructured and explicitly guarded for `undefined` before use, instead of indexing `parts[0..3]` directly. Behavior is identical; only type-safety was added.
+## 2026-06-29 — Fix #22: QRPH CRC-16/CCITT-FALSE (TDD)
+
+- Added `src/server/qrph/crc.ts`: `crc16ccitt(data)` implementing CRC-16/CCITT-FALSE (poly `0x1021`, init `0xFFFF`, no reflection, xorout `0x0000`), returning 4 uppercase hex chars — used to validate/compute the QRPH checksum over the payload up to and including the `6304` tag. `import "server-only"` module.
+- Followed strict TDD: wrote `tests/server/qrph/crc.test.ts` first (RED), then implemented to GREEN. 3 tests cover the canonical check value (`"123456789"` → `29B1`), a real PH static QRPH body ending in `6304` (→ `3EAC`), and one-character-change detection.
 ## 2026-06-29 — Fix #11: CSRF / same-origin guard (TDD)
 
 - Added `src/server/auth/csrf.ts`: `assertSameOrigin(req)` rejects cross-origin state-changing requests. Safe methods (GET/HEAD/OPTIONS) always pass. Primary signal is the browser-set `Sec-Fetch-Site` header (`same-origin`/`same-site` allowed, `cross-site` → `forbidden()` 403). When absent, falls back to comparing the `Origin` header against `APP_URL`; a missing or foreign/invalid Origin throws `forbidden()`. Module is `import "server-only"`.
