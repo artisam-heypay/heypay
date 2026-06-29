@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #32: payment reference generator (TDD)
+
+- Added `src/server/payments/reference.ts`: `newPaymentReference()` returns a human-facing `TXN-` + 8 uppercase RFC 4648 base32 chars (`randomBytes(8)` mapped through the base32 alphabet). `import "server-only"` module. First task of Sprint 5 (payments + settlement worker).
+- Followed strict TDD: wrote `src/server/payments/reference.test.ts` first (RED), then implemented to GREEN. 2 tests cover the `^TXN-[A-Z2-7]{8}$` format and practical uniqueness across 5000 calls.
+
 ## 2026-06-29 — Fix #31: rail selection (`rails/index.ts`) (TDD)
 
 - Added `src/server/rails/index.ts`: `selectRail(name?)` returns `pdaxProvider` for `"pdax"` and `mockProvider` otherwise; `rail` is the env-wired singleton (`selectRail(process.env.PAYMENT_RAIL)`), **defaulting to mock** so the full happy path runs locally/CI without PDAX credentials. Re-exports the `PaymentRailProvider` type for downstream consumers. `import "server-only"` module. Completes the Sprint 4 rail layer.
