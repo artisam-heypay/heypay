@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #24: QRPH decode (semantics + CRC/currency validation + image) (TDD)
+
+- Added `src/server/qrph/decode.ts`: `decodeQrph(raw)` validates the trailing CRC tag (`6304` + 4 hex) via `crc16ccitt` over everything up to and including `6304`, parses the EMVCo TLV (`parseTlv`/`toMap`), and maps the semantic fields into `QrphDecoded` — payload format (00), point-of-init (01: 11=static / 12=dynamic), merchant name (59) / city (60) / country (58, default PH), currency (53), dynamic amount (54), plus acquirer GUI + merchant id pulled from the merchant-account-info templates (tags 26–51). Throws `badRequest` on a missing CRC tag, CRC mismatch, malformed TLV, or a non-PHP currency (must be `608`). `decodeQrphImage(buf)` decodes an uploaded PNG/JPEG to raw RGBA pixels with `sharp`, reads the QR string with `jsQR`, then runs `decodeQrph`. `import "server-only"` module.
+- Installed `jsqr` + `sharp` (runtime) and `qrcode` + `@types/qrcode` (dev, to synthesise a scannable QR fixture in the test).
+- Followed strict TDD: wrote `tests/server/qrph/decode.test.ts` first (RED), then implemented to GREEN. 7 tests cover a valid static QRPH (all fields), a dynamic QRPH (amount extraction), bad-CRC rejection, foreign-currency rejection, missing-CRC rejection, round-tripping a rendered QR image, and the no-QR-in-image error.
+- Deviation: hardened `decodeQrphImage` to treat an unreadable/corrupt image (e.g. a `sharp`/libpng decode error) as "no QR found" (→ `badRequest`) rather than letting the raw decode error escape — the plan's malformed test fixture exercises exactly this path.
+
 ## 2026-06-29 — Fix #17: proxy middleware — authz matrix + security headers (TDD)
 
 - Added `src/lib/route-roles.ts` (pure): `requiredRoleForPath` maps the `(payer)`/`(merchant)`/`(admin)` URL prefixes to `PAYER`/`MERCHANT`/`ADMIN` (everything else `public`); `evaluateAccess(pathname, role)` returns `allow` (public or matching role), `login` (anonymous on a protected route), or `forbidden` (wrong role).
