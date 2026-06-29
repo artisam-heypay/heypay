@@ -1,8 +1,62 @@
+import { randomUUID } from "node:crypto";
 import { db } from "@/server/db";
+import { encryptSecret } from "@/server/crypto/envelope";
+import type { User, CustodialWallet, Merchant, MerchantStatus } from "@/generated/prisma";
 
-// Truncate auth-related tables between tests. Child tables first / CASCADE handles FKs.
 export async function resetDb(): Promise<void> {
-  await db.$executeRawUnsafe(
-    'TRUNCATE TABLE "AuditLog","Session","CustodialWallet","User" RESTART IDENTITY CASCADE',
-  );
+  // Order respects FK constraints (children first).
+  await db.paymentEvent.deleteMany();
+  await db.walletTransaction.deleteMany();
+  await db.payment.deleteMany();
+  await db.idempotencyKey.deleteMany();
+  await db.exchangeRateSnapshot.deleteMany();
+  await db.auditLog.deleteMany();
+  await db.merchant.deleteMany();
+  await db.custodialWallet.deleteMany();
+  await db.session.deleteMany();
+  await db.user.deleteMany();
+}
+
+export async function makePayer(opts?: {
+  cachedXlm?: string;
+  reservedXlm?: string;
+}): Promise<{ user: User; wallet: CustodialWallet }> {
+  const user = await db.user.create({
+    data: { username: `payer-${randomUUID()}`, passwordHash: "x", role: "PAYER" },
+  });
+  const wallet = await db.custodialWallet.create({
+    data: {
+      userId: user.id,
+      stellarPublicKey: `G${randomUUID().replace(/-/g, "").toUpperCase()}`,
+      encryptedSecret: encryptSecret(`S${randomUUID().replace(/-/g, "").toUpperCase()}`),
+      cachedXlmBalance: opts?.cachedXlm ?? "1000.0000000",
+      reservedXlm: opts?.reservedXlm ?? "0.0000000",
+    },
+  });
+  return { user, wallet };
+}
+
+export async function makeMerchant(opts?: {
+  status?: MerchantStatus;
+  accountNumber?: string;
+}): Promise<{ user: User; merchant: Merchant }> {
+  const user = await db.user.create({
+    data: { username: `merchant-${randomUUID()}`, passwordHash: "x", role: "MERCHANT" },
+  });
+  const acct = opts?.accountNumber ?? "1234567890";
+  const merchant = await db.merchant.create({
+    data: {
+      userId: user.id,
+      businessName: "Test Store",
+      status: opts?.status ?? "ACTIVE",
+      qrphRaw: "QRPHRAW",
+      qrphMerchantId: "MID123",
+      settlementBankCode: "BPI",
+      settlementBankName: "Bank of the Philippine Islands",
+      accountName: "Test Store Inc",
+      accountNumber: encryptSecret(acct),
+      accountNumberLast4: acct.slice(-4),
+    },
+  });
+  return { user, merchant };
 }
