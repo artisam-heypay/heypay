@@ -6,6 +6,11 @@ A running log of completed work, newest entries on top. Each entry references th
 
 - Added `src/server/payments/reference.ts`: `newPaymentReference()` returns a human-facing `TXN-` + 8 uppercase RFC 4648 base32 chars (`randomBytes(8)` mapped through the base32 alphabet). `import "server-only"` module. First task of Sprint 5 (payments + settlement worker).
 - Followed strict TDD: wrote `src/server/payments/reference.test.ts` first (RED), then implemented to GREEN. 2 tests cover the `^TXN-[A-Z2-7]{8}$` format and practical uniqueness across 5000 calls.
+## 2026-06-30 — Fix #33: idempotency helper + test DB factories (TDD)
+
+- Added `src/server/payments/idempotency.ts`: `withIdempotencyKey(key, scope, fn, opts?)` runs `fn` exactly once per `(scope, key)` and stores its JSON result in `IdempotencyKey`. It **atomically claims** the key with a `create` (unique `scope:key`); on a `P2002` collision it returns the stored `response` if present (replay) or throws `conflict()` (409) when a row exists with no response yet (a concurrent call is in flight). A missing key throws `badRequest()` (400). Default TTL 24h. `import "server-only"` module.
+- Expanded `tests/helpers/db.ts` into the shared payments test kit: `resetDb()` now `deleteMany`s every table in FK-safe order, plus `makePayer({cachedXlm, reservedXlm})` (user + funded `CustodialWallet`) and `makeMerchant({status, accountNumber})` (user + ACTIVE `Merchant` with encrypted bank account) factories reused by later Sprint 5 tasks.
+- Followed strict TDD: wrote `src/server/payments/idempotency.test.ts` first (RED), then implemented to GREEN against the live Postgres. 4 tests cover run-once-then-replay, scope isolation, the concurrent-in-flight 409, and the missing-key 400. Full suite (146) stays green after the `resetDb` rewrite.
 
 ## 2026-06-29 — Fix #31: rail selection (`rails/index.ts`) (TDD)
 
