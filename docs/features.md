@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #42: wallet API routes (TDD, integration)
+
+- Added the payer wallet endpoints, each `requireUser()`-gated and scoped to the caller's own wallet: `GET /api/wallet` → `{ publicKey, balanceXlm, reservedXlm, availableXlm, approxPhp }` (approx PHP via `rail.getQuote`, gracefully omitted if the rate is unavailable); `GET /api/wallet/deposit-address` → `{ publicKey, qrSvg, network, memoRequired:false }` (SVG QR of the Stellar public key via `qrcode`); `POST /api/wallet/sync` → same-origin-guarded, runs `syncWalletDeposits` and returns `{ balanceXlm }`; `GET /api/wallet/transactions?cursor=&limit=` → cursor-paginated `{ items, nextCursor }` (newest first, `take limit+1`).
+- Followed strict TDD: wrote `tests/integration/wallet.test.ts` first (RED), then implemented to GREEN against the live Postgres (sessions/rail/deposit-poller mocked). 3 tests cover the balance read (available = cached − reserved), the sync delegating to `syncWalletDeposits`, and cursor pagination across two pages. `pnpm typecheck` + `lint` clean; `pnpm build` registers all four routes.
+
 ## 2026-06-30 — Fix #41: worker entrypoint (`src/worker/index.ts`) (boot-verified)
 
 - Added `src/worker/index.ts`: the long-running settlement worker. On start it bootstraps the S3/MinIO bucket (`ensureBucket`), then spins up three BullMQ `Worker`s on the shared connection — `settle` (concurrency 5, runs `processSettleJob`), `deposit-poll` (concurrency 1, `processDepositPollJob`), `reconcile` (concurrency 1, `processReconcileJob`) — logging failed jobs. It registers two repeatable schedules (deposit-poll every 30s, reconcile every 5m, each pinned by a single `jobId`) and wires graceful shutdown on `SIGTERM`/`SIGINT` (close all workers, quit Redis, exit 0).
