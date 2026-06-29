@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #26: S3/MinIO storage (presign, magic-byte verify, signed GET, bucket bootstrap) (TDD)
+
+- Added `src/server/storage/s3.ts`: a lazily-cached `S3Client` (env-configured: endpoint, region, path-style, credentials). `presignUpload({prefix, contentType, maxBytes})` issues a presigned POST under a random `prefix/uuid.ext` key, allowing only `image/png`/`image/jpeg` and enforcing a server-side `content-length-range` + `Content-Type` policy (5-min expiry). `verifyUploadedObject(key)` HEADs the object (rejects empty/oversize, 5 MiB cap), GETs the first bytes, and validates **magic bytes** (PNG/JPEG) — rejecting anything else with `badRequest`. `signedGetUrl(key)` returns a 5-min signed GET URL. `ensureBucket()` creates the configured bucket if a HEAD 404s (MinIO bootstrap on app/worker start). `__resetS3ForTests()` drops the cached client. `import "server-only"` module.
+- Installed `@aws-sdk/client-s3`, `@aws-sdk/s3-presigned-post`, `@aws-sdk/s3-request-presigner` (runtime) and `aws-sdk-client-mock` (dev).
+- Followed strict TDD: wrote `tests/server/storage/s3.test.ts` first (RED), then implemented to GREEN with `aws-sdk-client-mock`. 7 tests cover the random-key + size-bounded presign policy, unsupported-content-type rejection, PNG acceptance, non-image magic-byte rejection, oversize rejection, and bucket create-if-missing vs no-op-if-exists.
+- Deviation (test-only): the `createPresignedPost` `vi.mock` spy is created via `vi.hoisted` (hoisting-safe).
+
 ## 2026-06-29 — Fix #17: proxy middleware — authz matrix + security headers (TDD)
 
 - Added `src/lib/route-roles.ts` (pure): `requiredRoleForPath` maps the `(payer)`/`(merchant)`/`(admin)` URL prefixes to `PAYER`/`MERCHANT`/`ADMIN` (everything else `public`); `evaluateAccess(pathname, role)` returns `allow` (public or matching role), `login` (anonymous on a protected route), or `forbidden` (wrong role).
