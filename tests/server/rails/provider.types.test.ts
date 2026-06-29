@@ -23,7 +23,11 @@ describe("provider contract", () => {
   });
 
   it("TradeStatus.state is the locked union", () => {
-    const s: TradeStatus = { state: "FILLED", feePhp: new Decimal("1.00"), filledPhp: new Decimal("99.00") };
+    const s: TradeStatus = {
+      state: "FILLED",
+      feePhp: new Decimal("1.00"),
+      filledPhp: new Decimal("99.00"),
+    };
     expectTypeOf(s.state).toEqualTypeOf<"PENDING" | "FILLED" | "FAILED">();
   });
 
@@ -40,7 +44,12 @@ describe("provider contract", () => {
     const r: TradeResult = { tradeRef: "x" };
     const p: PayoutResult = { payoutRef: "y" };
     const b: BankPayout = { bankCode: "BDO", accountName: "A", accountNumber: "1" };
-    const q: Quote = { rate: new Decimal(1), phpAmount: new Decimal(1), xlmAmount: new Decimal(1), expiresAt: new Date() };
+    const q: Quote = {
+      rate: new Decimal(1),
+      phpAmount: new Decimal(1),
+      xlmAmount: new Decimal(1),
+      expiresAt: new Date(),
+    };
     expect([r.tradeRef, p.payoutRef, b.bankCode, q.rate.toString()]).toHaveLength(4);
   });
 });
