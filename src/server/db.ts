@@ -17,3 +17,6 @@ export const prisma: PrismaClient =
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+// Locked contract alias: handlers/services/tests consume `db` from `@/server/db`.
+export const db = prisma;
