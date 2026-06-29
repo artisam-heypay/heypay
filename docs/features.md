@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #36: confirm domain (`confirmPayment`) (TDD)
+
+- Added `src/server/payments/confirm.ts`: `confirmPayment({paymentId, payerId, idemKey})` authorizes a `QUOTED` payment. Wrapped in `withIdempotencyKey` (`payment.confirm` scope) so a retried confirm replays the same result. Enforces ownership (`forbidden` 403 for another user's payment), status (`QUOTED` only; an already-`AUTHORIZED` payment returns idempotently; other statuses → `conflict` 409), and quote freshness (expired → `conflict` 409). In one transaction it re-reads the wallet, checks `availableXlm ≥ amountXlm + networkFeeXlm` (else 409), **reserves** that total on `CustodialWallet.reservedXlm`, and `applyTransition`s `QUOTED → AUTHORIZED` (writing the event). After commit it calls `enqueueSettle(paymentId)` to hand off to the settlement worker. `import "server-only"` module.
+- Followed strict TDD: wrote `src/server/payments/confirm.test.ts` first (RED), then implemented to GREEN against the live Postgres (`enqueueSettle` mocked). 4 tests cover the happy path (reserve + AUTHORIZED event + enqueue), expired-quote 409 (nothing reserved, nothing enqueued), idempotent double-confirm with the same key (reserves once, enqueues once), and the 403 on another user's payment.
+- Deviation (test-only): the `enqueueSettle` `vi.mock` spy is created via `vi.hoisted` and typed `(id: string) => Promise<void>`.
+
 ## 2026-06-30 — Fix #37: pollUntil + BullMQ queues + enqueueSettle (TDD)
 
 - Extended `src/lib/retry.ts` with `pollUntil(fn, done, opts?)`: calls `fn` until `done(value)` is true (default 30 attempts × 1s), returning the last value or throwing a labelled timeout. (`withRetry`/`withTimeout`/`CircuitBreaker` from Sprint 4 are unchanged and remain covered by `tests/lib/retry.test.ts`.)
