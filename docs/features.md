@@ -7,6 +7,13 @@ A running log of completed work, newest entries on top. Each entry references th
 - Added `src/app/api/auth/login/route.ts`: `POST /api/auth/login {username, password}`. Same-origin guard, per-IP rate limit (20/15min), Zod validation. Looks up the user and **always** runs a password `verify()` — against `DUMMY_PASSWORD_HASH` for unknown users — to equalize timing and prevent account enumeration. Returns a single generic `401 "Invalid username or password"` for both wrong-password and unknown-user. Tracks per-username failures in Redis; after `MAX_FAILS=5` it sets a 15-minute lockout (subsequent attempts get `429`, even with the correct password). On success: clears the failure counter, opens a session cookie, writes an `auth.login` audit entry; failures write `auth.login.failed`.
 - Followed strict TDD: wrote `tests/api/auth/login.test.ts` first (RED), then implemented to GREEN against the live Postgres (redis mocked). 3 tests cover successful login + cookie, identical generic 401 for wrong-password vs unknown-user, and the lockout (429 on the 6th attempt).
 - Deviation (test-only): redis `vi.mock` made hoisting-safe (construct the fake in the factory, retrieve via the mocked import).
+## 2026-06-29 — Fix #16: session / logout / password routes (TDD)
+
+- Added `src/app/api/auth/session/route.ts`: `GET /api/auth/session` → `{ user | null }` from the current session.
+- Added `src/app/api/auth/logout/route.ts`: `POST /api/auth/logout` → same-origin guard, revokes the session row + clears the cookie (`destroySession`), writes an `auth.logout` audit when a user was present, returns `204`.
+- Added `src/app/api/auth/password/route.ts`: `POST /api/auth/password {currentPassword, newPassword}` → re-auth required (`requireUser`), per-user rate limit (5/15min), verifies the current password (401 on mismatch), hashes the new one, **revokes all sessions and issues a fresh one for this device** (privilege-change rotation), audits `auth.password.change`, returns `204`.
+- Followed strict TDD: wrote `tests/api/auth/session-logout-password.test.ts` first (RED), then implemented to GREEN against the live Postgres (redis mocked). 5 tests cover session null/loaded, logout 204 + revoke + cookie clear, wrong-current-password 401, successful change (new hash verifies, sessions rotated to exactly one), and password-change requiring auth (401 logged out).
+- Deviation (test-only): redis `vi.mock` made hoisting-safe.
 
 ## 2026-06-29 — Fix #14: signup route + client-IP helper (TDD, integration)
 
