@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #29: deterministic MockProvider (TDD)
+
+- Added `src/server/rails/mock.ts`: a fully deterministic `PaymentRailProvider` for local/CI runs and Phase 5 tests. `createMockProvider(cfg?)` returns a fresh instance with isolated in-memory state; `mockProvider` is the env-wired singleton. Configurable `rate` (`MOCK_XLM_PHP_RATE`, default `3.50`), `delayMs` (`MOCK_RAIL_DELAY_MS`, default `0`), and `feeRate` (`MOCK_RAIL_FEE_RATE`, default `0.01`). No `Math.random`: trade/payout refs are derived from the input ref (`MOCK-TRADE-…` / `MOCK-PAYOUT-…`), and status transitions are driven by an internal poll counter (first poll → `PENDING`, next → terminal). Any `ref` containing `FAIL` forces the `FAILED` branch so the worker can exercise FAILED/REFUND. All math is `Decimal`: `getQuote` uses `phpToXlm` (ROUND_UP 7dp) with a ~90s expiry; `filledPhp = xlmAmount * rate` (2dp), `feePhp = filledPhp * feeRate` (2dp); payout `netPhp` equals the cash-out amount. `import "server-only"` module.
+- Followed strict TDD: wrote `tests/server/rails/mock.test.ts` first (RED), then implemented to GREEN. 6 tests cover quote math/expiry, deterministic tradeRef, PENDING→FILLED with PHP fee, PENDING→SETTLED payout, and both forced-failure paths.
+
 ## 2026-06-29 — Fix #27: PaymentRailProvider interface + contract types (TDD)
 
 - Added `src/server/rails/provider.ts`: the locked payment-rail contract (verbatim from the master overview) — `Quote`, `TradeResult`, `TradeStatus`, `BankPayout`, `PayoutResult`, `PayoutStatus`, and the `PaymentRailProvider` interface with its five methods (`getQuote`, `sellCryptoForPhp`, `getTradeStatus`, `cashOutPhpToBank`, `getPayoutStatus`). Types-only, no runtime logic; consumed by the Mock/PDAX providers (Tasks 3–4) and the Phase 5 worker. All amounts are `Decimal`.
