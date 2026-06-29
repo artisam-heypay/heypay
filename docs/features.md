@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #31: rail selection (`rails/index.ts`) (TDD)
+
+- Added `src/server/rails/index.ts`: `selectRail(name?)` returns `pdaxProvider` for `"pdax"` and `mockProvider` otherwise; `rail` is the env-wired singleton (`selectRail(process.env.PAYMENT_RAIL)`), **defaulting to mock** so the full happy path runs locally/CI without PDAX credentials. Re-exports the `PaymentRailProvider` type for downstream consumers. `import "server-only"` module. Completes the Sprint 4 rail layer.
+- Followed strict TDD: wrote `tests/server/rails/index.test.ts` first (RED), then implemented to GREEN. 3 tests cover pdax selection, mock selection, and the default-to-mock fallback for unset/unknown values.
+
 ## 2026-06-29 — Fix #30: PdaxProvider — HMAC signer, TOTP, Zod-validated, retried (TDD)
 
 - Added `src/server/rails/pdax.ts`: the real `PaymentRailProvider` over the PDAX v1 REST API. `signRequest()` (pure) builds the `Access-Key` + `Access-Signature` (HMAC-SHA256 over `timestamp + method + path + body`, SPEC §7.2). `generateTotp()` (pure, RFC 6238 SHA-1, base32 secret, 6-digit/30s defaults) derives the crypto-withdrawal OTP. `createPdaxProvider(overrides?)` builds an instance with injectable `fetchImpl`/`now`/retry knobs (env-defaulted): `getQuote` (`GET /rates/XLMPHP` → Decimal rate + `phpToXlm`), `sellCryptoForPhp` (`POST /trades` XLM→PHP sell), `getTradeStatus`/`getPayoutStatus` (status mapping), `cashOutPhpToBank` (`POST /cash_out`, **no OTP**), and `withdrawCryptoForRefund` (`POST /crypto_withdrawals` **with** `Access-Otp` TOTP — refund path only). Every call goes through `withRetry` (retries network/5xx, **not** 4xx) and every response is parsed with Zod (untrusted). `import "server-only"`.
