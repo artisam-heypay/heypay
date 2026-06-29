@@ -14,7 +14,13 @@ describe("audit", () => {
     create.mockResolvedValue({});
     await audit({ actorId: "user_1", action: "auth.login", target: "user_1", ip: "1.2.3.4" });
     expect(create).toHaveBeenCalledWith({
-      data: { actorId: "user_1", action: "auth.login", target: "user_1", metadata: undefined, ip: "1.2.3.4" },
+      data: {
+        actorId: "user_1",
+        action: "auth.login",
+        target: "user_1",
+        metadata: undefined,
+        ip: "1.2.3.4",
+      },
     });
   });
 
