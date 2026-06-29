@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #10: server-side sessions (TDD, integration)
+
+- Added `src/server/auth/sessions.ts`: the locked Auth/sessions contract. Opaque 256-bit token (`randomBytes(32)` base64url); only the SHA-256 token **hash** is stored in `Session` (raw token never persisted). `createSession` sets an HttpOnly + SameSite=Lax cookie (`heypay_session`, Secure in production) and writes ip/userAgent. `getSessionUser`/`requireUser`/`requireRole` validate the cookie (expired or inactive-user → null/throw), with sliding renewal when <½ TTL remains. `lookupSession(token)` is a raw-token variant for `proxy.ts` (Task 9). `destroySession` deletes the row and clears the cookie. `import "server-only"` module.
+- Test infrastructure: `tests/helpers/mock-cookies.ts` (in-memory `next/headers` cookie jar via `vi.mock`), `tests/helpers/db.ts` (`resetDb` TRUNCATE of auth tables), and wired Vitest to load `.env` (`setupFiles: ["dotenv/config"]`) so integration tests reach the docker-compose Postgres.
+- Followed strict TDD: wrote `tests/server/auth/sessions.test.ts` first (RED), then implemented to GREEN against the live Postgres. 6 tests cover hash-only persistence + cookie, valid-cookie resolution, missing-cookie null, expired-session null, `requireRole` 403 mismatch, and `destroySession` revocation.
+- Deviation: Sprint 1's `src/server/db.ts` exported the client as `prisma`, but the locked contract (and every Phase 2+ consumer) imports `db` from `@/server/db`. Added an additive `export const db = prisma;` alias — existing `prisma` consumers are unaffected.
+
 ## 2026-06-28 — Fix #8: src/lib/http.ts (TDD)
 
 - Added `src/lib/http.ts`: the locked HTTP contract for Route Handlers, built on `next/server` + `zod` and reusing `src/lib/errors.ts` (no duplicated error definitions). Exports the `HandlerContext`/`Handler` types, `json`, `route`, `parseBody`, and `parseQuery`.
