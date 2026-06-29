@@ -110,3 +110,24 @@ export class CircuitBreaker {
     }
   }
 }
+
+export type PollOpts = { attempts?: number; intervalMs?: number; label?: string };
+
+// Calls fn until done(value) is true; throws after `attempts`. Returns the last value when done.
+export async function pollUntil<T>(
+  fn: () => Promise<T>,
+  done: (v: T) => boolean,
+  opts: PollOpts = {},
+): Promise<T> {
+  const attempts = opts.attempts ?? 30;
+  const intervalMs = opts.intervalMs ?? 1_000;
+  let value!: T;
+  for (let i = 0; i < attempts; i++) {
+    value = await fn();
+    if (done(value)) return value;
+    if (i < attempts - 1) await new Promise<void>((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(
+    `pollUntil timed out${opts.label ? ` (${opts.label})` : ""} after ${attempts} attempts`,
+  );
+}
