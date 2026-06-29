@@ -8,19 +8,23 @@ A running log of completed work, newest entries on top. Each entry references th
 - Re-used the `server-only` Vitest alias + `tests/helpers/server-only-stub.ts`.
 - Followed strict TDD: wrote `tests/server/crypto/envelope.test.ts` first (RED), then implemented to GREEN. 6 tests cover round-trip, distinct IV per call, tampered-tag rejection, malformed-payload rejection, missing-version-key rejection, and rotation (decrypt v1 legacy after rotating to v2).
 - Deviation from the plan's verbatim snippet: hardened `decryptSecret` to satisfy the repo's strict TS (`noUncheckedIndexedAccess`) — the `split(":")` parts are destructured and explicitly guarded for `undefined` before use, instead of indexing `parts[0..3]` directly. Behavior is identical; only type-safety was added.
+
 ## 2026-06-29 — Fix #22: QRPH CRC-16/CCITT-FALSE (TDD)
 
 - Added `src/server/qrph/crc.ts`: `crc16ccitt(data)` implementing CRC-16/CCITT-FALSE (poly `0x1021`, init `0xFFFF`, no reflection, xorout `0x0000`), returning 4 uppercase hex chars — used to validate/compute the QRPH checksum over the payload up to and including the `6304` tag. `import "server-only"` module.
 - Followed strict TDD: wrote `tests/server/qrph/crc.test.ts` first (RED), then implemented to GREEN. 3 tests cover the canonical check value (`"123456789"` → `29B1`), a real PH static QRPH body ending in `6304` (→ `3EAC`), and one-character-change detection.
+
 ## 2026-06-29 — Fix #23: Generic EMVCo TLV parser (TDD)
 
 - Added `src/server/qrph/tlv.ts`: `parseTlv(input)` parses a flat EMVCo TLV string (2-char tag, 2-digit length, value) into ordered `TlvNode[]`, throwing on a non-numeric length or a value overrun/truncation. `toMap(nodes)` builds a tag→value map (last occurrence wins). `parseTemplate(value)` parses a nested template value (e.g. the tag-26 merchant-account-info template) into a sub-tag map. `import "server-only"` module.
 - Re-used the `server-only` Vitest alias + `tests/helpers/server-only-stub.ts`.
 - Followed strict TDD: wrote `tests/server/qrph/tlv.test.ts` first (RED), then implemented to GREEN. 4 tests cover ordered top-level parsing of a real static QRPH body, the nested tag-26 template (GUI + merchant id), length-overrun rejection, and non-numeric-length rejection.
+
 ## 2026-06-29 — Fix #28: retry / timeout / circuit-breaker resilience utilities (TDD)
 
 - Added `src/lib/retry.ts`: a dependency-free resilience toolkit used to wrap external calls (PDAX in Sprint 4, worker jobs in Phase 5). `withTimeout(p, ms)` races a promise against a per-attempt timeout (`TimeoutError`; `ms <= 0` disables). `withRetry(fn, opts)` retries with exponential backoff + full jitter (`retries`/`baseMs`/`maxMs`/`timeoutMs`/`jitter`/`isRetryable`), with injectable `sleepImpl`/`randomImpl` for deterministic tests; throws the last error after exhausting retries or on a non-retryable error. `CircuitBreaker` (`closed`/`open`/`half-open`) opens after `failureThreshold` failures, fast-fails with `CircuitOpenError` while open, half-opens after `resetMs`, and closes again on the next success (injectable `nowImpl`).
 - Followed strict TDD: wrote `tests/lib/retry.test.ts` first (RED), then implemented to GREEN. 9 tests cover retry success-after-failures, give-up-and-throw-last, `isRetryable=false`, per-attempt timeout, exponential+capped backoff sequence, `withTimeout` win/lose races, and circuit-breaker open/fast-fail + half-open→close.
+
 ## 2026-06-29 — Fix #29: deterministic MockProvider (TDD)
 
 - Added `src/server/rails/mock.ts`: a fully deterministic `PaymentRailProvider` for local/CI runs and Phase 5 tests. `createMockProvider(cfg?)` returns a fresh instance with isolated in-memory state; `mockProvider` is the env-wired singleton. Configurable `rate` (`MOCK_XLM_PHP_RATE`, default `3.50`), `delayMs` (`MOCK_RAIL_DELAY_MS`, default `0`), and `feeRate` (`MOCK_RAIL_FEE_RATE`, default `0.01`). No `Math.random`: trade/payout refs are derived from the input ref (`MOCK-TRADE-…` / `MOCK-PAYOUT-…`), and status transitions are driven by an internal poll counter (first poll → `PENDING`, next → terminal). Any `ref` containing `FAIL` forces the `FAILED` branch so the worker can exercise FAILED/REFUND. All math is `Decimal`: `getQuote` uses `phpToXlm` (ROUND_UP 7dp) with a ~90s expiry; `filledPhp = xlmAmount * rate` (2dp), `feePhp = filledPhp * feeRate` (2dp); payout `netPhp` equals the cash-out amount. `import "server-only"` module.
@@ -30,6 +34,7 @@ A running log of completed work, newest entries on top. Each entry references th
 
 - Added `src/server/rails/provider.ts`: the locked payment-rail contract (verbatim from the master overview) — `Quote`, `TradeResult`, `TradeStatus`, `BankPayout`, `PayoutResult`, `PayoutStatus`, and the `PaymentRailProvider` interface with its five methods (`getQuote`, `sellCryptoForPhp`, `getTradeStatus`, `cashOutPhpToBank`, `getPayoutStatus`). Types-only, no runtime logic; consumed by the Mock/PDAX providers (Tasks 3–4) and the Phase 5 worker. All amounts are `Decimal`.
 - Followed strict TDD: wrote `tests/server/rails/provider.types.test.ts` first (RED), then implemented to GREEN. 4 tests (incl. `expectTypeOf` checks) lock the `Decimal`/`Date` shape of `Quote`, the `TradeStatus`/`PayoutStatus` state unions, and that `PaymentRailProvider` exposes exactly the five methods.
+
 ## 2026-06-29 — Fix #11: CSRF / same-origin guard (TDD)
 
 - Added `src/server/auth/csrf.ts`: `assertSameOrigin(req)` rejects cross-origin state-changing requests. Safe methods (GET/HEAD/OPTIONS) always pass. Primary signal is the browser-set `Sec-Fetch-Site` header (`same-origin`/`same-site` allowed, `cross-site` → `forbidden()` 403). When absent, falls back to comparing the `Origin` header against `APP_URL`; a missing or foreign/invalid Origin throws `forbidden()`. Module is `import "server-only"`.
@@ -41,18 +46,21 @@ A running log of completed work, newest entries on top. Each entry references th
 - Added `src/server/auth/password.ts`: argon2id hashing per the OWASP Password Storage Cheat Sheet (`memoryCost=19456` KiB, `timeCost=2`, `parallelism=1`). Exports `hashPassword(plain)` (encoded `$argon2id$` hash), `verifyPassword(hash, plain)` (returns `false` on any error — malformed hash never throws), and `DUMMY_PASSWORD_HASH`, a precomputed hash of an unknown random value used on the login path to run a `verify()` even for unknown usernames, equalizing response timing against account-enumeration attacks. Module is marked `import "server-only"`; plaintext is never logged or embedded in the hash.
 - Added `tests/helpers/server-only-stub.ts` and aliased `server-only` to it in `vitest.config.ts` (`resolve.alias`) so server modules import cleanly under Node during unit tests.
 - Followed strict TDD: wrote `tests/server/auth/password.test.ts` first (RED — module not found), then implemented to GREEN. 4 tests cover hash/verify round-trip, wrong-password rejection, malformed-hash returning `false` (not throwing), and the dummy hash verifying to `false`.
+
 ## 2026-06-29 — Fix #10: server-side sessions (TDD, integration)
 
 - Added `src/server/auth/sessions.ts`: the locked Auth/sessions contract. Opaque 256-bit token (`randomBytes(32)` base64url); only the SHA-256 token **hash** is stored in `Session` (raw token never persisted). `createSession` sets an HttpOnly + SameSite=Lax cookie (`heypay_session`, Secure in production) and writes ip/userAgent. `getSessionUser`/`requireUser`/`requireRole` validate the cookie (expired or inactive-user → null/throw), with sliding renewal when <½ TTL remains. `lookupSession(token)` is a raw-token variant for `proxy.ts` (Task 9). `destroySession` deletes the row and clears the cookie. `import "server-only"` module.
 - Test infrastructure: `tests/helpers/mock-cookies.ts` (in-memory `next/headers` cookie jar via `vi.mock`), `tests/helpers/db.ts` (`resetDb` TRUNCATE of auth tables), and wired Vitest to load `.env` (`setupFiles: ["dotenv/config"]`) so integration tests reach the docker-compose Postgres.
 - Followed strict TDD: wrote `tests/server/auth/sessions.test.ts` first (RED), then implemented to GREEN against the live Postgres. 6 tests cover hash-only persistence + cookie, valid-cookie resolution, missing-cookie null, expired-session null, `requireRole` 403 mismatch, and `destroySession` revocation.
 - Deviation: Sprint 1's `src/server/db.ts` exported the client as `prisma`, but the locked contract (and every Phase 2+ consumer) imports `db` from `@/server/db`. Added an additive `export const db = prisma;` alias — existing `prisma` consumers are unaffected.
+
 ## 2026-06-29 — Fix #12: Redis token-bucket rate limiter (TDD)
 
 - Added `src/server/auth/rate-limit.ts`: `rateLimit(key, { limit, windowSec })` enforces a per-identity token bucket on the `redis` singleton. Refill + consume is one atomic Lua `EVAL` (HMGET tokens/ts → refill by elapsed × rate, capped at capacity, consume one, HSET, PEXPIRE) so concurrent requests can't race the bucket. Throws `tooManyRequests()` (429) when the bucket is empty. `import "server-only"` module.
 - Added `tests/helpers/fake-redis.ts`: an in-memory ioredis stand-in (get/set/del/incr/expire + a token-bucket `eval` emulation) for deterministic unit tests.
 - Followed strict TDD: wrote `tests/server/auth/rate-limit.test.ts` first (RED), then implemented to GREEN. 3 tests cover allow-up-to-limit-then-429, refill after the window elapses (mocked clock), and per-key independence.
 - Deviation: the plan's test factory closed over a top-level `fake` variable, which Vitest's hoisted `vi.mock` cannot reference (`Cannot access 'fake' before initialization`). Reworked the mock to construct the fake inside the factory and retrieve that same instance via the mocked import — behavior identical, hoisting-safe.
+
 ## 2026-06-29 — Fix #13: best-effort audit logging (TDD)
 
 - Added `src/server/auth/audit.ts`: `audit(input)` writes an `AuditLog` row (`actorId`/`action`/`target`/`metadata`/`ip`, nullable fields normalized to `null`, `metadata` cast to `Prisma.InputJsonValue`). Wrapped in try/catch so audit failures **never throw into the request path** — on error it logs only the action name (never the metadata, which may carry sensitive context). `import "server-only"` module.
