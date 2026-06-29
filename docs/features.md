@@ -2,10 +2,16 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #34: settlement state machine (TDD)
+
+- Added `src/server/payments/state-machine.ts`: the authoritative `Payment` lifecycle. `TRANSITIONS` is the legal edge table (`CREATED → QUOTED → AUTHORIZED → STELLAR_SUBMITTED → STELLAR_CONFIRMED → PDAX_TRADING → PDAX_TRADED → PAYOUT_SUBMITTED → SETTLED`; pre-XLM failures → `FAILED`; once XLM has left the wallet, failures branch `… → REFUND_PENDING → REFUNDED`). `TERMINAL` (`SETTLED`/`FAILED`/`REFUNDED`), `XLM_MOVED` (states where XLM already left), `canTransition`, `isTerminal`, and `nextStep` (happy-path successor for the worker, or `null`). `applyTransition(client, payment, toStatus, detail?)` validates the edge (throws `conflict()` 409 on an illegal one), updates `Payment.status`, and writes a `PaymentEvent` — accepts any `Prisma.TransactionClient`, so callers pass `db` outside a tx or `tx` inside `db.$transaction`. `import "server-only"` module.
+- Followed strict TDD: wrote `src/server/payments/state-machine.test.ts` first (RED), then implemented to GREEN. 7 tests cover the full happy-path `nextStep` chain, legal/illegal `canTransition` edges, the refund-only-after-XLM-moved rule, the terminal set, every `PaymentStatus` having a `TRANSITIONS` key, and (persisted) a legal transition writing one `PaymentEvent` + an illegal transition throwing 409 with no event.
+
 ## 2026-06-30 — Fix #32: payment reference generator (TDD)
 
 - Added `src/server/payments/reference.ts`: `newPaymentReference()` returns a human-facing `TXN-` + 8 uppercase RFC 4648 base32 chars (`randomBytes(8)` mapped through the base32 alphabet). `import "server-only"` module. First task of Sprint 5 (payments + settlement worker).
 - Followed strict TDD: wrote `src/server/payments/reference.test.ts` first (RED), then implemented to GREEN. 2 tests cover the `^TXN-[A-Z2-7]{8}$` format and practical uniqueness across 5000 calls.
+
 ## 2026-06-30 — Fix #33: idempotency helper + test DB factories (TDD)
 
 - Added `src/server/payments/idempotency.ts`: `withIdempotencyKey(key, scope, fn, opts?)` runs `fn` exactly once per `(scope, key)` and stores its JSON result in `IdempotencyKey`. It **atomically claims** the key with a `create` (unique `scope:key`); on a `P2002` collision it returns the stored `response` if present (replay) or throws `conflict()` (409) when a row exists with no response yet (a concurrent call is in flight). A missing key throws `badRequest()` (400). Default TTL 24h. `import "server-only"` module.
