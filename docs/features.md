@@ -2,11 +2,19 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #17: proxy middleware — authz matrix + security headers (TDD)
+
+- Added `src/lib/route-roles.ts` (pure): `requiredRoleForPath` maps the `(payer)`/`(merchant)`/`(admin)` URL prefixes to `PAYER`/`MERCHANT`/`ADMIN` (everything else `public`); `evaluateAccess(pathname, role)` returns `allow` (public or matching role), `login` (anonymous on a protected route), or `forbidden` (wrong role).
+- Added `src/lib/security-headers.ts` (pure): `buildCsp()` a strict CSP (scripts `'self'` only; `style-src`/`font-src` allowlist Google Fonts + Material Symbols; `img-src` allows `data:`/`blob:`/`https:` for QR + signed URLs; `frame-ancestors 'none'`, `object-src 'none'`). `applySecurityHeaders(res, pathname)` adds CSP + HSTS + `nosniff` + `Referrer-Policy` + `X-Frame-Options: DENY` + a `Permissions-Policy` that grants `camera=(self)` only on `/payer/scan` and denies it elsewhere.
+- Added `src/proxy.ts` (Next 16 Node-runtime middleware): reads the session cookie → `lookupSession` → `evaluateAccess`; redirects to `/login?next=…`, returns `403`, or continues — and applies the security headers to **every** response. `config.matcher` excludes Next internals/static assets. The proxy is a coarse first gate; handlers still re-check via `requireRole` (default-deny).
+- Followed strict TDD: wrote the two helper test files first (RED), then implemented to GREEN. 8 tests (route-roles 5, security-headers 3) cover the role matrix, all four access decisions, the full hardening header set, and the scan-only camera grant. The middleware itself is composed from these tested helpers and verified end-to-end in Phase 9.
+
 ## 2026-06-29 — Fix #15: login route with rate limiting + account lockout (TDD)
 
 - Added `src/app/api/auth/login/route.ts`: `POST /api/auth/login {username, password}`. Same-origin guard, per-IP rate limit (20/15min), Zod validation. Looks up the user and **always** runs a password `verify()` — against `DUMMY_PASSWORD_HASH` for unknown users — to equalize timing and prevent account enumeration. Returns a single generic `401 "Invalid username or password"` for both wrong-password and unknown-user. Tracks per-username failures in Redis; after `MAX_FAILS=5` it sets a 15-minute lockout (subsequent attempts get `429`, even with the correct password). On success: clears the failure counter, opens a session cookie, writes an `auth.login` audit entry; failures write `auth.login.failed`.
 - Followed strict TDD: wrote `tests/api/auth/login.test.ts` first (RED), then implemented to GREEN against the live Postgres (redis mocked). 3 tests cover successful login + cookie, identical generic 401 for wrong-password vs unknown-user, and the lockout (429 on the 6th attempt).
 - Deviation (test-only): redis `vi.mock` made hoisting-safe (construct the fake in the factory, retrieve via the mocked import).
+
 ## 2026-06-29 — Fix #16: session / logout / password routes (TDD)
 
 - Added `src/app/api/auth/session/route.ts`: `GET /api/auth/session` → `{ user | null }` from the current session.
