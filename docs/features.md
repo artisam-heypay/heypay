@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #21: custodial Stellar WalletService (TDD)
+
+- Added `src/server/stellar/wallet.ts`: the locked `WalletService` over an injectable `Horizon.Server` (`createWalletService(server?, passphrase?)` resolves Horizon/passphrase lazily so importing never hits the network; `walletService` is the env-wired singleton). `generate()` builds a random keypair and returns the public key + envelope-encrypted secret + key version. `getBalance()` reads the native balance (0 on a 404/unfunded account). `sendXlm()` decrypts the secret in-memory only, builds a native payment with a text memo, fetches the base fee, sets a 180s timeout, signs, and submits — amount formatted to 7dp via `formatXlm`. `confirmTx()` polls the tx until it appears in the ledger (success/failure definitive; bounded retries). `listIncomingPayments()` pages native payments addressed to the account and advances the cursor past every scanned record. `import "server-only"` module.
+- Followed strict TDD: wrote `tests/server/stellar/wallet.test.ts` first (RED), then implemented to GREEN with a chainable fake Horizon server. 7 tests cover key generation (valid G-key + decryptable S-seed), native-balance parsing, the unfunded-404 → 0 case, the built/signed/submitted payment (memo, native asset, 7dp amount, timebounds), confirm true/false, and incoming-payment filtering + cursor advance. Added a `describe.skipIf` testnet+friendbot integration test (`wallet.integration.test.ts`) that only runs with `RUN_STELLAR_IT=1` so `pnpm vitest run` stays offline-safe.
+
 ## 2026-06-29 — Fix #20: Horizon singleton (TDD)
 
 - Added `src/server/stellar/horizon.ts`: `getHorizon()` lazily constructs a cached `Horizon.Server` from `STELLAR_HORIZON_URL` (allowing HTTP only for `http://` URLs), throwing if the URL is unset. `getNetworkPassphrase()` returns an explicit `STELLAR_NETWORK_PASSPHRASE` override when present, else `Networks.PUBLIC` for mainnet / `Networks.TESTNET` otherwise. `__resetHorizonForTests()` drops the cache. `import "server-only"` module.
