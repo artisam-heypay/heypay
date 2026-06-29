@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #40: reconciliation job (`jobs/reconcile.ts`) (TDD)
+
+- Added `src/server/queue/jobs/reconcile.ts`: `processReconcileJob()` diffs each custodial wallet's `cachedXlmBalance` against the live Horizon balance (`walletService.getBalance`). Any mismatch is **flagged** to the audit log as `reconcile.drift` (with public key, cached/horizon/delta XLM) — drift is never auto-corrected (SPEC §9). A failed `getBalance` for one wallet is logged and skipped, not fatal. Returns `{ checked, drift }`. PHP/PDAX reconciliation is left as a `TODO(pdax-reconcile)` (the locked `PaymentRailProvider` exposes no transaction-listing method yet). `import "server-only"` module.
+- Followed strict TDD: wrote `src/server/queue/jobs/reconcile.test.ts` first (RED), then implemented to GREEN against the live Postgres (`getBalance` mocked). 2 tests cover a cached/Horizon mismatch flagging one `reconcile.drift` audit entry and a matching balance flagging none.
+
 ## 2026-06-30 — Fix #39: deposit poller (`jobs/deposit-poller.ts`) (TDD)
 
 - Added `src/server/queue/jobs/deposit-poller.ts`: `syncWalletDeposits(walletId)` syncs a custodial wallet's incoming Horizon payments into `PREFUND_DEPOSIT` rows and bumps `cachedXlmBalance`. The Horizon cursor is persisted in **Redis** (`horizon:cursor:<walletId>`) — no schema change — and passed back on each call. Each deposit is **idempotent by `stellarTxHash`** (unique on `WalletTransaction`; pre-checked and P2002-guarded inside the credit transaction), so re-seeing the same payment never double-credits. Updates `lastSyncedAt` each run and returns `{ balanceXlm, newDeposits }`. `processDepositPollJob()` runs the sync across every wallet, isolating per-wallet failures. `import "server-only"` module.
