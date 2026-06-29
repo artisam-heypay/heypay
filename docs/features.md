@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #30: PdaxProvider — HMAC signer, TOTP, Zod-validated, retried (TDD)
+
+- Added `src/server/rails/pdax.ts`: the real `PaymentRailProvider` over the PDAX v1 REST API. `signRequest()` (pure) builds the `Access-Key` + `Access-Signature` (HMAC-SHA256 over `timestamp + method + path + body`, SPEC §7.2). `generateTotp()` (pure, RFC 6238 SHA-1, base32 secret, 6-digit/30s defaults) derives the crypto-withdrawal OTP. `createPdaxProvider(overrides?)` builds an instance with injectable `fetchImpl`/`now`/retry knobs (env-defaulted): `getQuote` (`GET /rates/XLMPHP` → Decimal rate + `phpToXlm`), `sellCryptoForPhp` (`POST /trades` XLM→PHP sell), `getTradeStatus`/`getPayoutStatus` (status mapping), `cashOutPhpToBank` (`POST /cash_out`, **no OTP**), and `withdrawCryptoForRefund` (`POST /crypto_withdrawals` **with** `Access-Otp` TOTP — refund path only). Every call goes through `withRetry` (retries network/5xx, **not** 4xx) and every response is parsed with Zod (untrusted). `import "server-only"`.
+- Followed strict TDD: wrote `tests/server/rails/pdax.test.ts` first (RED), then implemented to GREEN. 11 tests cover the HMAC signature vector, the RFC 6238 TOTP vector (`287082` at T=59s), all five provider method mappings, OTP present on refund / absent on PHP cash-out, 5xx-retry-then-succeed, 4xx-no-retry-throw, and malformed-response (schema) rejection.
+- Deviation (test-only): typed the `fetch` mocks as `vi.fn<typeof fetch>()` so `mock.calls[i]` is the real `[url, init]` tuple under strict TS (`noUncheckedIndexedAccess`).
+
 ## 2026-06-29 — Fix #25: QRPH merchant resolution (TDD)
 
 - Added `src/server/qrph/resolve.ts`: `resolveMerchant(decoded)` finds the registered **ACTIVE** merchant for a decoded QRPH — matches on `qrphRaw` (exact raw string) OR, when present, `qrphMerchantId`, scoped to `status = ACTIVE`. Returns the `Merchant` or `null`. `import "server-only"` module.
@@ -14,12 +20,14 @@ A running log of completed work, newest entries on top. Each entry references th
 - Installed `jsqr` + `sharp` (runtime) and `qrcode` + `@types/qrcode` (dev, to synthesise a scannable QR fixture in the test).
 - Followed strict TDD: wrote `tests/server/qrph/decode.test.ts` first (RED), then implemented to GREEN. 7 tests cover a valid static QRPH (all fields), a dynamic QRPH (amount extraction), bad-CRC rejection, foreign-currency rejection, missing-CRC rejection, round-tripping a rendered QR image, and the no-QR-in-image error.
 - Deviation: hardened `decodeQrphImage` to treat an unreadable/corrupt image (e.g. a `sharp`/libpng decode error) as "no QR found" (→ `badRequest`) rather than letting the raw decode error escape — the plan's malformed test fixture exercises exactly this path.
+
 ## 2026-06-29 — Fix #26: S3/MinIO storage (presign, magic-byte verify, signed GET, bucket bootstrap) (TDD)
 
 - Added `src/server/storage/s3.ts`: a lazily-cached `S3Client` (env-configured: endpoint, region, path-style, credentials). `presignUpload({prefix, contentType, maxBytes})` issues a presigned POST under a random `prefix/uuid.ext` key, allowing only `image/png`/`image/jpeg` and enforcing a server-side `content-length-range` + `Content-Type` policy (5-min expiry). `verifyUploadedObject(key)` HEADs the object (rejects empty/oversize, 5 MiB cap), GETs the first bytes, and validates **magic bytes** (PNG/JPEG) — rejecting anything else with `badRequest`. `signedGetUrl(key)` returns a 5-min signed GET URL. `ensureBucket()` creates the configured bucket if a HEAD 404s (MinIO bootstrap on app/worker start). `__resetS3ForTests()` drops the cached client. `import "server-only"` module.
 - Installed `@aws-sdk/client-s3`, `@aws-sdk/s3-presigned-post`, `@aws-sdk/s3-request-presigner` (runtime) and `aws-sdk-client-mock` (dev).
 - Followed strict TDD: wrote `tests/server/storage/s3.test.ts` first (RED), then implemented to GREEN with `aws-sdk-client-mock`. 7 tests cover the random-key + size-bounded presign policy, unsupported-content-type rejection, PNG acceptance, non-image magic-byte rejection, oversize rejection, and bucket create-if-missing vs no-op-if-exists.
 - Deviation (test-only): the `createPresignedPost` `vi.mock` spy is created via `vi.hoisted` (hoisting-safe).
+
 ## 2026-06-29 — Fix #18: (auth) UI — login / signup / logout with Server Actions (TDD)
 
 - Added `src/lib/auth-redirect.ts` (pure): `dashboardPath(role)` maps `PAYER`/`MERCHANT`/`ADMIN` to `/payer/dashboard`, `/merchant/dashboard`, `/admin`.
