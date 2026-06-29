@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #43: QRPH decode route (TDD, integration)
+
+- Added `POST /api/qrph/decode`: payer-only (`requireRole("PAYER")`), same-origin-guarded. Accepts either a JSON `{ raw }` string or a `multipart/form-data` `image` upload — runs the authoritative server-side decode (`decodeQrph`/`decodeQrphImage`, which validate CRC + PHP currency) and resolves the registered ACTIVE merchant (`resolveMerchant`). Returns `{ decoded, merchant }` where `merchant` is `{ id, businessName, qrphMerchantName, amountPhp? }` or `null` (200) so the UI can show "merchant not registered". A body with neither `raw` nor `image` → `badRequest` (400).
+- Followed strict TDD: wrote `tests/integration/qrph-decode.test.ts` first (RED), then implemented to GREEN against the live Postgres (sessions/decode/resolve mocked). 3 tests cover raw decode + resolved merchant, `merchant: null` on a miss, and the 400 for an empty body. `pnpm typecheck` + `lint` clean.
+
 ## 2026-06-30 — Fix #42: wallet API routes (TDD, integration)
 
 - Added the payer wallet endpoints, each `requireUser()`-gated and scoped to the caller's own wallet: `GET /api/wallet` → `{ publicKey, balanceXlm, reservedXlm, availableXlm, approxPhp }` (approx PHP via `rail.getQuote`, gracefully omitted if the rate is unavailable); `GET /api/wallet/deposit-address` → `{ publicKey, qrSvg, network, memoRequired:false }` (SVG QR of the Stellar public key via `qrcode`); `POST /api/wallet/sync` → same-origin-guarded, runs `syncWalletDeposits` and returns `{ balanceXlm }`; `GET /api/wallet/transactions?cursor=&limit=` → cursor-paginated `{ items, nextCursor }` (newest first, `take limit+1`).
