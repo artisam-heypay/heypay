@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #15: login route with rate limiting + account lockout (TDD)
+
+- Added `src/app/api/auth/login/route.ts`: `POST /api/auth/login {username, password}`. Same-origin guard, per-IP rate limit (20/15min), Zod validation. Looks up the user and **always** runs a password `verify()` — against `DUMMY_PASSWORD_HASH` for unknown users — to equalize timing and prevent account enumeration. Returns a single generic `401 "Invalid username or password"` for both wrong-password and unknown-user. Tracks per-username failures in Redis; after `MAX_FAILS=5` it sets a 15-minute lockout (subsequent attempts get `429`, even with the correct password). On success: clears the failure counter, opens a session cookie, writes an `auth.login` audit entry; failures write `auth.login.failed`.
+- Followed strict TDD: wrote `tests/api/auth/login.test.ts` first (RED), then implemented to GREEN against the live Postgres (redis mocked). 3 tests cover successful login + cookie, identical generic 401 for wrong-password vs unknown-user, and the lockout (429 on the 6th attempt).
+- Deviation (test-only): redis `vi.mock` made hoisting-safe (construct the fake in the factory, retrieve via the mocked import).
+
 ## 2026-06-29 — Fix #14: signup route + client-IP helper (TDD, integration)
 
 - Added `src/lib/net.ts`: `clientIp(req)` — first `X-Forwarded-For` hop, else `X-Real-IP`, else `"unknown"`.
