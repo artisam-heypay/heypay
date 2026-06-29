@@ -18,5 +18,8 @@ export default defineConfig({
     // Load .env (DATABASE_URL, REDIS_URL, ENCRYPTION_*) so integration tests can
     // reach the local docker-compose services.
     setupFiles: ["dotenv/config"],
+    // Integration tests share one Postgres and TRUNCATE between cases; run test
+    // files sequentially so concurrent files can't clobber each other's rows.
+    fileParallelism: false,
   },
 });
