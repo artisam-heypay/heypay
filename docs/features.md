@@ -53,6 +53,12 @@ A running log of completed work, newest entries on top. Each entry references th
 - Added `tests/helpers/fake-redis.ts`: an in-memory ioredis stand-in (get/set/del/incr/expire + a token-bucket `eval` emulation) for deterministic unit tests.
 - Followed strict TDD: wrote `tests/server/auth/rate-limit.test.ts` first (RED), then implemented to GREEN. 3 tests cover allow-up-to-limit-then-429, refill after the window elapses (mocked clock), and per-key independence.
 - Deviation: the plan's test factory closed over a top-level `fake` variable, which Vitest's hoisted `vi.mock` cannot reference (`Cannot access 'fake' before initialization`). Reworked the mock to construct the fake inside the factory and retrieve that same instance via the mocked import — behavior identical, hoisting-safe.
+## 2026-06-29 — Fix #13: best-effort audit logging (TDD)
+
+- Added `src/server/auth/audit.ts`: `audit(input)` writes an `AuditLog` row (`actorId`/`action`/`target`/`metadata`/`ip`, nullable fields normalized to `null`, `metadata` cast to `Prisma.InputJsonValue`). Wrapped in try/catch so audit failures **never throw into the request path** — on error it logs only the action name (never the metadata, which may carry sensitive context). `import "server-only"` module.
+- Followed strict TDD: wrote `tests/server/auth/audit.test.ts` first (RED), then implemented to GREEN. 2 tests cover the exact `create` payload (actor/target/ip, `metadata: undefined`) and that a rejected DB write is swallowed without throwing.
+- Deviations (both test-only, behavior unchanged): the plan's `vi.mock` factory referenced a top-level `create` spy → reworked via `vi.hoisted` so it's hoisting-safe; and the "swallows errors" case uses `mockRejectedValueOnce` + a manual try/catch (the persistent `mockRejectedValue` left a floating rejected promise that Vitest reports as an unhandled rejection).
+- Also added the additive `export const db = prisma` alias in `src/server/db.ts` (locked contract imports `db` from `@/server/db`; Sprint 1 exported only `prisma`).
 
 ## 2026-06-28 — Fix #8: src/lib/http.ts (TDD)
 
