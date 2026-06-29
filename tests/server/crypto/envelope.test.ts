@@ -1,10 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  __resetKeyringForTests,
-  decryptSecret,
-  encryptSecret,
-} from "@/server/crypto/envelope";
+import { __resetKeyringForTests, decryptSecret, encryptSecret } from "@/server/crypto/envelope";
 
 const KEY_B64 = randomBytes(32).toString("base64");
 
