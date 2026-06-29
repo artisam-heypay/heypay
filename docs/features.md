@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #13: best-effort audit logging (TDD)
+
+- Added `src/server/auth/audit.ts`: `audit(input)` writes an `AuditLog` row (`actorId`/`action`/`target`/`metadata`/`ip`, nullable fields normalized to `null`, `metadata` cast to `Prisma.InputJsonValue`). Wrapped in try/catch so audit failures **never throw into the request path** — on error it logs only the action name (never the metadata, which may carry sensitive context). `import "server-only"` module.
+- Followed strict TDD: wrote `tests/server/auth/audit.test.ts` first (RED), then implemented to GREEN. 2 tests cover the exact `create` payload (actor/target/ip, `metadata: undefined`) and that a rejected DB write is swallowed without throwing.
+- Deviations (both test-only, behavior unchanged): the plan's `vi.mock` factory referenced a top-level `create` spy → reworked via `vi.hoisted` so it's hoisting-safe; and the "swallows errors" case uses `mockRejectedValueOnce` + a manual try/catch (the persistent `mockRejectedValue` left a floating rejected promise that Vitest reports as an unhandled rejection).
+- Also added the additive `export const db = prisma` alias in `src/server/db.ts` (locked contract imports `db` from `@/server/db`; Sprint 1 exported only `prisma`).
+
 ## 2026-06-28 — Fix #8: src/lib/http.ts (TDD)
 
 - Added `src/lib/http.ts`: the locked HTTP contract for Route Handlers, built on `next/server` + `zod` and reusing `src/lib/errors.ts` (no duplicated error definitions). Exports the `HandlerContext`/`Handler` types, `json`, `route`, `parseBody`, and `parseQuery`.
