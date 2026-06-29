@@ -17,7 +17,12 @@ describe("withRetry", () => {
       if (calls < 3) throw new Error("transient");
       return "ok";
     });
-    const result = await withRetry(fn, { retries: 5, baseMs: 1, sleepImpl: noSleep, randomImpl: () => 0 });
+    const result = await withRetry(fn, {
+      retries: 5,
+      baseMs: 1,
+      sleepImpl: noSleep,
+      randomImpl: () => 0,
+    });
     expect(result).toBe("ok");
     expect(calls).toBe(3);
   });
