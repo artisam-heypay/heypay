@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #23: Generic EMVCo TLV parser (TDD)
+
+- Added `src/server/qrph/tlv.ts`: `parseTlv(input)` parses a flat EMVCo TLV string (2-char tag, 2-digit length, value) into ordered `TlvNode[]`, throwing on a non-numeric length or a value overrun/truncation. `toMap(nodes)` builds a tag→value map (last occurrence wins). `parseTemplate(value)` parses a nested template value (e.g. the tag-26 merchant-account-info template) into a sub-tag map. `import "server-only"` module.
+- Re-used the `server-only` Vitest alias + `tests/helpers/server-only-stub.ts`.
+- Followed strict TDD: wrote `tests/server/qrph/tlv.test.ts` first (RED), then implemented to GREEN. 4 tests cover ordered top-level parsing of a real static QRPH body, the nested tag-26 template (GUI + merchant id), length-overrun rejection, and non-numeric-length rejection.
+
 ## 2026-06-28 — Fix #8: src/lib/http.ts (TDD)
 
 - Added `src/lib/http.ts`: the locked HTTP contract for Route Handlers, built on `next/server` + `zod` and reusing `src/lib/errors.ts` (no duplicated error definitions). Exports the `HandlerContext`/`Handler` types, `json`, `route`, `parseBody`, and `parseQuery`.
