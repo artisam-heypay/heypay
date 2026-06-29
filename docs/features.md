@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #41: worker entrypoint (`src/worker/index.ts`) (boot-verified)
+
+- Added `src/worker/index.ts`: the long-running settlement worker. On start it bootstraps the S3/MinIO bucket (`ensureBucket`), then spins up three BullMQ `Worker`s on the shared connection — `settle` (concurrency 5, runs `processSettleJob`), `deposit-poll` (concurrency 1, `processDepositPollJob`), `reconcile` (concurrency 1, `processReconcileJob`) — logging failed jobs. It registers two repeatable schedules (deposit-poll every 30s, reconcile every 5m, each pinned by a single `jobId`) and wires graceful shutdown on `SIGTERM`/`SIGINT` (close all workers, quit Redis, exit 0).
+- Updated the `worker:dev`/`worker:start` scripts to run under **`node --conditions=react-server`** so the `server-only` guard resolves to its no-op in the standalone Node process (without the condition, `import "server-only"` throws outside a React Server bundle and the worker can't boot). bullmq `connection` is cast (its bundled ioredis types differ from the app's), matching `queues.ts`.
+- No unit test (thin wiring; the job processors are unit-tested and the full flow is covered by Phase 9 e2e). **Boot-verified locally**: `[worker] started: settle, deposit-poll, reconcile` with the repeatable deposit-poll firing, then a clean signal shutdown.
+
 ## 2026-06-30 — Fix #40: reconciliation job (`jobs/reconcile.ts`) (TDD)
 
 - Added `src/server/queue/jobs/reconcile.ts`: `processReconcileJob()` diffs each custodial wallet's `cachedXlmBalance` against the live Horizon balance (`walletService.getBalance`). Any mismatch is **flagged** to the audit log as `reconcile.drift` (with public key, cached/horizon/delta XLM) — drift is never auto-corrected (SPEC §9). A failed `getBalance` for one wallet is logged and skipped, not fatal. Returns `{ checked, drift }`. PHP/PDAX reconciliation is left as a `TODO(pdax-reconcile)` (the locked `PaymentRailProvider` exposes no transaction-listing method yet). `import "server-only"` module.
