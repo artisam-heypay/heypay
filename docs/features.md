@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-29 — Fix #18: (auth) UI — login / signup / logout with Server Actions (TDD)
+
+- Added `src/lib/auth-redirect.ts` (pure): `dashboardPath(role)` maps `PAYER`/`MERCHANT`/`ADMIN` to `/payer/dashboard`, `/merchant/dashboard`, `/admin`.
+- Added `src/app/(auth)/actions.ts` (`"use server"`): `loginAction` and `signupAction` (`useActionState` shape `{ error? }`) re-use the auth toolkit directly — Zod validation, per-IP rate limit (graceful "too many attempts" message), timing-equalized `verify()` (`DUMMY_PASSWORD_HASH` for unknown users) with a single generic login error, duplicate-username guard, argon2id hashing, PAYER custodial-wallet provisioning in a transaction, session creation, and audit — then `redirect()` to the role dashboard (thrown outside try/catch so `NEXT_REDIRECT` propagates). `logoutAction` destroys the session and redirects to `/login`.
+- Added the themed pages `src/app/(auth)/login/page.tsx` and `src/app/(auth)/signup/page.tsx` (client components on `useActionState`, primary pill CTA with pending state, `role="alert"` errors, signup role radio-cards via `has-[:checked]`), the `src/components/auth/FloatingInput.tsx` floating-label input (BRAND §7, visible focus ring), and `src/app/(auth)/logout/route.ts` (`GET /logout` → destroy session → redirect).
+- Followed strict TDD for the pure helper: wrote `tests/lib/auth-redirect.test.ts` first (RED), then implemented to GREEN (1 test, all roles). Server Actions + pages are typechecked and build-verified (`pnpm build` ✓); full form flows are covered by Playwright e2e in Phase 9.
+
 ## 2026-06-29 — Fix #17: proxy middleware — authz matrix + security headers (TDD)
 
 - Added `src/lib/route-roles.ts` (pure): `requiredRoleForPath` maps the `(payer)`/`(merchant)`/`(admin)` URL prefixes to `PAYER`/`MERCHANT`/`ADMIN` (everything else `public`); `evaluateAccess(pathname, role)` returns `allow` (public or matching role), `login` (anonymous on a protected route), or `forbidden` (wrong role).
