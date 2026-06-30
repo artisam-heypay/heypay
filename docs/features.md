@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #50: `/payer/prefund` (TDD)
+
+- Added the prefund screen `src/app/(payer)/payer/prefund/page.tsx` (RSC): current balance via `MoneyAmount`, the deposit card (server-generated QR SVG of the custodial public key), and the pending-deposit watcher.
+- Added `DepositCard.tsx` (`"use client"`): the full custodial `publicKey` in selectable `mono-data`, a ≥44px copy button that writes to the clipboard and announces "Address copied" via an `aria-live` region, the rendered QR SVG, and an `info`-icon reminder "Send only XLM on the Stellar network · No memo required" + the 1-XLM base-reserve note (warning by icon+text, not colour). `PendingDepositWatcher.tsx` (`"use client"`): polls `POST /api/wallet/sync` every ~10s, and on a balance increase shows a `primary`-toned `aria-live` "Deposit detected: +{Δ XLM}" banner with a dashboard CTA, stopping the poll (`AbortController` cleanup, reduced-motion safe).
+- Followed strict TDD on the testable unit: `DepositCard.test.tsx` first (RED) → GREEN (full address, copy button, network reminder, QR). `pnpm typecheck` + `lint` + `build` clean (`/payer/prefund`). Playwright `payer-prefund` e2e deferred to Sprint 9.
+
 ## 2026-06-30 — Fix #49: `/payer/pay/[paymentId]/confirm` + processing overlay (TDD)
 
 - Added the confirm screen `src/app/(payer)/payer/pay/[paymentId]/confirm/page.tsx` (RSC; ownership-checked via the new `getConfirmContext` server helper — payer must own the `QUOTED` payment, else `notFound`) and `ConfirmPayment.tsx` (`"use client"`): renders the conversion breakdown + wallet source row, a live quote-expiry countdown (Confirm disabled when expired or funds insufficient), and on Confirm generates an `Idempotency-Key`, `POST`s `/api/payments/[id]/confirm`, mounts the processing overlay, and polls `GET /api/payments/[id]` every ~2s until a terminal status. Cancel calls `POST /api/payments/[id]/cancel`.
