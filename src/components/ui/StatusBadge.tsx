@@ -1,19 +1,18 @@
 import { clsx } from "clsx";
 import type { PaymentStatus } from "@/generated/prisma";
+import { statusLabel, statusTone, type StatusTone } from "@/lib/payment-status";
 
-type Tone = "settled" | "pending" | "failed";
-const TONE: Record<Tone, { chip: string; dot: string; pulse?: boolean }> = {
+const TONE: Record<StatusTone, { chip: string; dot: string; pulse?: boolean }> = {
   settled: { chip: "bg-primary/10 text-primary", dot: "bg-primary" },
   pending: { chip: "bg-secondary/10 text-secondary", dot: "bg-secondary", pulse: true },
   failed: { chip: "bg-error/10 text-error", dot: "bg-error" },
+  neutral: { chip: "bg-surface-container-high text-on-surface-variant", dot: "bg-outline" },
 };
 
-// Map every PaymentStatus to a tone + human label.
-function classify(status: string): { tone: Tone; label: string } {
-  if (status === "SETTLED") return { tone: "settled", label: "Settled" };
-  if (status === "FAILED") return { tone: "failed", label: "Failed" };
-  if (status === "REFUNDED") return { tone: "settled", label: "Refunded" };
-  return { tone: "pending", label: "Pending" }; // CREATED..PAYOUT_SUBMITTED, REFUND_PENDING
+// Convenience aliases used by some callers that don't have a real PaymentStatus.
+function classify(status: string): { tone: StatusTone; label: string } {
+  if (status === "PENDING") return { tone: "pending", label: "Pending" };
+  return { tone: statusTone(status as PaymentStatus), label: statusLabel(status as PaymentStatus) };
 }
 
 export function StatusBadge({
