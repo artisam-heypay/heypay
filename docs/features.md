@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #56: `POST /api/merchant/qrph` — decode + CRC + uniqueness + image verify + persist (TDD)
+
+- Added `src/app/api/merchant/qrph/route.ts` (`POST` → `decodeQrph` the raw EMVCo string [throws `badRequest` on malformed TLV / non-PHP currency], rejects CRC-invalid, enforces cross-merchant `qrphRaw` uniqueness with `conflict` (409), `verifyUploadedObject` magic-byte/size check on the supplied `imageKey`, persists all `qrph*` fields; `assertSameOrigin` + `requireRole("MERCHANT")` + audited `merchant.qrph.set`). Returns `{ merchant: MerchantDto; decoded }`.
+- Followed strict TDD: `tests/api/merchant/qrph.test.ts` first (RED) → GREEN. 3 tests cover persist + image verification, duplicate-QRPH 409, and CRC-invalid 400 (`decodeQrph` + `verifyUploadedObject` mocked). `pnpm typecheck` + `lint` clean.
+
 ## 2026-06-30 — Fix #55: `POST /api/merchant/settlement` — bank validation + envelope-encrypted account (TDD)
 
 - Added `src/app/api/merchant/settlement/route.ts` (`POST` → validates `bankCode` against `SUPPORTED_BANKS` via `getBankName`, `badRequest` on unsupported; envelope-encrypts `accountNumber` at rest, stores `accountNumberLast4`, resolves + stores `settlementBankName`; `assertSameOrigin` + `requireRole("MERCHANT")` + audited `merchant.settlement.set`). Response is the safe `MerchantDto` (no raw account number).
