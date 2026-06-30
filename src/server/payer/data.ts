@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/server/db";
-import { dec, availableXlm, type Decimal } from "@/lib/money";
+import { dec, availableXlm, displayXlm, displayPhp, type Decimal } from "@/lib/money";
 import { rail } from "@/server/rails";
 import type { PaymentStatus } from "@/generated/prisma";
 
@@ -108,4 +108,42 @@ export async function getConfirmContext(
         }
       : null,
   };
+}
+
+export type PayerPaymentListItem = {
+  id: string;
+  reference: string;
+  merchantName: string;
+  merchantCity?: string;
+  amountXlm: string;
+  amountPhp: string;
+  status: PaymentStatus;
+  createdAt: string;
+};
+
+// Cursor-paginated payer payment history (ownership-scoped to payerId).
+export async function getPayerPayments(
+  payerId: string,
+  opts: { cursor?: string; limit: number },
+): Promise<{ items: PayerPaymentListItem[]; nextCursor?: string }> {
+  const rows = await db.payment.findMany({
+    where: { payerId },
+    orderBy: { createdAt: "desc" },
+    take: opts.limit + 1,
+    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+    include: { merchant: { select: { businessName: true, qrphMerchantCity: true } } },
+  });
+  const hasMore = rows.length > opts.limit;
+  const page = hasMore ? rows.slice(0, opts.limit) : rows;
+  const items: PayerPaymentListItem[] = page.map((p) => ({
+    id: p.id,
+    reference: p.reference,
+    merchantName: p.merchant.businessName,
+    merchantCity: p.merchant.qrphMerchantCity ?? undefined,
+    amountXlm: displayXlm(dec(p.amountXlm.toString())),
+    amountPhp: displayPhp(dec(p.amountPhp.toString())),
+    status: p.status,
+    createdAt: p.createdAt.toISOString(),
+  }));
+  return { items, nextCursor: hasMore ? page[page.length - 1]!.id : undefined };
 }
