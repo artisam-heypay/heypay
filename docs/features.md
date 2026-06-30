@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #54: merchant profile API — `POST /api/merchant` + `GET`/`PATCH /api/merchant/me` (TDD)
+
+- Added `src/app/api/merchant/route.ts` (`POST` → creates a `DRAFT` merchant with empty placeholder fields, returns `{ merchant: MerchantDto }` at 201, `conflict` if one already exists; audited `merchant.create`) and `src/app/api/merchant/me/route.ts` (`GET` → `{ merchant, setup }`; `PATCH` → updates `businessName`/`logoKey`, audited `merchant.update`). All state-changing routes `assertSameOrigin` + `requireRole("MERCHANT")`.
+- Followed strict TDD: `tests/api/merchant/profile.test.ts` first (RED) → GREEN. 3 tests cover create-DRAFT (placeholders + no `accountNumber` leak), create-conflict (409), and GET-setup-incomplete + PATCH-rename. Session mocked via the repo's `vi.hoisted` `sessionUser` pattern; runs against live Postgres. `pnpm typecheck` + `lint` clean.
+
 ## 2026-06-30 — Fix #53: merchant domain module (TDD) — starts Sprint 7
 
 - Added `src/server/merchant/banks.ts` (`SUPPORTED_BANKS` + `getBankName`), `src/lib/schemas/merchant.ts` (Zod `createMerchantSchema`/`patchMerchantSchema`/`settlementSchema`/`qrphSchema`/`txQuerySchema` + inferred types), and `src/server/merchant/service.ts` (`import "server-only"`): `serializeMerchant` (a `MerchantDto` that exposes `accountNumberLast4` but **never** the full account number), `merchantSetupState` (business/settlement/qrph completeness), `getMerchantForUser`/`OrNull`, `getMerchantEarnings` (sums `SETTLED` `netSettledPhp`, pending in-flight XLM via `PENDING_STATUSES`, and a MoM %), and `listMerchantTransactions`/`allMerchantTransactions` (cursor-paginated / full CSV reads, payer username joined).
