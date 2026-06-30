@@ -123,6 +123,19 @@
   .animate-status-pulse {
     animation: status-pulse 1.4s ease-in-out infinite;
   }
+  /* QR scan line sweep (BRAND §5). */
+  .animate-scan {
+    animation: scan 2s ease-in-out infinite;
+  }
+}
+
+@keyframes scan {
+  0% {
+    top: 0%;
+  }
+  100% {
+    top: 100%;
+  }
 }
 
 @keyframes status-pulse {
