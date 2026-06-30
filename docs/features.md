@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #51: `/payer/transactions` (TDD)
+
+- Added the payer history `src/app/(payer)/payer/transactions/page.tsx` (RSC; first page server-fetched) + `TransactionList` (`"use client"` — holds items/cursor state, a "Load more" pill that calls the injected server action, and opens the detail drawer), `TransactionRow` (button row: merchant + city, XLM debited + PHP, `StatusBadge`, date, `aria-haspopup="dialog"`), and `TransactionDrawer` (`"use client"` — right-side `role="dialog"` panel that fetches `GET /api/payments/[id]`, renders the reference/amounts/rate + `stellarTxHash` in `mono-data` and the `PaymentEvent` timeline as `StatusBadge` rows, with Esc + backdrop + close-button dismissal).
+- Extended `src/server/payer/data.ts` with `getPayerPayments(payerId, {cursor, limit})` (ownership-scoped, cursor-paginated by `createdAt`/`id`, amounts pre-formatted via `displayXlm`/`displayPhp`) and the `PayerPaymentListItem` type; added the `"use server"` action `loadMorePayerPayments(cursor)` (`requireRole(PAYER)` → next page of 20) in the route's `actions.ts` (kept out of the `server-only` data module since `"use server"` must be the first directive). No `GET /api/payments` list route was invented (per the task note).
+- Followed strict TDD: `TransactionRow.test.tsx` + `TransactionList.test.tsx` first (RED) → GREEN. 3 tests cover the row content + drawer-open click, the empty state, and Load-more appending rows + hiding the button when the cursor is exhausted (injected mock action). `pnpm typecheck` + `lint` + `build` clean (`/payer/transactions`). Playwright e2e deferred to Sprint 9.
+
 ## 2026-06-30 — Fix #50: `/payer/prefund` (TDD)
 
 - Added the prefund screen `src/app/(payer)/payer/prefund/page.tsx` (RSC): current balance via `MoneyAmount`, the deposit card (server-generated QR SVG of the custodial public key), and the pending-deposit watcher.
