@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #57: `POST /api/merchant/go-live` — completeness gate → ACTIVE / PENDING_REVIEW (TDD)
+
+- Added `src/app/api/merchant/go-live/route.ts` (`POST` → gates on `merchantSetupState` [business + settlement + qrph each `badRequest` with a specific message], re-validates the stored QRPH CRC as defense-in-depth, then flips `status` to `ACTIVE` — or `PENDING_REVIEW` when env `MERCHANT_REVIEW_GATE` is truthy; `assertSameOrigin` + `requireRole("MERCHANT")` + audited `merchant.go-live` with the resulting status).
+- Followed strict TDD: `tests/api/merchant/go-live.test.ts` first (RED) → GREEN. 3 tests cover activate, settlement-missing 400, and the `PENDING_REVIEW` feature-flag path (`decodeQrph` mocked). `pnpm typecheck` + `lint` clean.
+
 ## 2026-06-30 — Fix #56: `POST /api/merchant/qrph` — decode + CRC + uniqueness + image verify + persist (TDD)
 
 - Added `src/app/api/merchant/qrph/route.ts` (`POST` → `decodeQrph` the raw EMVCo string [throws `badRequest` on malformed TLV / non-PHP currency], rejects CRC-invalid, enforces cross-merchant `qrphRaw` uniqueness with `conflict` (409), `verifyUploadedObject` magic-byte/size check on the supplied `imageKey`, persists all `qrph*` fields; `assertSameOrigin` + `requireRole("MERCHANT")` + audited `merchant.qrph.set`). Returns `{ merchant: MerchantDto; decoded }`.
