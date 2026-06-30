@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #63: merchant dashboard — earnings cards, transactions table, business + support cards (TDD)
+
+- Added `src/app/(merchant)/merchant/dashboard/page.tsx` (RSC): `requireRole(MERCHANT)`, parallel-fetches `getMerchantEarnings` + the latest 8 `listMerchantTransactions`, and lays out the earnings cards, a "Business transactions" table (with a View-all link), the `BusinessSummaryCard`, and a support card.
+- Added `src/components/merchant/{EarningsCards,TransactionsTable,BusinessSummaryCard}.tsx`. `EarningsCards` shows the formatted total settled PHP with a directional MoM badge and the pending-XLM-trades figure; `TransactionsTable` renders customer/reference, XLM received + PHP, net settlement, and a `StatusBadge`, with a graceful empty state; `BusinessSummaryCard` shows the masked settlement target + a link to the QR page.
+- Followed strict TDD: `tests/components/merchant/dashboard-cards.test.tsx` first (RED) → GREEN (jsdom, 3 tests: earnings total + MoM, settled row, empty state). Playwright dashboard spec deferred to Sprint 9. `pnpm typecheck` + `lint` + `build` clean (`/merchant/dashboard` emitted).
+
 ## 2026-06-30 — Fix #62: merchant onboarding wizard — 4-step flow, progress bar, live payer preview (TDD)
 
 - Added `src/app/(merchant)/merchant/onboarding/page.tsx` (RSC: hydrates the wizard with the serialized current merchant, if any) + `src/components/merchant/onboarding/{OnboardingWizard,ProgressBar,PhonePreview}.tsx`. The `"use client"` wizard walks business identity → settlement → QRPH link → review/go-live, calling the Task 2–5 APIs in order (POST/PATCH `/api/merchant`, `/settlement`, `/qrph`, `/go-live`), with a per-step busy/error envelope and an `aria-valuenow` `ProgressBar`. `PhonePreview` mirrors what the payer will see and updates live as the merchant types.
