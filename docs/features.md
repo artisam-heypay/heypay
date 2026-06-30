@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #45: shared themed UI primitives (`src/components/ui/`) (TDD)
+
+- Added the token-driven Payer building blocks every later screen composes: `Button` (primary/outline/secondary pill + onboarding variants, `loading` → `aria-busy` + spinner, `trailingIcon`, `forwardRef`), `Card`/`TonalCard` (cyan-tinted elevation), `StatusBadge` (status conveyed by **text + a dot**, never colour alone; pending dot pulses), `MoneyAmount` (XLM primary + `≈ ₱` PHP reference via `displayXlm`/`displayPhp`), `Icon` (Material Symbols wrapper, optional `filled`), `GlassHeader` (glass top nav + HeyPay lockup), and an `index.ts` barrel. All styling references BRAND `@theme` tokens (no inline hex/px). Added the `status-pulse` keyframes + `.animate-status-pulse` utility to `globals.css`.
+- Test setup for components: installed `clsx`, plus dev `jsdom`, `@testing-library/react`/`dom`, and `@vitejs/plugin-react`; wired `react()` into `vitest.config.ts` (Next's `jsx:"preserve"` can't be parsed by Vite directly) and broadened the test include to `*.test.tsx`. Component tests opt into jsdom via a `// @vitest-environment jsdom` pragma.
+- Followed strict TDD: wrote `StatusBadge.test.tsx`, `MoneyAmount.test.tsx`, `Button.test.tsx` first (RED), then implemented to GREEN. 7 tests cover the status text+dot (settled/pending-pulse/failed), the XLM+PHP rendering, and the button's rounded-pill/accessible-name/loading-aria-busy/trailing-icon behavior. Full suite **190**; `pnpm typecheck` + `lint` + `build` clean.
+
 ## 2026-06-30 — Fix #44: payments API routes (quote / confirm / get / cancel / stream) (TDD)
 
 - Added the payer payment endpoints, completing the Sprint 5 payments domain end-to-end over HTTP:
