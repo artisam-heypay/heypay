@@ -2,6 +2,10 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #59: end-to-end merchant onboarding integration test
+
+- Added `tests/api/merchant/onboarding-flow.test.ts` — no production code; proves the API surface composes by walking a single merchant through `create` (201) → `settlement` (200) → `qrph` (200) → `go-live` and asserting the result is `ACTIVE`. Session via the `vi.hoisted` pattern; `decodeQrph` + `verifyUploadedObject` mocked; runs against live Postgres. This is the TDD safety net before the merchant UI builds on these handlers. `pnpm lint` clean.
+
 ## 2026-06-30 — Fix #58: merchant read APIs — transactions, earnings, business QR (TDD)
 
 - Added `src/app/api/merchant/transactions/route.ts` (`GET ?status&from&to&cursor&limit` → cursor-paginated `MerchantTxPage` via `listMerchantTransactions`), `src/app/api/merchant/earnings/route.ts` (`GET` → `MerchantEarnings`), and `src/app/api/merchant/qr/route.ts` (`GET` → renders the stored `qrphRaw` to an inline SVG via `qrcode`, plus a `/pay?m=<id>` payment link; `badRequest` if no QRPH linked). All `requireRole("MERCHANT")`.
