@@ -119,6 +119,22 @@
     background: var(--color-surface-container-lowest);
     box-shadow: 0 8px 24px rgba(0, 188, 212, 0.08);
   }
+  /* Pending status dot pulse (BRAND §5) — orange = live/processing. */
+  .animate-status-pulse {
+    animation: status-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
