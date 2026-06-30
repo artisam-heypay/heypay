@@ -40,7 +40,7 @@ describe("RecentPaymentsList", () => {
     expect(getByText("Tindahan")).toBeTruthy();
     expect(container.textContent).toContain("8.3333334 XLM");
     expect(getByText("Settled")).toBeTruthy();
-    expect(getByText("Pending")).toBeTruthy(); // PDAX_TRADING → Pending
+    expect(getByText("Pending Trade")).toBeTruthy(); // PDAX_TRADING → Pending Trade
   });
 
   it("renders an empty state with a Scan-to-Pay CTA when there are no payments", () => {

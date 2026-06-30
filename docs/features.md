@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #60: shared UI primitives — FloatingInput, StatusBadge granular labels, payment-status helper (TDD)
+
+- Added `src/lib/payment-status.ts` (`statusLabel`/`statusTone`/`StatusTone`) — a single source of truth mapping every `PaymentStatus` to a human label ("Pending Trade", "Paying Out", …) and a 4-way tone (settled/pending/failed/neutral). Refactored `StatusBadge` onto it (keeping the `"PENDING"` convenience alias, optional `label` override, pulsing pending dot, and the never-color-alone text + dot). Updated the one Sprint-6 assertion (`RecentPaymentsList`) that expected the old coarse "Pending" → "Pending Trade".
+- Added `src/components/ui/FloatingInput.tsx` (`"use client"`, `forwardRef`) — Material-style floating-label text input with peer-driven label animation and accessible `<label htmlFor>`; exported from the UI barrel.
+- Followed strict TDD: `tests/components/ui/status-badge.test.tsx` first (RED) → GREEN (jsdom). 2 new tests + all existing StatusBadge/RecentPaymentsList tests pass. `pnpm typecheck` + `lint` clean.
+
 ## 2026-06-30 — Fix #59: end-to-end merchant onboarding integration test
 
 - Added `tests/api/merchant/onboarding-flow.test.ts` — no production code; proves the API surface composes by walking a single merchant through `create` (201) → `settlement` (200) → `qrph` (200) → `go-live` and asserting the result is `ACTIVE`. Session via the `vi.hoisted` pattern; `decodeQrph` + `verifyUploadedObject` mocked; runs against live Postgres. This is the TDD safety net before the merchant UI builds on these handlers. `pnpm lint` clean.
