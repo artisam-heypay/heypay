@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #48: `/payer/scan` (camera + upload) (TDD)
+
+- Added the scan flow `src/app/(payer)/payer/scan/page.tsx` + `Scanner.tsx` (`"use client"`): a camera/upload toggle. Camera uses `getUserMedia({ facingMode: "environment" })` with a `requestAnimationFrame` + `jsQR` decode loop (tracks always stopped on unmount/permission denial, with an accessible upload fallback — no reliance on colour); upload decodes the chosen image to a raw QR string via a canvas + `jsQR`. On a raw string it `POST`s `/api/qrph/decode`; an unresolved merchant renders `MerchantNotRegistered`, a dynamic QR (`amountPhp` present) goes straight to `POST /api/payments/quote` → `router.push(/payer/pay/{id}/confirm)`, and a static QR shows `AmountPrompt` to collect the PHP amount first.
+- Added `ScanFrame` (framed viewport + corner brackets + the `animate-scan` sweep line, added to `globals.css`, reduced-motion-safe), `MerchantNotRegistered` (error-tinted empty state with Scan-again + dashboard link), and `AmountPrompt` (`"use client"` — validated `inputMode="decimal"` PHP input + Continue pill). The camera path depends on the `Permissions-Policy: camera=(self)` that `proxy.ts` already grants only on `/payer/scan`.
+- Followed strict TDD on the testable unit: `MerchantNotRegistered.test.tsx` first (RED) → GREEN (heading + body + Scan-again button + dashboard link). `pnpm typecheck` + `lint` + `build` clean (`/payer/scan`). The Playwright `payer-scan` e2e (route-intercept of decode/quote) is deferred to Sprint 9.
+
 ## 2026-06-30 — Fix #47: `/payer/dashboard` (TDD)
 
 - Added the payer dashboard `src/app/(payer)/payer/dashboard/page.tsx` (RSC): a bento grid composing the hero balance, the Scan-QRPH CTA, the recent-payments list, the prefund panel, and a network-status row — data fetched in parallel (`getWalletSummary` + `getRecentPayments`).
