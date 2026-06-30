@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #46: Payer layout & navigation (TDD)
+
+- Added the role-guarded Payer shell `src/app/(payer)/layout.tsx` (RSC; `requireRole(PAYER)`) that frames every payer screen with a desktop `SideNav` (`w-64`, `lg+`) and a mobile bottom `MobileNav`, leaving room for the content column.
+- Added `src/components/payer/SideNav.tsx` (`"use client"`): brand lockup, a primary "Scan to Pay" pill → `/payer/scan`, the nav items with active-route highlighting (`aria-current="page"` + `bg-primary-container`, filled icon) driven by `usePathname`, and a footer with Support + a Logout link in `text-error`. `MobileNav.tsx` (`"use client"`): a `lg:hidden` glass bottom bar with the four nav items (each a ≥44px `min-h-11` tap target, active → `text-primary` + filled icon) and a raised centered "Scan to Pay" FAB. Shared `PAYER_NAV_ITEMS` config in `nav-items.ts`.
+- Followed strict TDD: wrote `SideNav.test.tsx` + `MobileNav.test.tsx` first (RED), then implemented to GREEN (`usePathname`/`next/link` mocked). 4 tests cover the active-route `aria-current` + styling, the error-styled Logout, the Scan pill/ FAB linking to `/payer/scan`, the four tap targets, and `lg:hidden`. `pnpm typecheck` + `lint` + `build` clean.
+
 ## 2026-06-30 — Fix #45: shared themed UI primitives (`src/components/ui/`) (TDD)
 
 - Added the token-driven Payer building blocks every later screen composes: `Button` (primary/outline/secondary pill + onboarding variants, `loading` → `aria-busy` + spinner, `trailingIcon`, `forwardRef`), `Card`/`TonalCard` (cyan-tinted elevation), `StatusBadge` (status conveyed by **text + a dot**, never colour alone; pending dot pulses), `MoneyAmount` (XLM primary + `≈ ₱` PHP reference via `displayXlm`/`displayPhp`), `Icon` (Material Symbols wrapper, optional `filled`), `GlassHeader` (glass top nav + HeyPay lockup), and an `index.ts` barrel. All styling references BRAND `@theme` tokens (no inline hex/px). Added the `status-pulse` keyframes + `.animate-status-pulse` utility to `globals.css`.
