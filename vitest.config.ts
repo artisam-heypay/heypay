@@ -1,9 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import tsconfigPaths from "vite-tsconfig-paths";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  // `react()` transforms JSX/TSX (tsconfig sets jsx:"preserve" for Next, which Vite can't parse).
+  plugins: [tsconfigPaths(), react()],
   resolve: {
     alias: {
       // The real `server-only` package throws when imported outside an RSC bundle.
@@ -13,7 +15,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.{ts,tsx}"],
     globals: false,
     // Load .env (DATABASE_URL, REDIS_URL, ENCRYPTION_*) so integration tests can
     // reach the local docker-compose services.
