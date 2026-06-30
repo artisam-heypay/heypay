@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #53: merchant domain module (TDD) — starts Sprint 7
+
+- Added `src/server/merchant/banks.ts` (`SUPPORTED_BANKS` + `getBankName`), `src/lib/schemas/merchant.ts` (Zod `createMerchantSchema`/`patchMerchantSchema`/`settlementSchema`/`qrphSchema`/`txQuerySchema` + inferred types), and `src/server/merchant/service.ts` (`import "server-only"`): `serializeMerchant` (a `MerchantDto` that exposes `accountNumberLast4` but **never** the full account number), `merchantSetupState` (business/settlement/qrph completeness), `getMerchantForUser`/`OrNull`, `getMerchantEarnings` (sums `SETTLED` `netSettledPhp`, pending in-flight XLM via `PENDING_STATUSES`, and a MoM %), and `listMerchantTransactions`/`allMerchantTransactions` (cursor-paginated / full CSV reads, payer username joined).
+- Added shared test factories `tests/helpers/merchant.ts` (`seedMerchantUser`, `seedPayment`) and re-exported `prisma` from `tests/helpers/db.ts`.
+- Followed strict TDD: `tests/server/merchant/service.test.ts` first (RED) → GREEN against the live Postgres. 6 tests cover bank resolution, the account-number-safe serialization, setup-state (incomplete vs complete), earnings (total/pending), and status-filtered cursor pagination. `pnpm typecheck` + `lint` clean.
+
 ## 2026-06-30 — Fix #52: `/payer/settings` + change password (TDD) — completes Sprint 6
 
 - Added the settings screen `src/app/(payer)/payer/settings/page.tsx` (RSC): a read-only `ProfileCard` (avatar initial, username, "Payer" role chip) from `getSessionUser()`, the change-password form, and an "End-to-end encrypted" footer with the regulatory line.
