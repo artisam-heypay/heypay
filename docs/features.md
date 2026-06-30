@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #52: `/payer/settings` + change password (TDD) — completes Sprint 6
+
+- Added the settings screen `src/app/(payer)/payer/settings/page.tsx` (RSC): a read-only `ProfileCard` (avatar initial, username, "Payer" role chip) from `getSessionUser()`, the change-password form, and an "End-to-end encrypted" footer with the regulatory line.
+- Added `ChangePasswordForm.tsx` (`"use client"`): three floating-label password fields (current / new / confirm) with proper `<label>`s + `autoComplete`, client-side validation (new ≥ 8 chars, new === confirm), and on submit a `POST /api/auth/password` (same-origin) that on `204` clears the fields and announces success via `aria-live`, or surfaces the server envelope message (generic, non-enumerable) on `400`/`401`. Disabled + `aria-busy` while loading.
+- Followed strict TDD: `ChangePasswordForm.test.tsx` first (RED) → GREEN. 3 tests cover the new/confirm-mismatch inline error (no fetch fired), the `204` success path (fields cleared + announced), and the `401` server-message surfacing. `pnpm typecheck` + `lint` + `build` clean (`/payer/settings`); full suite **208**. Playwright e2e deferred to Sprint 9.
+- **Sprint 6 (Payer UI) complete** (#45–#52): primitives, layout/nav, dashboard, scan, confirm + processing overlay, prefund, transactions + drawer, and settings.
+
 ## 2026-06-30 — Fix #51: `/payer/transactions` (TDD)
 
 - Added the payer history `src/app/(payer)/payer/transactions/page.tsx` (RSC; first page server-fetched) + `TransactionList` (`"use client"` — holds items/cursor state, a "Load more" pill that calls the injected server action, and opens the detail drawer), `TransactionRow` (button row: merchant + city, XLM debited + PHP, `StatusBadge`, date, `aria-haspopup="dialog"`), and `TransactionDrawer` (`"use client"` — right-side `role="dialog"` panel that fetches `GET /api/payments/[id]`, renders the reference/amounts/rate + `stellarTxHash` in `mono-data` and the `PaymentEvent` timeline as `StatusBadge` rows, with Esc + backdrop + close-button dismissal).
