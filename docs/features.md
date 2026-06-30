@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #61: merchant route-group shell — SideNav, mobile nav, setup banner (TDD)
+
+- Added the `(merchant)` route-group layout `src/app/(merchant)/layout.tsx` (RSC): `requireRole(MERCHANT)`, loads the merchant (if any), computes `merchantSetupState`, and renders the `SideNav` (lg+ `w-64` rail with business name) + `MobileNav` (`h-16` bottom bar) sharing one `MERCHANT_NAV_ITEMS` array, plus the `SetupBanner`.
+- Added `src/components/merchant/{nav-items,SideNav,MobileNav,SetupBanner}.tsx`. Nav components are `"use client"` and derive the active link from `usePathname()` (matching the payer shell). `SetupBanner` is shown whenever `!setup.isComplete`, lists the three onboarding steps with check/uncheck icons + a "Complete onboarding" CTA, and self-suppresses on the `/merchant/onboarding` route.
+- Followed TDD with a jsdom component test (`tests/components/merchant/setup-banner.test.tsx`, 3 tests: incomplete prompt, complete → null, onboarding-route self-suppress). The planned Playwright shell spec is **deferred to Sprint 9** alongside the rest of the e2e suite (no Playwright infra/helpers in-repo yet). `pnpm typecheck` + `lint` + `build` clean.
+
 ## 2026-06-30 — Fix #60: shared UI primitives — FloatingInput, StatusBadge granular labels, payment-status helper (TDD)
 
 - Added `src/lib/payment-status.ts` (`statusLabel`/`statusTone`/`StatusTone`) — a single source of truth mapping every `PaymentStatus` to a human label ("Pending Trade", "Paying Out", …) and a 4-way tone (settled/pending/failed/neutral). Refactored `StatusBadge` onto it (keeping the `"PENDING"` convenience alias, optional `label` override, pulsing pending dot, and the never-color-alone text + dot). Updated the one Sprint-6 assertion (`RecentPaymentsList`) that expected the old coarse "Pending" → "Pending Trade".
