@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #55: `POST /api/merchant/settlement` — bank validation + envelope-encrypted account (TDD)
+
+- Added `src/app/api/merchant/settlement/route.ts` (`POST` → validates `bankCode` against `SUPPORTED_BANKS` via `getBankName`, `badRequest` on unsupported; envelope-encrypts `accountNumber` at rest, stores `accountNumberLast4`, resolves + stores `settlementBankName`; `assertSameOrigin` + `requireRole("MERCHANT")` + audited `merchant.settlement.set`). Response is the safe `MerchantDto` (no raw account number).
+- Followed strict TDD: `tests/api/merchant/settlement.test.ts` first (RED) → GREEN. 2 tests cover the happy path (encrypted-at-rest round-trips via `decryptSecret`, last4 + bank name correct, no `accountNumber` leak in the DTO) and the unsupported-bank 400. `pnpm typecheck` + `lint` clean.
+
 ## 2026-06-30 — Fix #54: merchant profile API — `POST /api/merchant` + `GET`/`PATCH /api/merchant/me` (TDD)
 
 - Added `src/app/api/merchant/route.ts` (`POST` → creates a `DRAFT` merchant with empty placeholder fields, returns `{ merchant: MerchantDto }` at 201, `conflict` if one already exists; audited `merchant.create`) and `src/app/api/merchant/me/route.ts` (`GET` → `{ merchant, setup }`; `PATCH` → updates `businessName`/`logoKey`, audited `merchant.update`). All state-changing routes `assertSameOrigin` + `requireRole("MERCHANT")`.
