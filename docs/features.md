@@ -2,6 +2,13 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #47: `/payer/dashboard` (TDD)
+
+- Added the payer dashboard `src/app/(payer)/payer/dashboard/page.tsx` (RSC): a bento grid composing the hero balance, the Scan-QRPH CTA, the recent-payments list, the prefund panel, and a network-status row — data fetched in parallel (`getWalletSummary` + `getRecentPayments`).
+- Added the server data helpers `src/server/payer/data.ts` (`import "server-only"`): `getWalletSummary(userId)` (balance/reserved/available + approx PHP via `rail.getQuote`, all `Decimal`) and `getRecentPayments(payerId, limit)` (payer-scoped Prisma read with merchant name).
+- Added the components: `HeroBalanceCard` (cyan `TonalCard` with a `display-lg` XLM figure + `≈ ₱` reference and Prefund/Send pills) wrapping `BalanceLive` (`"use client"` — polls `GET /api/wallet` every 15s + on focus, `AbortController` cleanup, reduced-motion-safe data update); `ScanQrphCard` (solid-primary CTA → `/payer/scan`); `RecentPaymentsList` (rows of merchant + `MoneyAmount` + `StatusBadge` + date, with an empty-state Scan CTA); `PrefundPanel` (`"use client"` — deposit address, QR SVG, copy button with an `aria-live` "Copied!"); `NetworkStatus` (text + dot, not colour alone).
+- Followed strict TDD on the testable units: `HeroBalanceCard.test.tsx` + `RecentPaymentsList.test.tsx` first (RED) → GREEN. 3 tests cover the hero XLM/PHP + Prefund/Send pills and the payment rows (Settled / PDAX_TRADING→Pending) + empty state. `pnpm typecheck` + `lint` + `build` clean (registers `/payer/dashboard`). The Playwright `payer-dashboard` e2e is deferred to Sprint 9 (e2e infra).
+
 ## 2026-06-30 — Fix #46: Payer layout & navigation (TDD)
 
 - Added the role-guarded Payer shell `src/app/(payer)/layout.tsx` (RSC; `requireRole(PAYER)`) that frames every payer screen with a desktop `SideNav` (`w-64`, `lg+`) and a mobile bottom `MobileNav`, leaving room for the content column.
