@@ -3,6 +3,9 @@ import { db } from "@/server/db";
 import { encryptSecret } from "@/server/crypto/envelope";
 import type { User, CustodialWallet, Merchant, MerchantStatus } from "@/generated/prisma";
 
+// Re-export the client as `prisma` for test helpers/specs that prefer that name.
+export { db as prisma } from "@/server/db";
+
 export async function resetDb(): Promise<void> {
   // Order respects FK constraints (children first).
   await db.paymentEvent.deleteMany();
