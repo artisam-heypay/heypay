@@ -2,6 +2,11 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #58: merchant read APIs — transactions, earnings, business QR (TDD)
+
+- Added `src/app/api/merchant/transactions/route.ts` (`GET ?status&from&to&cursor&limit` → cursor-paginated `MerchantTxPage` via `listMerchantTransactions`), `src/app/api/merchant/earnings/route.ts` (`GET` → `MerchantEarnings`), and `src/app/api/merchant/qr/route.ts` (`GET` → renders the stored `qrphRaw` to an inline SVG via `qrcode`, plus a `/pay?m=<id>` payment link; `badRequest` if no QRPH linked). All `requireRole("MERCHANT")`.
+- Followed strict TDD: `tests/api/merchant/reads.test.ts` first (RED) → GREEN. 3 tests cover earnings total, status-filtered transactions, and the QR SVG + payment link. `pnpm typecheck` + `lint` clean.
+
 ## 2026-06-30 — Fix #57: `POST /api/merchant/go-live` — completeness gate → ACTIVE / PENDING_REVIEW (TDD)
 
 - Added `src/app/api/merchant/go-live/route.ts` (`POST` → gates on `merchantSetupState` [business + settlement + qrph each `badRequest` with a specific message], re-validates the stored QRPH CRC as defense-in-depth, then flips `status` to `ACTIVE` — or `PENDING_REVIEW` when env `MERCHANT_REVIEW_GATE` is truthy; `assertSameOrigin` + `requireRole("MERCHANT")` + audited `merchant.go-live` with the resulting status).
