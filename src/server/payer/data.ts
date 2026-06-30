@@ -61,3 +61,51 @@ export async function getRecentPayments(payerId: string, limit = 5): Promise<Rec
     createdAt: p.createdAt,
   }));
 }
+
+export type ConfirmContext = {
+  payment: {
+    id: string;
+    reference: string;
+    amountPhp: string;
+    quotedRate: string;
+    amountXlm: string;
+    networkFeeXlm: string;
+    status: PaymentStatus;
+    quoteExpiresAt: string | null;
+  };
+  merchant: { businessName: string; city: string | null };
+  wallet: { publicKey: string; availableXlm: string; approxPhp: string } | null;
+};
+
+// Ownership-checked snapshot for the confirm screen (payer must own the payment).
+export async function getConfirmContext(
+  paymentId: string,
+  userId: string,
+): Promise<ConfirmContext | null> {
+  const p = await db.payment.findUnique({
+    where: { id: paymentId },
+    include: { merchant: { select: { businessName: true, qrphMerchantCity: true } } },
+  });
+  if (!p || p.payerId !== userId) return null;
+  const wallet = await getWalletSummary(userId);
+  return {
+    payment: {
+      id: p.id,
+      reference: p.reference,
+      amountPhp: p.amountPhp.toFixed(2),
+      quotedRate: p.quotedRate.toFixed(8),
+      amountXlm: p.amountXlm.toFixed(7),
+      networkFeeXlm: p.networkFeeXlm.toFixed(7),
+      status: p.status,
+      quoteExpiresAt: p.quoteExpiresAt?.toISOString() ?? null,
+    },
+    merchant: { businessName: p.merchant.businessName, city: p.merchant.qrphMerchantCity },
+    wallet: wallet
+      ? {
+          publicKey: wallet.publicKey,
+          availableXlm: wallet.availableXlm.toFixed(7),
+          approxPhp: wallet.approxPhp.toFixed(2),
+        }
+      : null,
+  };
+}
