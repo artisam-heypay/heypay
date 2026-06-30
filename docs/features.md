@@ -2,6 +2,16 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #44: payments API routes (quote / confirm / get / cancel / stream) (TDD)
+
+- Added the payer payment endpoints, completing the Sprint 5 payments domain end-to-end over HTTP:
+  - `POST /api/payments/quote` — payer-only, same-origin, per-user rate-limited; validates `{ merchantId, amountPhp>0 }` and delegates to `createQuote`, returning the quote (`paymentId`, `rate`, `amountXlm`, `networkFeeXlm`, `quoteExpiresAt`).
+  - `POST /api/payments/[id]/confirm` — same-origin + rate-limited; **requires the `Idempotency-Key` header** (400 without) and delegates to `confirmPayment` → `{ paymentId, status }`.
+  - `GET /api/payments/[id]` — `requireUser`, ownership-checked (payer or admin), returns the payment + its full `PaymentEvent` timeline.
+  - `POST /api/payments/[id]/cancel` — payer-only; cancellable only before XLM is on-chain (`CREATED`/`QUOTED`/`AUTHORIZED`, else 409); releases any held reservation and transitions to `FAILED`.
+  - `GET /api/payments/[id]/stream` — ownership-checked SSE (`text/event-stream`) that emits the status on each change until a terminal state (~3-min cap).
+- Followed strict TDD: wrote `tests/integration/payments.test.ts` first (RED), then implemented to GREEN against the live Postgres (sessions/rate-limit/rail/queues mocked). 4 tests cover the quote→confirm→get happy path (amountXlm `8.3333334`, AUTHORIZED + enqueue + ≥2 events), confirm-without-key 400, another-user GET 403, and cancel releasing the reservation + the post-`STELLAR_SUBMITTED` 409. `pnpm typecheck` + `lint` clean; `pnpm build` registers all five routes; full suite **182 passing**.
+
 ## 2026-06-30 — Fix #43: QRPH decode route (TDD, integration)
 
 - Added `POST /api/qrph/decode`: payer-only (`requireRole("PAYER")`), same-origin-guarded. Accepts either a JSON `{ raw }` string or a `multipart/form-data` `image` upload — runs the authoritative server-side decode (`decodeQrph`/`decodeQrphImage`, which validate CRC + PHP currency) and resolves the registered ACTIVE merchant (`resolveMerchant`). Returns `{ decoded, merchant }` where `merchant` is `{ id, businessName, qrphMerchantName, amountPhp? }` or `null` (200) so the UI can show "merchant not registered". A body with neither `raw` nor `image` → `badRequest` (400).
