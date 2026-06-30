@@ -2,6 +2,12 @@
 
 A running log of completed work, newest entries on top. Each entry references the GitHub issue it closes.
 
+## 2026-06-30 — Fix #62: merchant onboarding wizard — 4-step flow, progress bar, live payer preview (TDD)
+
+- Added `src/app/(merchant)/merchant/onboarding/page.tsx` (RSC: hydrates the wizard with the serialized current merchant, if any) + `src/components/merchant/onboarding/{OnboardingWizard,ProgressBar,PhonePreview}.tsx`. The `"use client"` wizard walks business identity → settlement → QRPH link → review/go-live, calling the Task 2–5 APIs in order (POST/PATCH `/api/merchant`, `/settlement`, `/qrph`, `/go-live`), with a per-step busy/error envelope and an `aria-valuenow` `ProgressBar`. `PhonePreview` mirrors what the payer will see and updates live as the merchant types.
+- Added client helpers `src/lib/client/upload.ts` (`presignAndUpload` → presign + S3 POST, returns the object key) and `src/lib/client/qr.ts` (`decodeImageToRaw` → jsQR over a canvas). QRPH-image upload degrades gracefully if presign is unavailable (links the decoded raw without an image key).
+- Followed strict TDD: `tests/components/merchant/onboarding-wizard.test.tsx` first (RED) → GREEN (jsdom). 2 tests cover the 4 progress segments + live preview, and the `POST /api/merchant` call on step-1 continue. `pnpm typecheck` + `lint` + `build` clean (`/merchant/onboarding` emitted).
+
 ## 2026-06-30 — Fix #61: merchant route-group shell — SideNav, mobile nav, setup banner (TDD)
 
 - Added the `(merchant)` route-group layout `src/app/(merchant)/layout.tsx` (RSC): `requireRole(MERCHANT)`, loads the merchant (if any), computes `merchantSetupState`, and renders the `SideNav` (lg+ `w-64` rail with business name) + `MobileNav` (`h-16` bottom bar) sharing one `MERCHANT_NAV_ITEMS` array, plus the `SetupBanner`.
