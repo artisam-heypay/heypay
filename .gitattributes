@@ -1,0 +1,5 @@
+# Normalize line endings to LF for all text files (Prettier expects LF).
+* text=auto eol=lf
+
+# Binary / generated lockfile left to git's detection
+pnpm-lock.yaml text eol=lf

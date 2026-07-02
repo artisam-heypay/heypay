@@ -24,6 +24,7 @@ describe("banks", () => {
 describe("serializeMerchant", () => {
   it("exposes last4 but never the full account number", async () => {
     const { merchant } = await seedMerchantUser({
+      accountNumber: "1234567890",
       accountNumberLast4: "7890",
       settlementBankCode: "BPI",
     });

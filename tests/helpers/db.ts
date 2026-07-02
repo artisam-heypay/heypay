@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { db } from "@/server/db";
 import { encryptSecret } from "@/server/crypto/envelope";
-import type { User, CustodialWallet, Merchant, MerchantStatus } from "@/generated/prisma";
+import type { User, CustodialWallet, Merchant, MerchantStatus } from "@/generated/prisma/client";
 
-// Re-export the client as `prisma` for test helpers/specs that prefer that name.
+// Re-export the Prisma client under the `prisma` name for helpers/tests that expect it.
 export { db as prisma } from "@/server/db";
 
 export async function resetDb(): Promise<void> {

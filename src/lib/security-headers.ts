@@ -1,16 +1,23 @@
-// Strict CSP. Google Fonts CSS is served from fonts.googleapis.com (style) and the
-// Material Symbols + Lexend/Inter font files from fonts.gstatic.com (font).
-// 'unsafe-inline' is limited to style-src (Next injects a few inline <style> tags);
-// scripts stay 'self' only. img-src allows data:/blob: for generated QR codes and
-// https: for signed object-storage URLs.
+// CSP. Google Fonts CSS from fonts.googleapis.com (style) and font files from
+// fonts.gstatic.com (font). Next.js App Router injects inline bootstrap/hydration
+// scripts, so script-src must permit inline (via 'unsafe-inline'); dev additionally
+// needs 'unsafe-eval' (react-refresh/HMR) and a ws: connect-src for the HMR socket.
+// img-src allows data:/blob: for generated QR codes and https: for signed object URLs.
+// NOTE: 'unsafe-inline' for scripts is a known trade-off; a nonce/'strict-dynamic'
+// CSP (nonce generated in proxy.ts per request) is the stricter hardening follow-up.
 export function buildCsp(): string {
+  const dev = process.env.NODE_ENV !== "production";
+  const scriptSrc = ["'self'", "'unsafe-inline'", dev ? "'unsafe-eval'" : ""]
+    .filter(Boolean)
+    .join(" ");
+  const connectSrc = ["'self'", dev ? "ws: http://localhost:*" : ""].filter(Boolean).join(" ");
   return [
     "default-src 'self'",
-    "script-src 'self'",
+    `script-src ${scriptSrc}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
-    "connect-src 'self'",
+    `connect-src ${connectSrc}`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

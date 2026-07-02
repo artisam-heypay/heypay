@@ -119,49 +119,47 @@
     background: var(--color-surface-container-lowest);
     box-shadow: 0 8px 24px rgba(0, 188, 212, 0.08);
   }
-  /* Pending status dot pulse (BRAND §5) — orange = live/processing. */
+}
+
+/* Motion utilities (BRAND §5). All decorative; disabled under reduced-motion below. */
+@layer utilities {
+  @keyframes status-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
   .animate-status-pulse {
-    animation: status-pulse 1.4s ease-in-out infinite;
+    animation: status-pulse 1.6s ease-in-out infinite;
   }
-  /* QR scan line sweep (BRAND §5). */
+
+  @keyframes scan {
+    0% {
+      top: 0%;
+    }
+    100% {
+      top: 100%;
+    }
+  }
   .animate-scan {
-    animation: scan 2s ease-in-out infinite;
+    animation: scan 2s ease-in-out infinite alternate;
   }
-  /* Processing overlay pulse ring (BRAND §7). */
+
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(1.6);
+      opacity: 0;
+    }
+  }
   .animate-pulse-ring {
-    animation: pulse-ring 1.6s ease-out infinite;
-  }
-}
-
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.8);
-    opacity: 0.7;
-  }
-  100% {
-    transform: scale(1.6);
-    opacity: 0;
-  }
-}
-
-@keyframes scan {
-  0% {
-    top: 0%;
-  }
-  100% {
-    top: 100%;
-  }
-}
-
-@keyframes status-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.4;
-    transform: scale(0.7);
+    animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
   }
 }
 

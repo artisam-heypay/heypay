@@ -27,6 +27,7 @@
 Build the reusable, token-driven building blocks every Payer screen composes. Do this first so later tasks have no inline styling.
 
 **Files**
+
 - `src/components/ui/Button.tsx`
 - `src/components/ui/Card.tsx` (Card + TonalCard)
 - `src/components/ui/StatusBadge.tsx`
@@ -37,8 +38,9 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
 - Tests: `src/components/ui/StatusBadge.test.tsx`, `src/components/ui/MoneyAmount.test.tsx`, `src/components/ui/Button.test.tsx`
 
 **Interfaces**
-- *Consumes:* `lib/money.ts` (`Decimal`, `displayXlm`, `displayPhp`); BRAND `@theme` tokens; `PaymentStatus` enum from `@/generated/prisma`.
-- *Produces (shared, reused by all later tasks):*
+
+- _Consumes:_ `lib/money.ts` (`Decimal`, `displayXlm`, `displayPhp`); BRAND `@theme` tokens; `PaymentStatus` enum from `@/generated/prisma`.
+- _Produces (shared, reused by all later tasks):_
   - `Button` props: `{ variant: "primary-pill" | "outline-pill" | "secondary-pill" | "onboarding"; size?: "md" | "lg"; trailingIcon?: string; loading?: boolean } & ButtonHTMLAttributes`.
   - `Card`, `TonalCard` (`{ as?, className?, children }`).
   - `StatusBadge` props: `{ status: PaymentStatus | "SETTLED" | "PENDING" | "FAILED"; label?: string }`.
@@ -47,6 +49,7 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
   - `GlassHeader` (`{ children }`).
 
 **Steps**
+
 - [ ] Write `StatusBadge.test.tsx`: rendering `status="SETTLED"` shows text "Settled" AND a dot element (`[data-testid="status-dot"]`) — assert the label text is present (status NOT by color alone); `status="PENDING"` shows "Pending" + a dot carrying the `status-pulse` animation class; `status="FAILED"` shows "Failed" in error styling. Run → fail.
 - [ ] Write `MoneyAmount.test.tsx`: given `xlm={dec("12.5")}` `php={dec("742.10")}`, the rendered output contains both `"12.5000000 XLM"` and `"₱742.10"`. Run → fail.
 - [ ] Write `Button.test.tsx`: `variant="primary-pill"` renders a `<button>` with `rounded-full` class and accessible name; `loading` disables it and exposes `aria-busy="true"`; `trailingIcon="arrow_forward"` renders the icon. Run → fail.
@@ -68,7 +71,11 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
     return (
       <span
         aria-hidden={ariaHidden}
-        className={clsx("material-symbols-outlined select-none", filled && "icon-filled", className)}
+        className={clsx(
+          "material-symbols-outlined select-none",
+          filled && "icon-filled",
+          className,
+        )}
       >
         {name}
       </span>
@@ -96,8 +103,7 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
       "border-2 border-primary text-primary text-body-lg bg-transparent hover:bg-primary/5 active:scale-95",
     "secondary-pill":
       "bg-secondary text-on-secondary text-headline-md hover:brightness-110 active:scale-95",
-    onboarding:
-      "bg-secondary text-on-secondary text-body-lg hover:-translate-y-[2px]",
+    onboarding: "bg-secondary text-on-secondary text-body-lg hover:-translate-y-[2px]",
   };
 
   export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -108,7 +114,16 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
   }
 
   export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-    { variant = "primary-pill", size = "lg", trailingIcon, loading, children, className, disabled, ...rest },
+    {
+      variant = "primary-pill",
+      size = "lg",
+      trailingIcon,
+      loading,
+      children,
+      className,
+      disabled,
+      ...rest
+    },
     ref,
   ) {
     return (
@@ -116,7 +131,12 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
         ref={ref}
         aria-busy={loading || undefined}
         disabled={disabled || loading}
-        className={clsx(base, variants[variant], size === "lg" ? "px-stack-lg py-4" : "px-stack-md py-3", className)}
+        className={clsx(
+          base,
+          variants[variant],
+          size === "lg" ? "px-stack-lg py-4" : "px-stack-md py-3",
+          className,
+        )}
         {...rest}
       >
         {loading && <Icon name="progress_activity" className="animate-spin" />}
@@ -131,12 +151,32 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
   import { clsx } from "clsx";
   import type { ElementType, ReactNode } from "react";
 
-  export function Card({ as: As = "div", className, children }: { as?: ElementType; className?: string; children: ReactNode }) {
-    return <As className={clsx("rounded-xl bg-surface-container-lowest p-stack-lg", className)}>{children}</As>;
+  export function Card({
+    as: As = "div",
+    className,
+    children,
+  }: {
+    as?: ElementType;
+    className?: string;
+    children: ReactNode;
+  }) {
+    return (
+      <As className={clsx("rounded-xl bg-surface-container-lowest p-stack-lg", className)}>
+        {children}
+      </As>
+    );
   }
 
   // Cyan-tinted elevation per BRAND §5 via the `.tonal-card` component utility in globals.css.
-  export function TonalCard({ as: As = "div", className, children }: { as?: ElementType; className?: string; children: ReactNode }) {
+  export function TonalCard({
+    as: As = "div",
+    className,
+    children,
+  }: {
+    as?: ElementType;
+    className?: string;
+    children: ReactNode;
+  }) {
     return <As className={clsx("tonal-card rounded-xl p-stack-lg", className)}>{children}</As>;
   }
   ```
@@ -160,15 +200,30 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
     return { tone: "pending", label: "Pending" }; // CREATED..PAYOUT_SUBMITTED, REFUND_PENDING
   }
 
-  export function StatusBadge({ status, label }: { status: PaymentStatus | "SETTLED" | "PENDING" | "FAILED"; label?: string }) {
+  export function StatusBadge({
+    status,
+    label,
+  }: {
+    status: PaymentStatus | "SETTLED" | "PENDING" | "FAILED";
+    label?: string;
+  }) {
     const c = classify(status);
     const tone = TONE[c.tone];
     return (
-      <span className={clsx("inline-flex items-center gap-stack-sm rounded-full px-3 py-1 text-label-md uppercase", tone.chip)}>
+      <span
+        className={clsx(
+          "inline-flex items-center gap-stack-sm rounded-full px-3 py-1 text-label-md uppercase",
+          tone.chip,
+        )}
+      >
         <span
           data-testid="status-dot"
           aria-hidden
-          className={clsx("h-1.5 w-1.5 rounded-full", tone.dot, tone.pulse && "animate-status-pulse")}
+          className={clsx(
+            "h-1.5 w-1.5 rounded-full",
+            tone.dot,
+            tone.pulse && "animate-status-pulse",
+          )}
         />
         {label ?? c.label}
       </span>
@@ -193,8 +248,15 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
     phpPrefix?: string;
   }) {
     const xlmCls =
-      size === "display" ? "text-display-lg text-primary" : size === "row" ? "text-mono-data" : "text-headline-md text-primary font-mono";
-    const phpCls = size === "display" ? "text-headline-md text-on-surface-variant" : "text-body-sm text-on-surface-variant";
+      size === "display"
+        ? "text-display-lg text-primary"
+        : size === "row"
+          ? "text-mono-data"
+          : "text-headline-md text-primary font-mono";
+    const phpCls =
+      size === "display"
+        ? "text-headline-md text-on-surface-variant"
+        : "text-body-sm text-on-surface-variant";
     return (
       <div className={clsx(size === "row" ? "flex flex-col items-end" : "flex flex-col")}>
         <span className={clsx("font-mono", xlmCls)}>{displayXlm(xlm)}</span>
@@ -213,7 +275,10 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
   export function GlassHeader({ children }: { children?: ReactNode }) {
     return (
       <header className="glass sticky top-0 z-40 flex h-16 items-center justify-between px-margin-mobile lg:px-margin-desktop">
-        <a href="/payer/dashboard" className="flex items-center gap-stack-sm focus:outline-none focus:ring-4 focus:ring-primary/10 rounded-lg">
+        <a
+          href="/payer/dashboard"
+          className="flex items-center gap-stack-sm focus:outline-none focus:ring-4 focus:ring-primary/10 rounded-lg"
+        >
           <Icon name="account_balance_wallet" filled className="text-primary text-3xl" />
           <span className="font-display text-headline-md font-bold text-primary">HeyPay</span>
         </a>
@@ -231,6 +296,7 @@ Build the reusable, token-driven building blocks every Payer screen composes. Do
 Role-guarded shell with desktop SideNav (`w-64`, `lg+`) and mobile bottom nav (`h-16`), "Scan to Pay" primary action, Support/Logout footer (logout in `error`).
 
 **Files**
+
 - `src/app/(payer)/layout.tsx` (RSC; `requireRole(PAYER)`)
 - `src/components/payer/SideNav.tsx` (`"use client"` for active-route highlighting)
 - `src/components/payer/MobileNav.tsx` (`"use client"`)
@@ -238,10 +304,12 @@ Role-guarded shell with desktop SideNav (`w-64`, `lg+`) and mobile bottom nav (`
 - Tests: `src/components/payer/SideNav.test.tsx`, `src/components/payer/MobileNav.test.tsx`
 
 **Interfaces**
-- *Consumes:* `requireRole` from `@/server/auth/sessions`; `Role.PAYER`; `Button`, `Icon` from `ui`; `usePathname` (next/navigation).
-- *Produces:* `(payer)` layout used by all Payer screens; `PAYER_NAV_ITEMS` config.
+
+- _Consumes:_ `requireRole` from `@/server/auth/sessions`; `Role.PAYER`; `Button`, `Icon` from `ui`; `usePathname` (next/navigation).
+- _Produces:_ `(payer)` layout used by all Payer screens; `PAYER_NAV_ITEMS` config.
 
 **Steps**
+
 - [ ] Write `SideNav.test.tsx`: render with `usePathname` mocked to `/payer/dashboard`; assert the Dashboard item has `aria-current="page"` and the active classes (`bg-primary-container`); Logout link text is present and carries the error color class; the "Scan to Pay" button is a primary pill linking to `/payer/scan`. Run → fail.
 - [ ] Write `MobileNav.test.tsx`: assert it renders 4 nav links, each ≥44px tap target (`min-h-11`), a centered "Scan to Pay" FAB, and is hidden on `lg` (`lg:hidden`). Run → fail.
 - [ ] Implement `nav-items.ts`:
@@ -285,6 +353,7 @@ Role-guarded shell with desktop SideNav (`w-64`, `lg+`) and mobile bottom nav (`
 Hero balance card, Prefund/Send pill CTAs, solid-primary Scan QRPH card with inner orange Start button, recent payments list, prefund panel (address + QR + copy), network status. Server-rendered from `GET /api/wallet` + recent payments; balance polled/refreshed client-side.
 
 **Files**
+
 - `src/app/(payer)/payer/dashboard/page.tsx` (RSC)
 - `src/components/payer/HeroBalanceCard.tsx` (server-rendered shell + `"use client"` balance refresher)
 - `src/components/payer/BalanceLive.tsx` (`"use client"` — polls `GET /api/wallet`)
@@ -296,10 +365,12 @@ Hero balance card, Prefund/Send pill CTAs, solid-primary Scan QRPH card with inn
 - Tests: `src/components/payer/HeroBalanceCard.test.tsx`, `src/components/payer/RecentPaymentsList.test.tsx`, Playwright `tests/e2e/payer-dashboard.spec.ts`
 
 **Interfaces**
-- *Consumes:* `GET /api/wallet` → `{publicKey, balanceXlm, reservedXlm, availableXlm, approxPhp}`; `GET /api/wallet/deposit-address` → `{publicKey, qrSvg, network, memoRequired}`; recent payments via a server helper `getRecentPayments(payerId, limit)` returning `{id, reference, merchantName, amountXlm, amountPhp, status, createdAt}[]`; `MoneyAmount`, `StatusBadge`, `Button`, `Card`, `TonalCard`, `Icon`.
-- *Produces:* `getWalletSummary()`, `getRecentPayments()` server helpers reused by transactions/confirm.
+
+- _Consumes:_ `GET /api/wallet` → `{publicKey, balanceXlm, reservedXlm, availableXlm, approxPhp}`; `GET /api/wallet/deposit-address` → `{publicKey, qrSvg, network, memoRequired}`; recent payments via a server helper `getRecentPayments(payerId, limit)` returning `{id, reference, merchantName, amountXlm, amountPhp, status, createdAt}[]`; `MoneyAmount`, `StatusBadge`, `Button`, `Card`, `TonalCard`, `Icon`.
+- _Produces:_ `getWalletSummary()`, `getRecentPayments()` server helpers reused by transactions/confirm.
 
 **Steps**
+
 - [ ] Write `HeroBalanceCard.test.tsx`: given `availableXlm=dec("250")`, `approxPhp=dec("14850.00")`, the card shows `display-lg` XLM in primary and `≈ ₱14,850.00`, plus a filled "Prefund" pill and an outlined "Send" pill. Run → fail.
 - [ ] Write `RecentPaymentsList.test.tsx`: given two payments (one `SETTLED`, one `PDAX_TRADING`), each row shows merchant name, `MoneyAmount` (XLM + PHP), a `StatusBadge` with the correct label, and a date; empty array renders an empty-state with a "Scan to Pay" CTA. Run → fail.
 - [ ] Write Playwright `payer-dashboard.spec.ts` (mock-rail seeded payer): after login, dashboard shows a balance figure, the "Scan QRPH" card, and at least the prefund address; assert no layout shift and balance text is visible. Run → fail (page not built).
@@ -320,6 +391,7 @@ Hero balance card, Prefund/Send pill CTAs, solid-primary Scan QRPH card with inn
 Camera scan (`getUserMedia`, requires `Permissions-Policy: camera` on this route from `proxy.ts`) AND image upload, both with a scan-line animation; decode client-side then `POST /api/qrph/decode`; route to confirm or show "merchant not registered" empty state.
 
 **Files**
+
 - `src/app/(payer)/payer/scan/page.tsx` (RSC shell + intro copy)
 - `src/components/payer/Scanner.tsx` (`"use client"` — camera + upload + decode)
 - `src/components/payer/ScanFrame.tsx` (the framed viewport + animated scan line)
@@ -328,10 +400,12 @@ Camera scan (`getUserMedia`, requires `Permissions-Policy: camera` on this route
 - Tests: `src/components/payer/MerchantNotRegistered.test.tsx`, Playwright `tests/e2e/payer-scan.spec.ts`
 
 **Interfaces**
-- *Consumes:* `decodeQrphImage`/`decodeQrph` are server-side (Phase 3); the client decodes with `jsqr`/`@zxing/library` to a raw string then `POST /api/qrph/decode {raw}` → `{decoded, merchant?}`; on `merchant` present + dynamic amount → `POST /api/payments/quote {merchantId, amountPhp}` → `{paymentId}` then `router.push(/payer/pay/${paymentId}/confirm)`; on static QR → show `AmountPrompt` first. `Button`, `Card`, `Icon`.
-- *Produces:* none shared.
+
+- _Consumes:_ `decodeQrphImage`/`decodeQrph` are server-side (Phase 3); the client decodes with `jsqr`/`@zxing/library` to a raw string then `POST /api/qrph/decode {raw}` → `{decoded, merchant?}`; on `merchant` present + dynamic amount → `POST /api/payments/quote {merchantId, amountPhp}` → `{paymentId}` then `router.push(/payer/pay/${paymentId}/confirm)`; on static QR → show `AmountPrompt` first. `Button`, `Card`, `Icon`.
+- _Produces:_ none shared.
 
 **Steps**
+
 - [ ] Confirm `proxy.ts` (Phase 2) sets `Permissions-Policy: camera=(self)` ONLY for `/payer/scan` (camera disabled elsewhere per AGENT §6). If absent, add a note/TODO to coordinate — the camera path needs it. (This is a hard dependency; verify in the test.)
 - [ ] Write `MerchantNotRegistered.test.tsx`: renders the empty state with heading "Merchant not registered", explanatory body, and a "Scan again" button + "Back to dashboard" link. Run → fail.
 - [ ] Write Playwright `payer-scan.spec.ts`: visit `/payer/scan`; assert the scan frame, an "Upload image" control, and a "Use camera" control are present; uploading a fixture QR image (a registered demo merchant's QRPH PNG) triggers a `POST /api/qrph/decode` (route-intercept assertion) and navigates toward confirm. Use Playwright `route` interception to stub `/api/qrph/decode` returning `{decoded, merchant}` and `/api/payments/quote` returning `{paymentId:"pay_1"}`; assert URL becomes `/payer/pay/pay_1/confirm`. Run → fail.
@@ -354,6 +428,7 @@ Camera scan (`getUserMedia`, requires `Permissions-Policy: camera` on this route
 Confirm screen with live PDAX conversion, then Confirm → processing overlay polling `GET /api/payments/[id]` through the state machine; on `SETTLED` the headline flips to `secondary` with a Done button.
 
 **Files**
+
 - `src/app/(payer)/payer/pay/[paymentId]/confirm/page.tsx` (RSC — loads the quoted payment)
 - `src/components/payer/ConfirmPayment.tsx` (`"use client"` — confirm action + overlay orchestration)
 - `src/components/payer/ConversionBreakdown.tsx` (rate, total XLM deduction, network fee)
@@ -363,10 +438,12 @@ Confirm screen with live PDAX conversion, then Confirm → processing overlay po
 - Tests: `src/components/payer/ConversionBreakdown.test.tsx`, `src/components/payer/ProcessingOverlay.test.tsx`, Playwright `tests/e2e/payer-pay.spec.ts`
 
 **Interfaces**
-- *Consumes:* `GET /api/payments/[id]` → `{payment, events}` where `payment` includes `{id, reference, amountPhp, quotedRate, amountXlm, networkFeeXlm, status, merchant:{businessName, qrphMerchantCity}, quoteExpiresAt}`; `POST /api/payments/[id]/confirm {}` + `Idempotency-Key` → `{paymentId, status}`; `POST /api/payments/[id]/cancel` → `{status}`; `GET /api/wallet` (source balance); `MoneyAmount`, `Button`, `Card`, `Icon`, `StatusBadge`.
-- *Produces:* `PAYMENT_STEPS` checklist config (reused conceptually by admin timeline in Phase 8 — note in self-review, not exported across phases).
+
+- _Consumes:_ `GET /api/payments/[id]` → `{payment, events}` where `payment` includes `{id, reference, amountPhp, quotedRate, amountXlm, networkFeeXlm, status, merchant:{businessName, qrphMerchantCity}, quoteExpiresAt}`; `POST /api/payments/[id]/confirm {}` + `Idempotency-Key` → `{paymentId, status}`; `POST /api/payments/[id]/cancel` → `{status}`; `GET /api/wallet` (source balance); `MoneyAmount`, `Button`, `Card`, `Icon`, `StatusBadge`.
+- _Produces:_ `PAYMENT_STEPS` checklist config (reused conceptually by admin timeline in Phase 8 — note in self-review, not exported across phases).
 
 **Steps**
+
 - [ ] Write `ConversionBreakdown.test.tsx`: given `amountPhp=dec("500.00")`, `quotedRate=dec("59.40")`, `amountXlm=dec("8.4175084")`, `networkFeeXlm=dec("0.00001")`, the component shows the requested PHP prominently, the rate `1 XLM = ₱59.40` in `mono-data`, the network fee in `mono-data`, and the total XLM deduction (`amountXlm + networkFeeXlm`) computed via `lib/money`. Run → fail.
 - [ ] Write `ProcessingOverlay.test.tsx`: given `status="PDAX_TRADING"`, the checklist shows completed steps with `check_circle` and the in-progress step with `sync` (+ pulse class); given `status="SETTLED"`, the headline carries the `secondary` color class, shows the success copy "₱500.00 sent to {merchant}", and a "Done" button is present. Run → fail.
 - [ ] Write Playwright `payer-pay.spec.ts` (mock rail end-to-end OR route-stubbed): land on confirm with a seeded `QUOTED` payment; assert merchant, requested PHP, rate, total XLM, network fee, and the wallet source row render; click Confirm → overlay appears with `aria-live` status; stub `GET /api/payments/[id]` to advance `AUTHORIZED → … → SETTLED`; assert the overlay reaches the success headline and Done routes to `/payer/transactions`. Run → fail.
@@ -385,7 +462,10 @@ Confirm screen with live PDAX conversion, then Confirm → processing overlay po
   ];
 
   const ORDER = PAYMENT_STEPS.map((s) => s.key);
-  export function stepState(stepKey: PaymentStatus, current: PaymentStatus): "done" | "active" | "todo" {
+  export function stepState(
+    stepKey: PaymentStatus,
+    current: PaymentStatus,
+  ): "done" | "active" | "todo" {
     if (current === "FAILED" || current === "REFUND_PENDING" || current === "REFUNDED") {
       return ORDER.indexOf(stepKey) < ORDER.indexOf("STELLAR_SUBMITTED") ? "done" : "todo";
     }
@@ -415,16 +495,19 @@ Confirm screen with live PDAX conversion, then Confirm → processing overlay po
 Custodial deposit address + QR, Stellar/no-memo reminder, pending-deposit detection by polling `POST /api/wallet/sync`.
 
 **Files**
+
 - `src/app/(payer)/payer/prefund/page.tsx` (RSC — loads deposit address)
 - `src/components/payer/DepositCard.tsx` (`"use client"` — copy + QR)
 - `src/components/payer/PendingDepositWatcher.tsx` (`"use client"` — polls sync)
 - Tests: `src/components/payer/DepositCard.test.tsx`, Playwright `tests/e2e/payer-prefund.spec.ts`
 
 **Interfaces**
-- *Consumes:* `GET /api/wallet/deposit-address` → `{publicKey, qrSvg, network, memoRequired}`; `POST /api/wallet/sync` → `{balanceXlm}`; `GET /api/wallet` for current balance; `Card`, `Button`, `Icon`, `MoneyAmount`.
-- *Produces:* none shared.
+
+- _Consumes:_ `GET /api/wallet/deposit-address` → `{publicKey, qrSvg, network, memoRequired}`; `POST /api/wallet/sync` → `{balanceXlm}`; `GET /api/wallet` for current balance; `Card`, `Button`, `Icon`, `MoneyAmount`.
+- _Produces:_ none shared.
 
 **Steps**
+
 - [ ] Write `DepositCard.test.tsx`: shows the full `publicKey` (selectable, `mono-data`), a copy button (`content_copy`, ≥44px) that on click writes to clipboard and announces "Address copied" via `aria-live`, the network reminder text "Stellar network · No memo required", and renders the provided `qrSvg`. Run → fail.
 - [ ] Write Playwright `payer-prefund.spec.ts`: visit `/payer/prefund`; assert address, QR, and reminder render; stub `POST /api/wallet/sync` to return an increased `balanceXlm` and assert the page surfaces a "Deposit detected" confirmation (text, not color alone). Run → fail.
 - [ ] Implement `DepositCard.tsx` (`"use client"`): `Card` titled "Prefund your wallet"; QR frame (`rounded-xl border border-outline-variant p-stack-md`, `qrSvg` via trusted SVG); address row with copy; explicit reminder block using `body-sm` (warning conveyed by `Icon` + text, never orange small text per BRAND §8): `Icon name="info"` + "Send only XLM on the Stellar network. No memo is required." Show base-reserve note: "Send at least 1 XLM to activate your account."
@@ -439,6 +522,7 @@ Custodial deposit address + QR, Stellar/no-memo reminder, pending-deposit detect
 Personal history list (XLM debited + PHP, merchant, status badge, date) with cursor pagination and a per-tx detail drawer.
 
 **Files**
+
 - `src/app/(payer)/payer/transactions/page.tsx` (RSC — first page)
 - `src/components/payer/TransactionList.tsx` (`"use client"` — load-more + drawer)
 - `src/components/payer/TransactionRow.tsx`
@@ -446,13 +530,15 @@ Personal history list (XLM debited + PHP, merchant, status badge, date) with cur
 - Tests: `src/components/payer/TransactionRow.test.tsx`, `src/components/payer/TransactionList.test.tsx`, Playwright `tests/e2e/payer-transactions.spec.ts`
 
 **Interfaces**
-- *Consumes:* **No REST list endpoint exists for payer payments** (Phase 5 / SPEC §6 expose only `GET /api/payments/[id]` and the wallet ledger `GET /api/wallet/transactions`). This page is server-rendered, so read the payer's payment history via a **server-side Prisma helper** in `src/server/payer/data.ts` (`import "server-only"`), and page it with a **Server Action** — do **not** invent a `GET /api/payments` route. The drawer uses the existing `GET /api/payments/[id]` → `{payment, events}`. Also: `MoneyAmount`, `StatusBadge`, `Card`, `Button`, `Icon`.
+
+- _Consumes:_ **No REST list endpoint exists for payer payments** (Phase 5 / SPEC §6 expose only `GET /api/payments/[id]` and the wallet ledger `GET /api/wallet/transactions`). This page is server-rendered, so read the payer's payment history via a **server-side Prisma helper** in `src/server/payer/data.ts` (`import "server-only"`), and page it with a **Server Action** — do **not** invent a `GET /api/payments` route. The drawer uses the existing `GET /api/payments/[id]` → `{payment, events}`. Also: `MoneyAmount`, `StatusBadge`, `Card`, `Button`, `Icon`.
   - `getPayerPayments(payerId: string, opts: { cursor?: string; limit: number }): Promise<{ items: PayerPaymentListItem[]; nextCursor?: string }>` — Prisma read scoped + ownership-checked to `payerId`, cursor-paginated by `createdAt`/`id`.
   - `type PayerPaymentListItem = { id: string; reference: string; merchantName: string; merchantCity?: string; amountXlm: string; amountPhp: string; status: PaymentStatus; createdAt: string }` (amounts pre-formatted via `displayXlm`/`displayPhp`; status from `@/generated/prisma`).
   - `"use server"` action `loadMorePayerPayments(cursor: string): Promise<{ items: PayerPaymentListItem[]; nextCursor?: string }>` — calls `requireRole(PAYER)` then `getPayerPayments(user.id, { cursor, limit: 20 })`.
-- *Produces:* `getPayerPayments` + `loadMorePayerPayments` + `PayerPaymentListItem` in `src/server/payer/data.ts` (extends the file created in Task 3).
+- _Produces:_ `getPayerPayments` + `loadMorePayerPayments` + `PayerPaymentListItem` in `src/server/payer/data.ts` (extends the file created in Task 3).
 
 **Steps**
+
 - [ ] Write `TransactionRow.test.tsx`: a row shows merchant name + city, `<MoneyAmount>` (XLM debited bold + PHP beneath), a `<StatusBadge>` with correct label, a formatted date, and is a button/link opening the drawer (`aria-haspopup` / `aria-expanded`). Run → fail.
 - [ ] Write `TransactionList.test.tsx`: renders initial items; "Load more" appears only when `nextCursor` present; clicking it invokes the injected `loadMore` action (mock the `loadMorePayerPayments` server action via a prop) and appends rows; empty state when no items. Run → fail.
 - [ ] Write Playwright `payer-transactions.spec.ts`: visit page; assert list renders; click a row → drawer opens showing reference (`mono-data`), the full conversion breakdown, the `PaymentEvent` timeline (status + timestamps), and a close control (Esc + button; focus trapped). Run → fail.
@@ -470,16 +556,19 @@ Personal history list (XLM debited + PHP, merchant, status badge, date) with cur
 Profile display + change password (calls `POST /api/auth/password`).
 
 **Files**
+
 - `src/app/(payer)/payer/settings/page.tsx` (RSC — profile)
 - `src/components/payer/ChangePasswordForm.tsx` (`"use client"`)
 - `src/components/payer/ProfileCard.tsx`
 - Tests: `src/components/payer/ChangePasswordForm.test.tsx`, Playwright `tests/e2e/payer-settings.spec.ts`
 
 **Interfaces**
-- *Consumes:* `getSessionUser()` for `{username, role}`; `POST /api/auth/password {currentPassword, newPassword}` → `204` (+ error envelope on failure); CSRF same-origin enforced server-side; `Card`, `Button`, `Icon`.
-- *Produces:* none shared.
+
+- _Consumes:_ `getSessionUser()` for `{username, role}`; `POST /api/auth/password {currentPassword, newPassword}` → `204` (+ error envelope on failure); CSRF same-origin enforced server-side; `Card`, `Button`, `Icon`.
+- _Produces:_ none shared.
 
 **Steps**
+
 - [ ] Write `ChangePasswordForm.test.tsx`: three real-`<label>` password fields (current, new, confirm); submitting with mismatched new/confirm shows an inline validation error (text); a successful `204` (mocked fetch) clears fields and shows an `aria-live` success message; a `400`/`401` envelope shows the server message (generic, non-enumerable). Run → fail.
 - [ ] Write Playwright `payer-settings.spec.ts`: visit `/payer/settings`; assert username + role display; fill the password form and submit against a stubbed `204`; assert success message; assert client-side mismatch validation blocks submit. Run → fail.
 - [ ] Implement `ProfileCard.tsx`: `Card` showing avatar (initial), `username` (`headline-md`), role chip ("Payer"), and account status. Read-only (no profile edit in scope).
@@ -492,6 +581,7 @@ Profile display + change password (calls `POST /api/auth/password`).
 ## Self-Review
 
 **SPEC §5 Payer routes → tasks**
+
 - `/payer/dashboard` (balance, Prefund/Send, Scan CTA, recent payments, prefund panel, network status) → **Task 3**.
 - `/payer/scan` (camera + upload, decode, resolve, route to confirm, not-registered state) → **Task 4**.
 - `/payer/pay/[paymentId]/confirm` (merchant info, requested PHP, live conversion, wallet source, Confirm/Cancel, processing overlay → success) → **Task 5**.
@@ -501,6 +591,7 @@ Profile display + change password (calls `POST /api/auth/password`).
 - The `(payer)` shell + `requireRole(PAYER)` + SideNav/MobileNav → **Task 2**.
 
 **BRAND components → tasks**
+
 - Top nav (glass header, brand lockup) → Task 1 (`GlassHeader`) / Task 2.
 - Side nav (`w-64`, active `primary-container`, Scan-to-Pay, Support/Logout-in-error) → Task 2.
 - Mobile bottom nav (`h-16`, FAB ≥44px) → Task 2.
@@ -517,6 +608,6 @@ Profile display + change password (calls `POST /api/auth/password`).
 
 **Placeholder scan:** every component shows COMPLETE TSX (no `// ...` in shipped code, no TODO bodies). The only TODO is the explicit `proxy.ts` `Permissions-Policy: camera` dependency check in Task 4 (a Phase 2 coordination point), not a code placeholder.
 
-**API field-name check vs Phase 5 contracts:** `GET /api/wallet` → `publicKey/balanceXlm/reservedXlm/availableXlm/approxPhp` (Tasks 3, 5); `GET /api/wallet/deposit-address` → `publicKey/qrSvg/network/memoRequired` (Tasks 3, 6); `POST /api/wallet/sync` → `balanceXlm` (Task 6); `GET /api/wallet/transactions` → `items/nextCursor` (available, though Task 7 lists *payments*, not wallet ledger); `POST /api/qrph/decode` → `decoded/merchant?` (Task 4); `POST /api/payments/quote` → `paymentId/amountPhp/rate/amountXlm/networkFeeXlm/quoteExpiresAt` (Tasks 4, 5); `POST /api/payments/[id]/confirm` → `paymentId/status` + `Idempotency-Key` header (Task 5); `GET /api/payments/[id]` → `payment/events` (Tasks 5, 7); `POST /api/payments/[id]/cancel` → `status` (Task 5); `POST /api/auth/password` → `204` (Task 8). **Open item to confirm against Phase 5:** the payer-scoped *payments* list path used in Task 7 (`GET /api/payments?cursor=&limit=`) and each list item's field shape — Phase 5 must expose this (or Task 7 must read via a `server/payer/data.ts` Prisma helper). Resolve before implementing Task 7; do not invent a new contract.
+**API field-name check vs Phase 5 contracts:** `GET /api/wallet` → `publicKey/balanceXlm/reservedXlm/availableXlm/approxPhp` (Tasks 3, 5); `GET /api/wallet/deposit-address` → `publicKey/qrSvg/network/memoRequired` (Tasks 3, 6); `POST /api/wallet/sync` → `balanceXlm` (Task 6); `GET /api/wallet/transactions` → `items/nextCursor` (available, though Task 7 lists _payments_, not wallet ledger); `POST /api/qrph/decode` → `decoded/merchant?` (Task 4); `POST /api/payments/quote` → `paymentId/amountPhp/rate/amountXlm/networkFeeXlm/quoteExpiresAt` (Tasks 4, 5); `POST /api/payments/[id]/confirm` → `paymentId/status` + `Idempotency-Key` header (Task 5); `GET /api/payments/[id]` → `payment/events` (Tasks 5, 7); `POST /api/payments/[id]/cancel` → `status` (Task 5); `POST /api/auth/password` → `204` (Task 8). **Open item to confirm against Phase 5:** the payer-scoped _payments_ list path used in Task 7 (`GET /api/payments?cursor=&limit=`) and each list item's field shape — Phase 5 must expose this (or Task 7 must read via a `server/payer/data.ts` Prisma helper). Resolve before implementing Task 7; do not invent a new contract.
 
 **Accessibility/perf/responsive (AGENT §4, BRAND §8) honored across all tasks:** WCAG AA token usage, no orange small body text, status by text+badge, real labels, focus rings, ≥44px targets, `prefers-reduced-motion` via the global CSS rule (animations are decorative-only; data updates never depend on motion), RSC-first with small client leaves, server-only data helpers, cursor pagination.

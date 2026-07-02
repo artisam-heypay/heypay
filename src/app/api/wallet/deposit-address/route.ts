@@ -1,3 +1,4 @@
+// src/app/api/wallet/deposit-address/route.ts
 import QRCode from "qrcode";
 import { route, json } from "@/lib/http";
 import { requireUser } from "@/server/auth/sessions";

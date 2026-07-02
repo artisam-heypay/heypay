@@ -1,13 +1,13 @@
 import { Scanner } from "@/components/payer/Scanner";
 
-export default function ScanPage() {
+export default function PayerScanPage() {
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-stack-lg">
+    <div className="mx-auto flex max-w-lg flex-col gap-stack-lg">
       <div>
-        <h1 className="text-headline-lg font-display font-bold text-on-surface">Scan to Pay</h1>
-        <p className="text-body-sm text-on-surface-variant">
-          Point your camera at any QRPH code, or upload a photo of one. We&apos;ll handle the
-          XLM→PHP conversion and pay the merchant.
+        <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Scan to Pay</h1>
+        <p className="mt-stack-sm text-body-md text-on-surface-variant">
+          Point your camera at a QRPH code or upload a photo of it. We&apos;ll resolve the merchant
+          and lock an exchange rate before you confirm.
         </p>
       </div>
       <Scanner />

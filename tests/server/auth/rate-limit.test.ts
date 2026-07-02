@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-// The mock factory is hoisted above imports, so it must construct the fake itself
-// (it cannot close over a top-level variable). We then retrieve that same instance
-// through the mocked import so the test and `rateLimit` share one fake redis.
 vi.mock("@/server/redis", async () => {
   const { makeFakeRedis } = await import("../../helpers/fake-redis");
   return { redis: makeFakeRedis() };

@@ -3,17 +3,13 @@ import { resetDb, makePayer } from "../../../../tests/helpers/db";
 import { db } from "@/server/db";
 import { dec } from "@/lib/money";
 
-// Spies + cursor store created via `vi.hoisted` so the hoisted `vi.mock` factories can reference them.
-const { listIncomingPayments, store } = vi.hoisted(() => ({
-  listIncomingPayments: vi.fn(),
-  store: new Map<string, string>(),
+const { listIncomingPayments } = vi.hoisted(() => ({ listIncomingPayments: vi.fn() }));
+vi.mock("@/server/stellar/wallet", () => ({
+  walletService: { listIncomingPayments: (pk: string, c?: string) => listIncomingPayments(pk, c) },
 }));
 
-vi.mock("@/server/stellar/wallet", () => ({
-  walletService: {
-    listIncomingPayments: (pk: string, c?: string) => listIncomingPayments(pk, c),
-  },
-}));
+// In-memory Redis stub for the cursor.
+const { store } = vi.hoisted(() => ({ store: new Map<string, string>() }));
 vi.mock("@/server/redis", () => ({
   redis: {
     get: vi.fn(async (k: string) => store.get(k) ?? null),

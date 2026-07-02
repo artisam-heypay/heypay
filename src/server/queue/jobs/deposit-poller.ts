@@ -1,5 +1,6 @@
+// src/server/queue/jobs/deposit-poller.ts
 import "server-only";
-import { Prisma } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { redis } from "@/server/redis";
 import { walletService } from "@/server/stellar/wallet";

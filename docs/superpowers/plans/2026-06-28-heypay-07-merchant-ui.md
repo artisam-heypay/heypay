@@ -26,6 +26,7 @@
 ### Task 1: Merchant domain module — banks, schemas, serialize, setup-state, service
 
 **Files:**
+
 - Create: `src/server/merchant/banks.ts`
 - Create: `src/lib/schemas/merchant.ts`
 - Create: `src/server/merchant/service.ts`
@@ -33,8 +34,10 @@
 - Test: `tests/server/merchant/service.test.ts`
 
 **Interfaces:**
+
 - Consumes: `prisma` (`@/server/db`), `Merchant`/`Payment`/`MerchantStatus`/`PaymentStatus`/`Role` (`@/generated/prisma`), `Decimal`/`dec`/`formatXlm`/`formatPhp` (`@/lib/money`), `notFound` (`@/lib/errors`), `decodeQrph` (`@/server/qrph/decode`).
 - Produces:
+
   ```typescript
   // src/server/merchant/banks.ts
   export type SupportedBank = { code: string; name: string };
@@ -83,12 +86,17 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { resetDb, prisma } from "../../helpers/db";
 import { seedMerchantUser, seedPayment } from "../../helpers/merchant";
 import {
-  serializeMerchant, merchantSetupState, getMerchantEarnings,
-  listMerchantTransactions, PENDING_STATUSES,
+  serializeMerchant,
+  merchantSetupState,
+  getMerchantEarnings,
+  listMerchantTransactions,
+  PENDING_STATUSES,
 } from "@/server/merchant/service";
 import { getBankName, SUPPORTED_BANKS } from "@/server/merchant/banks";
 
-beforeEach(async () => { await resetDb(); });
+beforeEach(async () => {
+  await resetDb();
+});
 
 describe("banks", () => {
   it("resolves a supported bank code and rejects unknown", () => {
@@ -100,7 +108,9 @@ describe("banks", () => {
 describe("serializeMerchant", () => {
   it("exposes last4 but never the full account number", async () => {
     const { merchant } = await seedMerchantUser({
-      accountNumber: "1234567890", accountNumberLast4: "7890", settlementBankCode: "BPI",
+      accountNumber: "1234567890",
+      accountNumberLast4: "7890",
+      settlementBankCode: "BPI",
     });
     const dto = serializeMerchant(merchant) as Record<string, unknown>;
     expect(dto.accountNumberLast4).toBe("7890");
@@ -112,10 +122,15 @@ describe("serializeMerchant", () => {
 describe("merchantSetupState", () => {
   it("flags an empty-placeholder DRAFT as incomplete", async () => {
     const { merchant } = await seedMerchantUser({
-      qrphRaw: "", settlementBankCode: "", accountNumberLast4: "",
+      qrphRaw: "",
+      settlementBankCode: "",
+      accountNumberLast4: "",
     });
     expect(merchantSetupState(merchant)).toEqual({
-      hasBusiness: true, hasSettlement: false, hasQrph: false, isComplete: false,
+      hasBusiness: true,
+      hasSettlement: false,
+      hasQrph: false,
+      isComplete: false,
     });
   });
   it("flags a fully-populated merchant complete", async () => {
@@ -127,8 +142,16 @@ describe("merchantSetupState", () => {
 describe("getMerchantEarnings", () => {
   it("sums SETTLED netSettledPhp, in-flight XLM, and computes MoM", async () => {
     const { merchant } = await seedMerchantUser({});
-    await seedPayment(merchant.id, { status: "SETTLED", netSettledPhp: "100.00", settledAt: new Date() });
-    await seedPayment(merchant.id, { status: "SETTLED", netSettledPhp: "50.00", settledAt: new Date() });
+    await seedPayment(merchant.id, {
+      status: "SETTLED",
+      netSettledPhp: "100.00",
+      settledAt: new Date(),
+    });
+    await seedPayment(merchant.id, {
+      status: "SETTLED",
+      netSettledPhp: "50.00",
+      settledAt: new Date(),
+    });
     await seedPayment(merchant.id, { status: "PDAX_TRADING", amountXlm: "12.5000000" });
     const e = await getMerchantEarnings(merchant.id);
     expect(e.totalSettledPhp).toBe("150.00");
@@ -140,12 +163,17 @@ describe("getMerchantEarnings", () => {
 describe("listMerchantTransactions", () => {
   it("filters by status and paginates by cursor", async () => {
     const { merchant } = await seedMerchantUser({});
-    for (let i = 0; i < 3; i++) await seedPayment(merchant.id, { status: "SETTLED", netSettledPhp: "10.00" });
+    for (let i = 0; i < 3; i++)
+      await seedPayment(merchant.id, { status: "SETTLED", netSettledPhp: "10.00" });
     await seedPayment(merchant.id, { status: "FAILED" });
     const page1 = await listMerchantTransactions(merchant.id, { status: "SETTLED", limit: 2 });
     expect(page1.items).toHaveLength(2);
     expect(page1.nextCursor).toBeTruthy();
-    const page2 = await listMerchantTransactions(merchant.id, { status: "SETTLED", limit: 2, cursor: page1.nextCursor! });
+    const page2 = await listMerchantTransactions(merchant.id, {
+      status: "SETTLED",
+      limit: 2,
+      cursor: page1.nextCursor!,
+    });
     expect(page2.items).toHaveLength(1);
     expect(page2.nextCursor).toBeNull();
   });
@@ -195,7 +223,12 @@ export async function seedMerchantUser(overrides: Partial<Merchant> = {}) {
 
 export async function seedPayment(
   merchantId: string,
-  data: Partial<{ status: PaymentStatus; netSettledPhp: string; amountXlm: string; settledAt: Date }>,
+  data: Partial<{
+    status: PaymentStatus;
+    netSettledPhp: string;
+    amountXlm: string;
+    settledAt: Date;
+  }>,
 ) {
   const payer = await prisma.user.create({
     data: { username: `payer${++counter}`, passwordHash: "x", role: "PAYER" },
@@ -267,9 +300,18 @@ import { SUPPORTED_BANKS } from "@/server/merchant/banks";
 
 const BANK_CODES = SUPPORTED_BANKS.map((b) => b.code) as [string, ...string[]];
 const STATUSES = [
-  "CREATED","QUOTED","AUTHORIZED","STELLAR_SUBMITTED","STELLAR_CONFIRMED",
-  "PDAX_TRADING","PDAX_TRADED","PAYOUT_SUBMITTED","SETTLED","FAILED",
-  "REFUND_PENDING","REFUNDED",
+  "CREATED",
+  "QUOTED",
+  "AUTHORIZED",
+  "STELLAR_SUBMITTED",
+  "STELLAR_CONFIRMED",
+  "PDAX_TRADING",
+  "PDAX_TRADED",
+  "PAYOUT_SUBMITTED",
+  "SETTLED",
+  "FAILED",
+  "REFUND_PENDING",
+  "REFUNDED",
 ] as const;
 
 export const createMerchantSchema = z.object({
@@ -288,7 +330,10 @@ export const patchMerchantSchema = z
 export const settlementSchema = z.object({
   bankCode: z.enum(BANK_CODES),
   accountName: z.string().trim().min(2).max(120),
-  accountNumber: z.string().trim().regex(/^[0-9]{6,20}$/, "6–20 digits"),
+  accountNumber: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{6,20}$/, "6–20 digits"),
 });
 
 export const qrphSchema = z.object({
@@ -323,33 +368,76 @@ import { MerchantStatus } from "@/generated/prisma";
 import type { TxQuery } from "@/lib/schemas/merchant";
 
 export type MerchantDto = {
-  id: string; businessName: string; logoKey: string | null; status: MerchantStatus;
-  qrphRaw: string; qrphMerchantName: string | null; qrphMerchantCity: string | null;
-  qrphMerchantId: string | null; qrphImageKey: string | null;
-  qrphCountry: string | null; qrphCurrency: string | null;
-  settlementBankCode: string; settlementBankName: string; accountName: string;
-  accountNumberLast4: string; createdAt: string; updatedAt: string;
+  id: string;
+  businessName: string;
+  logoKey: string | null;
+  status: MerchantStatus;
+  qrphRaw: string;
+  qrphMerchantName: string | null;
+  qrphMerchantCity: string | null;
+  qrphMerchantId: string | null;
+  qrphImageKey: string | null;
+  qrphCountry: string | null;
+  qrphCurrency: string | null;
+  settlementBankCode: string;
+  settlementBankName: string;
+  accountName: string;
+  accountNumberLast4: string;
+  createdAt: string;
+  updatedAt: string;
 };
-export type SetupState = { hasBusiness: boolean; hasSettlement: boolean; hasQrph: boolean; isComplete: boolean };
-export type MerchantTxItem = { id: string; reference: string; customer: string; amountXlm: string; amountPhp: string; netSettledPhp: string | null; status: PaymentStatus; createdAt: string };
+export type SetupState = {
+  hasBusiness: boolean;
+  hasSettlement: boolean;
+  hasQrph: boolean;
+  isComplete: boolean;
+};
+export type MerchantTxItem = {
+  id: string;
+  reference: string;
+  customer: string;
+  amountXlm: string;
+  amountPhp: string;
+  netSettledPhp: string | null;
+  status: PaymentStatus;
+  createdAt: string;
+};
 export type MerchantTxPage = { items: MerchantTxItem[]; nextCursor: string | null };
-export type MerchantEarnings = { totalSettledPhp: string; momChangePct: number | null; pendingXlm: string };
+export type MerchantEarnings = {
+  totalSettledPhp: string;
+  momChangePct: number | null;
+  pendingXlm: string;
+};
 
 /** Non-terminal in-flight states whose XLM is "pending" (post-authorization, pre-settlement). */
 export const PENDING_STATUSES: PaymentStatus[] = [
-  "AUTHORIZED", "STELLAR_SUBMITTED", "STELLAR_CONFIRMED",
-  "PDAX_TRADING", "PDAX_TRADED", "PAYOUT_SUBMITTED",
+  "AUTHORIZED",
+  "STELLAR_SUBMITTED",
+  "STELLAR_CONFIRMED",
+  "PDAX_TRADING",
+  "PDAX_TRADED",
+  "PAYOUT_SUBMITTED",
 ];
 
 export function serializeMerchant(m: Merchant): MerchantDto {
   return {
-    id: m.id, businessName: m.businessName, logoKey: m.logoKey, status: m.status,
-    qrphRaw: m.qrphRaw, qrphMerchantName: m.qrphMerchantName, qrphMerchantCity: m.qrphMerchantCity,
-    qrphMerchantId: m.qrphMerchantId, qrphImageKey: m.qrphImageKey,
-    qrphCountry: m.qrphCountry, qrphCurrency: m.qrphCurrency,
-    settlementBankCode: m.settlementBankCode, settlementBankName: m.settlementBankName,
-    accountName: m.accountName, accountNumberLast4: m.accountNumberLast4,
-    createdAt: m.createdAt.toISOString(), updatedAt: m.updatedAt.toISOString(),
+    id: m.id,
+    businessName: m.businessName,
+    logoKey: m.logoKey,
+    status: m.status,
+    qrphRaw: m.qrphRaw,
+    qrphMerchantName: m.qrphMerchantName,
+    qrphMerchantCity: m.qrphMerchantCity,
+    qrphMerchantId: m.qrphMerchantId,
+    qrphImageKey: m.qrphImageKey,
+    qrphCountry: m.qrphCountry,
+    qrphCurrency: m.qrphCurrency,
+    settlementBankCode: m.settlementBankCode,
+    settlementBankName: m.settlementBankName,
+    accountName: m.accountName,
+    accountNumberLast4: m.accountNumberLast4,
+    createdAt: m.createdAt.toISOString(),
+    updatedAt: m.updatedAt.toISOString(),
   };
 }
 
@@ -357,7 +445,12 @@ export function merchantSetupState(m: Merchant): SetupState {
   const hasBusiness = m.businessName.trim().length > 0;
   const hasSettlement = m.settlementBankCode.length > 0 && m.accountNumberLast4.length > 0;
   const hasQrph = m.qrphRaw.length > 0;
-  return { hasBusiness, hasSettlement, hasQrph, isComplete: hasBusiness && hasSettlement && hasQrph };
+  return {
+    hasBusiness,
+    hasSettlement,
+    hasQrph,
+    isComplete: hasBusiness && hasSettlement && hasQrph,
+  };
 }
 
 export function getMerchantForUserOrNull(userId: string): Promise<Merchant | null> {
@@ -370,7 +463,9 @@ export async function getMerchantForUser(userId: string): Promise<Merchant> {
   return m;
 }
 
-function monthStart(d: Date): Date { return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
+function monthStart(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
 
 export async function getMerchantEarnings(merchantId: string): Promise<MerchantEarnings> {
   const settled = await prisma.payment.findMany({
@@ -382,7 +477,9 @@ export async function getMerchantEarnings(merchantId: string): Promise<MerchantE
     select: { amountXlm: true },
   });
 
-  let total = dec(0), thisMonth = dec(0), lastMonth = dec(0);
+  let total = dec(0),
+    thisMonth = dec(0),
+    lastMonth = dec(0);
   const now = new Date();
   const curStart = monthStart(now);
   const prevStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
@@ -398,7 +495,9 @@ export async function getMerchantEarnings(merchantId: string): Promise<MerchantE
 
   const momChangePct = lastMonth.isZero()
     ? null
-    : Number(thisMonth.minus(lastMonth).dividedBy(lastMonth).times(100).toDecimalPlaces(1).toString());
+    : Number(
+        thisMonth.minus(lastMonth).dividedBy(lastMonth).times(100).toDecimalPlaces(1).toString(),
+      );
 
   return {
     totalSettledPhp: formatPhp(total),
@@ -409,11 +508,14 @@ export async function getMerchantEarnings(merchantId: string): Promise<MerchantE
 
 function mapTx(p: Payment & { payer: { username: string } }): MerchantTxItem {
   return {
-    id: p.id, reference: p.reference, customer: p.payer.username,
+    id: p.id,
+    reference: p.reference,
+    customer: p.payer.username,
     amountXlm: formatXlm(dec(p.amountXlm.toString())),
     amountPhp: formatPhp(dec(p.amountPhp.toString())),
     netSettledPhp: p.netSettledPhp ? formatPhp(dec(p.netSettledPhp.toString())) : null,
-    status: p.status, createdAt: p.createdAt.toISOString(),
+    status: p.status,
+    createdAt: p.createdAt.toISOString(),
   };
 }
 
@@ -427,7 +529,10 @@ function txWhere(merchantId: string, q: Pick<TxQuery, "status" | "from" | "to">)
   };
 }
 
-export async function listMerchantTransactions(merchantId: string, q: TxQuery): Promise<MerchantTxPage> {
+export async function listMerchantTransactions(
+  merchantId: string,
+  q: TxQuery,
+): Promise<MerchantTxPage> {
   const take = q.limit + 1;
   const rows = await prisma.payment.findMany({
     where: txWhere(merchantId, q),
@@ -471,11 +576,13 @@ git commit -m "feat(merchant): domain module — banks, schemas, serialize, setu
 ### Task 2: `POST /api/merchant` (step 1) + `GET`/`PATCH /api/merchant/me`
 
 **Files:**
+
 - Create: `src/app/api/merchant/route.ts`
 - Create: `src/app/api/merchant/me/route.ts`
 - Test: `tests/api/merchant/profile.test.ts`
 
 **Interfaces:**
+
 - Consumes: `route`/`json`/`parseBody` (`@/lib/http`), `assertSameOrigin` (`@/server/auth/csrf`), `requireRole` (`@/server/auth/sessions`), `audit` (`@/server/auth/audit`), `conflict`/`notFound` (`@/lib/errors`), `prisma` (`@/server/db`), `createMerchantSchema`/`patchMerchantSchema` (`@/lib/schemas/merchant`), `serializeMerchant`/`merchantSetupState`/`getMerchantForUser`/`getMerchantForUserOrNull` (`@/server/merchant/service`).
 - Produces: `POST /api/merchant` → `{ merchant: MerchantDto }` (201, creates `DRAFT`); `GET /api/merchant/me` → `{ merchant: MerchantDto; setup: SetupState }`; `PATCH /api/merchant/me` → `{ merchant: MerchantDto; setup: SetupState }`.
 
@@ -500,7 +607,9 @@ const ctx = { params: Promise.resolve({}) };
 
 beforeEach(async () => {
   await resetDb();
-  const u = await prisma.user.create({ data: { username: "biz", passwordHash: "x", role: "MERCHANT" } });
+  const u = await prisma.user.create({
+    data: { username: "biz", passwordHash: "x", role: "MERCHANT" },
+  });
   USER.id = u.id;
 });
 
@@ -587,7 +696,11 @@ import { requireRole } from "@/server/auth/sessions";
 import { audit } from "@/server/auth/audit";
 import { prisma } from "@/server/db";
 import { patchMerchantSchema } from "@/lib/schemas/merchant";
-import { serializeMerchant, merchantSetupState, getMerchantForUser } from "@/server/merchant/service";
+import {
+  serializeMerchant,
+  merchantSetupState,
+  getMerchantForUser,
+} from "@/server/merchant/service";
 
 export const GET = route(async () => {
   const user = await requireRole("MERCHANT");
@@ -630,10 +743,12 @@ git commit -m "feat(merchant): POST /api/merchant + GET/PATCH /api/merchant/me"
 ### Task 3: `POST /api/merchant/settlement` (validate bank, encrypt account, store last4)
 
 **Files:**
+
 - Create: `src/app/api/merchant/settlement/route.ts`
 - Test: `tests/api/merchant/settlement.test.ts`
 
 **Interfaces:**
+
 - Consumes: `route`/`json`/`parseBody`, `assertSameOrigin`, `requireRole`, `audit`, `badRequest` (`@/lib/errors`), `prisma`, `encryptSecret` (`@/server/crypto/envelope`), `settlementSchema`, `getBankName` (`@/server/merchant/banks`), `serializeMerchant`/`getMerchantForUser`.
 - Produces: `POST /api/merchant/settlement` → `{ merchant: MerchantDto }`. Encrypts `accountNumber`, stores `accountNumberLast4 = accountNumber.slice(-4)`, resolves and stores `settlementBankName`.
 
@@ -656,15 +771,23 @@ const req = (body: unknown) =>
   });
 const ctx = { params: Promise.resolve({}) };
 
-beforeEach(async () => { await resetDb(); });
+beforeEach(async () => {
+  await resetDb();
+});
 
 it("stores encrypted account + last4 + resolved bank name", async () => {
   const { merchant, user } = await seedMerchantUser({
-    settlementBankCode: "", accountNumberLast4: "", accountNumber: "", accountName: "",
+    settlementBankCode: "",
+    accountNumberLast4: "",
+    accountNumber: "",
+    accountName: "",
   });
   USER.id = user.id;
   const { POST } = await import("@/app/api/merchant/settlement/route");
-  const res = await POST(req({ bankCode: "BPI", accountName: "Maria Cruz", accountNumber: "1234567890" }), ctx);
+  const res = await POST(
+    req({ bankCode: "BPI", accountName: "Maria Cruz", accountNumber: "1234567890" }),
+    ctx,
+  );
   expect(res.status).toBe(200);
   const body = await res.json();
   expect(body.merchant.settlementBankName).toBe("Bank of the Philippine Islands");
@@ -672,15 +795,18 @@ it("stores encrypted account + last4 + resolved bank name", async () => {
   expect(body.merchant).not.toHaveProperty("accountNumber");
 
   const row = await prisma.merchant.findUnique({ where: { id: merchant.id } });
-  expect(row!.accountNumber).not.toContain("1234567890");          // encrypted at rest
-  expect(decryptSecret(row!.accountNumber)).toBe("1234567890");    // round-trips
+  expect(row!.accountNumber).not.toContain("1234567890"); // encrypted at rest
+  expect(decryptSecret(row!.accountNumber)).toBe("1234567890"); // round-trips
 });
 
 it("rejects an unsupported bank code with 400", async () => {
   const { user } = await seedMerchantUser({});
   USER.id = user.id;
   const { POST } = await import("@/app/api/merchant/settlement/route");
-  const res = await POST(req({ bankCode: "FAKEBANK", accountName: "X Y", accountNumber: "12345678" }), ctx);
+  const res = await POST(
+    req({ bankCode: "FAKEBANK", accountName: "X Y", accountNumber: "12345678" }),
+    ctx,
+  );
   expect(res.status).toBe(400);
 });
 ```
@@ -745,10 +871,12 @@ git commit -m "feat(merchant): POST /api/merchant/settlement with bank validatio
 ### Task 4: `POST /api/merchant/qrph` (decode + CRC + uniqueness + persist + verify image)
 
 **Files:**
+
 - Create: `src/app/api/merchant/qrph/route.ts`
 - Test: `tests/api/merchant/qrph.test.ts`
 
 **Interfaces:**
+
 - Consumes: `route`/`json`/`parseBody`, `assertSameOrigin`, `requireRole`, `audit`, `badRequest`/`conflict`, `prisma`, `decodeQrph` (`@/server/qrph/decode`), `verifyUploadedObject` (`@/server/storage/s3`), `qrphSchema`, `serializeMerchant`/`getMerchantForUser`.
 - Produces: `POST /api/merchant/qrph` → `{ merchant: MerchantDto; decoded: QrphDecoded }`. Validates CRC, rejects duplicate `qrphRaw` already owned by another merchant, verifies uploaded image bytes when `imageKey` is supplied, persists all `qrph*` fields.
 
@@ -761,14 +889,23 @@ import { resetDb, prisma } from "../../helpers/db";
 import { mockSession, seedMerchantUser } from "../../helpers/merchant";
 
 // CRC-valid fixture string (matches Phase 3 parser fixtures)
-const RAW = "00020101021128660011ph.ppmi.p2m0111PARTNERBANK0208123456780308MERCHID01520400005303608" +
-            "5802PH5909HEYPAY CAFE6005DAVAO63041A2B";
+const RAW =
+  "00020101021128660011ph.ppmi.p2m0111PARTNERBANK0208123456780308MERCHID01520400005303608" +
+  "5802PH5909HEYPAY CAFE6005DAVAO63041A2B";
 
 vi.mock("@/server/qrph/decode", () => ({
   decodeQrph: (raw: string) => ({
-    raw, payloadFormat: "01", pointOfInit: "static", merchantName: "HEYPAY CAFE",
-    merchantCity: "DAVAO", merchantId: "MERCHID01", acquirerId: "PARTNERBANK",
-    country: "PH", currency: "608", crcValid: raw === RAW, amountPhp: undefined,
+    raw,
+    payloadFormat: "01",
+    pointOfInit: "static",
+    merchantName: "HEYPAY CAFE",
+    merchantCity: "DAVAO",
+    merchantId: "MERCHID01",
+    acquirerId: "PARTNERBANK",
+    country: "PH",
+    currency: "608",
+    crcValid: raw === RAW,
+    amountPhp: undefined,
   }),
 }));
 vi.mock("@/server/storage/s3", () => ({ verifyUploadedObject: vi.fn(async () => {}) }));
@@ -783,7 +920,9 @@ const req = (body: unknown) =>
   });
 const ctx = { params: Promise.resolve({}) };
 
-beforeEach(async () => { await resetDb(); });
+beforeEach(async () => {
+  await resetDb();
+});
 
 it("persists decoded QRPH fields and verifies the uploaded image", async () => {
   const { verifyUploadedObject } = await import("@/server/storage/s3");
@@ -845,7 +984,8 @@ export const POST = route(async (req) => {
 
   const decoded = decodeQrph(raw); // throws badRequest on malformed TLV
   if (!decoded.crcValid) throw badRequest("QRPH CRC validation failed");
-  if (decoded.currency && decoded.currency !== "608") throw badRequest("Only PHP (608) QRPH is supported");
+  if (decoded.currency && decoded.currency !== "608")
+    throw badRequest("Only PHP (608) QRPH is supported");
 
   // Uniqueness: no other merchant may already own this code.
   const dupe = await prisma.merchant.findFirst({
@@ -891,10 +1031,12 @@ git commit -m "feat(merchant): POST /api/merchant/qrph — decode, CRC, uniquene
 ### Task 5: `POST /api/merchant/go-live` (completeness gate → ACTIVE / PENDING_REVIEW)
 
 **Files:**
+
 - Create: `src/app/api/merchant/go-live/route.ts`
 - Test: `tests/api/merchant/go-live.test.ts`
 
 **Interfaces:**
+
 - Consumes: `route`/`json`, `assertSameOrigin`, `requireRole`, `audit`, `badRequest`, `prisma`, `decodeQrph`, `merchantSetupState`/`serializeMerchant`/`getMerchantForUser`.
 - Produces: `POST /api/merchant/go-live` → `{ merchant: MerchantDto }`. Requires `businessName` + CRC-valid QRPH + settlement account; sets `ACTIVE`, or `PENDING_REVIEW` when env `MERCHANT_REVIEW_GATE` is truthy.
 
@@ -907,18 +1049,29 @@ import { resetDb } from "../../helpers/db";
 import { mockSession, seedMerchantUser } from "../../helpers/merchant";
 
 vi.mock("@/server/qrph/decode", () => ({
-  decodeQrph: (raw: string) => ({ raw, crcValid: raw.length > 10, country: "PH", currency: "608", pointOfInit: "static", payloadFormat: "01" }),
+  decodeQrph: (raw: string) => ({
+    raw,
+    crcValid: raw.length > 10,
+    country: "PH",
+    currency: "608",
+    pointOfInit: "static",
+    payloadFormat: "01",
+  }),
 }));
 
 const USER = { id: "", username: "biz", role: "MERCHANT" as const, isActive: true };
 mockSession(USER);
 const req = () =>
   new NextRequest("http://localhost:3000/api/merchant/go-live", {
-    method: "POST", headers: { origin: "http://localhost:3000" },
+    method: "POST",
+    headers: { origin: "http://localhost:3000" },
   });
 const ctx = { params: Promise.resolve({}) };
 
-beforeEach(async () => { await resetDb(); delete process.env.MERCHANT_REVIEW_GATE; });
+beforeEach(async () => {
+  await resetDb();
+  delete process.env.MERCHANT_REVIEW_GATE;
+});
 
 it("activates a fully-configured merchant", async () => {
   const { user } = await seedMerchantUser({ status: "DRAFT" });
@@ -930,7 +1083,11 @@ it("activates a fully-configured merchant", async () => {
 });
 
 it("blocks go-live with 400 when settlement is missing", async () => {
-  const { user } = await seedMerchantUser({ status: "DRAFT", settlementBankCode: "", accountNumberLast4: "" });
+  const { user } = await seedMerchantUser({
+    status: "DRAFT",
+    settlementBankCode: "",
+    accountNumberLast4: "",
+  });
   USER.id = user.id;
   const { POST } = await import("@/app/api/merchant/go-live/route");
   const res = await POST(req(), ctx);
@@ -962,7 +1119,11 @@ import { audit } from "@/server/auth/audit";
 import { badRequest } from "@/lib/errors";
 import { prisma } from "@/server/db";
 import { decodeQrph } from "@/server/qrph/decode";
-import { serializeMerchant, merchantSetupState, getMerchantForUser } from "@/server/merchant/service";
+import {
+  serializeMerchant,
+  merchantSetupState,
+  getMerchantForUser,
+} from "@/server/merchant/service";
 
 export const POST = route(async (req) => {
   assertSameOrigin(req);
@@ -976,7 +1137,11 @@ export const POST = route(async (req) => {
 
   // Re-validate the stored QRPH CRC at go-live (defense in depth).
   let crcValid = false;
-  try { crcValid = decodeQrph(existing.qrphRaw).crcValid; } catch { crcValid = false; }
+  try {
+    crcValid = decodeQrph(existing.qrphRaw).crcValid;
+  } catch {
+    crcValid = false;
+  }
   if (!crcValid) throw badRequest("Stored QRPH failed CRC validation — please re-link it");
 
   const reviewGate = Boolean(process.env.MERCHANT_REVIEW_GATE);
@@ -984,7 +1149,12 @@ export const POST = route(async (req) => {
     where: { id: existing.id },
     data: { status: reviewGate ? "PENDING_REVIEW" : "ACTIVE" },
   });
-  await audit({ actorId: user.id, action: "merchant.go-live", target: merchant.id, metadata: { status: merchant.status } });
+  await audit({
+    actorId: user.id,
+    action: "merchant.go-live",
+    target: merchant.id,
+    metadata: { status: merchant.status },
+  });
   return json({ merchant: serializeMerchant(merchant) });
 });
 ```
@@ -1006,12 +1176,14 @@ git commit -m "feat(merchant): POST /api/merchant/go-live completeness gate (ACT
 ### Task 6: `GET /api/merchant/transactions` + `GET /api/merchant/earnings` + `GET /api/merchant/qr`
 
 **Files:**
+
 - Create: `src/app/api/merchant/transactions/route.ts`
 - Create: `src/app/api/merchant/earnings/route.ts`
 - Create: `src/app/api/merchant/qr/route.ts`
 - Test: `tests/api/merchant/reads.test.ts`
 
 **Interfaces:**
+
 - Consumes: `route`/`json`/`parseQuery`, `requireRole`, `prisma`, `txQuerySchema`, `listMerchantTransactions`/`getMerchantEarnings`/`getMerchantForUser`, `QRCode` (`qrcode`).
 - Produces: `GET /api/merchant/transactions?status&from&to&cursor&limit` → `MerchantTxPage`; `GET /api/merchant/earnings` → `MerchantEarnings`; `GET /api/merchant/qr` → `{ qrphRaw: string; qrSvg: string; paymentLink: string }`.
 
@@ -1025,15 +1197,23 @@ import { mockSession, seedMerchantUser, seedPayment } from "../../helpers/mercha
 
 const USER = { id: "", username: "biz", role: "MERCHANT" as const, isActive: true };
 mockSession(USER);
-const get = (url: string) => new NextRequest(url, { method: "GET", headers: { origin: "http://localhost:3000" } });
+const get = (url: string) =>
+  new NextRequest(url, { method: "GET", headers: { origin: "http://localhost:3000" } });
 const ctx = { params: Promise.resolve({}) };
 
-beforeEach(async () => { await resetDb(); process.env.APP_URL = "http://localhost:3000"; });
+beforeEach(async () => {
+  await resetDb();
+  process.env.APP_URL = "http://localhost:3000";
+});
 
 it("earnings sums settled + pending", async () => {
   const { merchant, user } = await seedMerchantUser({});
   USER.id = user.id;
-  await seedPayment(merchant.id, { status: "SETTLED", netSettledPhp: "75.00", settledAt: new Date() });
+  await seedPayment(merchant.id, {
+    status: "SETTLED",
+    netSettledPhp: "75.00",
+    settledAt: new Date(),
+  });
   const { GET } = await import("@/app/api/merchant/earnings/route");
   const body = await (await GET(get("http://localhost:3000/api/merchant/earnings"), ctx)).json();
   expect(body.totalSettledPhp).toBe("75.00");
@@ -1045,7 +1225,9 @@ it("transactions returns filtered settlement rows", async () => {
   await seedPayment(merchant.id, { status: "SETTLED", netSettledPhp: "10.00" });
   await seedPayment(merchant.id, { status: "FAILED" });
   const { GET } = await import("@/app/api/merchant/transactions/route");
-  const body = await (await GET(get("http://localhost:3000/api/merchant/transactions?status=SETTLED"), ctx)).json();
+  const body = await (
+    await GET(get("http://localhost:3000/api/merchant/transactions?status=SETTLED"), ctx)
+  ).json();
   expect(body.items).toHaveLength(1);
   expect(body.items[0].status).toBe("SETTLED");
 });
@@ -1109,7 +1291,11 @@ export const GET = route(async () => {
   const merchant = await getMerchantForUser(user.id);
   if (!merchant.qrphRaw) throw badRequest("No QRPH linked yet");
 
-  const qrSvg = await QRCode.toString(merchant.qrphRaw, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
+  const qrSvg = await QRCode.toString(merchant.qrphRaw, {
+    type: "svg",
+    margin: 1,
+    errorCorrectionLevel: "M",
+  });
   const base = process.env.APP_URL ?? "";
   const paymentLink = `${base}/pay?m=${merchant.id}`;
   return json({ qrphRaw: merchant.qrphRaw, qrSvg, paymentLink });
@@ -1133,9 +1319,11 @@ git commit -m "feat(merchant): GET transactions (filters+cursor), earnings, busi
 ### Task 7: End-to-end onboarding integration test (create → settlement → qrph → go-live)
 
 **Files:**
+
 - Test: `tests/api/merchant/onboarding-flow.test.ts`
 
 **Interfaces:**
+
 - Consumes: all handlers from Tasks 2–5 + `getMerchantEarnings` (Task 6). No new production code — this task proves the API surface composes (TDD safety net before UI builds on it).
 
 - [ ] **Step 1: Write the integration test** — `tests/api/merchant/onboarding-flow.test.ts`
@@ -1146,13 +1334,21 @@ import { NextRequest } from "next/server";
 import { resetDb, prisma } from "../../helpers/db";
 import { mockSession } from "../../helpers/merchant";
 
-const RAW = "00020101021128660011ph.ppmi.p2m0111PARTNERBANK0208123456780308MERCHID01520400005303608" +
-            "5802PH5909HEYPAY CAFE6005DAVAO63041A2B";
+const RAW =
+  "00020101021128660011ph.ppmi.p2m0111PARTNERBANK0208123456780308MERCHID01520400005303608" +
+  "5802PH5909HEYPAY CAFE6005DAVAO63041A2B";
 vi.mock("@/server/qrph/decode", () => ({
   decodeQrph: (raw: string) => ({
-    raw, payloadFormat: "01", pointOfInit: "static", merchantName: "HEYPAY CAFE",
-    merchantCity: "DAVAO", merchantId: "MERCHID01", acquirerId: "PARTNERBANK",
-    country: "PH", currency: "608", crcValid: true,
+    raw,
+    payloadFormat: "01",
+    pointOfInit: "static",
+    merchantName: "HEYPAY CAFE",
+    merchantCity: "DAVAO",
+    merchantId: "MERCHID01",
+    acquirerId: "PARTNERBANK",
+    country: "PH",
+    currency: "608",
+    crcValid: true,
   }),
 }));
 vi.mock("@/server/storage/s3", () => ({ verifyUploadedObject: vi.fn(async () => {}) }));
@@ -1169,7 +1365,9 @@ const post = (path: string, body?: unknown) =>
 
 beforeEach(async () => {
   await resetDb();
-  const u = await prisma.user.create({ data: { username: "owner", passwordHash: "x", role: "MERCHANT" } });
+  const u = await prisma.user.create({
+    data: { username: "owner", passwordHash: "x", role: "MERCHANT" },
+  });
   USER.id = u.id;
 });
 
@@ -1179,8 +1377,21 @@ it("walks create → settlement → qrph → go-live to ACTIVE", async () => {
   const qrph = await import("@/app/api/merchant/qrph/route");
   const live = await import("@/app/api/merchant/go-live/route");
 
-  expect((await create.POST(post("/api/merchant", { businessName: "HeyPay Cafe" }), ctx)).status).toBe(201);
-  expect((await settle.POST(post("/api/merchant/settlement", { bankCode: "BPI", accountName: "Maria Cruz", accountNumber: "1234567890" }), ctx)).status).toBe(200);
+  expect(
+    (await create.POST(post("/api/merchant", { businessName: "HeyPay Cafe" }), ctx)).status,
+  ).toBe(201);
+  expect(
+    (
+      await settle.POST(
+        post("/api/merchant/settlement", {
+          bankCode: "BPI",
+          accountName: "Maria Cruz",
+          accountNumber: "1234567890",
+        }),
+        ctx,
+      )
+    ).status,
+  ).toBe(200);
   expect((await qrph.POST(post("/api/merchant/qrph", { raw: RAW }), ctx)).status).toBe(200);
 
   const res = await live.POST(post("/api/merchant/go-live"), ctx);
@@ -1205,6 +1416,7 @@ git commit -m "test(merchant): end-to-end onboarding flow integration"
 ### Task 8: Shared UI primitives — FloatingInput, StatusBadge, formatting helper
 
 **Files:**
+
 - Create: `src/components/ui/FloatingInput.tsx`
 - Create: `src/components/ui/StatusBadge.tsx`
 - Create: `src/lib/payment-status.ts`
@@ -1213,7 +1425,9 @@ git commit -m "test(merchant): end-to-end onboarding flow integration"
 > If Phase 6 already created `src/components/ui/StatusBadge.tsx` or `src/lib/payment-status.ts`, skip creating that file and reuse it; only add anything missing. The component must render a text label + dot (status never by color alone).
 
 **Interfaces:**
+
 - Produces:
+
   ```typescript
   // src/lib/payment-status.ts
   export type StatusTone = "settled" | "pending" | "failed" | "neutral";
@@ -1257,14 +1471,23 @@ import type { PaymentStatus } from "@/generated/prisma";
 export type StatusTone = "settled" | "pending" | "failed" | "neutral";
 
 const LABELS: Record<PaymentStatus, string> = {
-  CREATED: "Created", QUOTED: "Quoted", AUTHORIZED: "Authorized",
-  STELLAR_SUBMITTED: "Submitting", STELLAR_CONFIRMED: "Confirmed",
-  PDAX_TRADING: "Pending Trade", PDAX_TRADED: "Traded",
-  PAYOUT_SUBMITTED: "Paying Out", SETTLED: "Settled",
-  FAILED: "Failed", REFUND_PENDING: "Refund Pending", REFUNDED: "Refunded",
+  CREATED: "Created",
+  QUOTED: "Quoted",
+  AUTHORIZED: "Authorized",
+  STELLAR_SUBMITTED: "Submitting",
+  STELLAR_CONFIRMED: "Confirmed",
+  PDAX_TRADING: "Pending Trade",
+  PDAX_TRADED: "Traded",
+  PAYOUT_SUBMITTED: "Paying Out",
+  SETTLED: "Settled",
+  FAILED: "Failed",
+  REFUND_PENDING: "Refund Pending",
+  REFUNDED: "Refunded",
 };
 
-export function statusLabel(s: PaymentStatus): string { return LABELS[s]; }
+export function statusLabel(s: PaymentStatus): string {
+  return LABELS[s];
+}
 
 export function statusTone(s: PaymentStatus): StatusTone {
   if (s === "SETTLED") return "settled";
@@ -1284,13 +1507,19 @@ const TONE: Record<StatusTone, { chip: string; dot: string; pulse: boolean }> = 
   settled: { chip: "bg-primary/10 text-primary", dot: "bg-primary", pulse: false },
   pending: { chip: "bg-secondary/10 text-secondary", dot: "bg-secondary", pulse: true },
   failed: { chip: "bg-error/10 text-error", dot: "bg-error", pulse: false },
-  neutral: { chip: "bg-surface-container-high text-on-surface-variant", dot: "bg-outline", pulse: false },
+  neutral: {
+    chip: "bg-surface-container-high text-on-surface-variant",
+    dot: "bg-outline",
+    pulse: false,
+  },
 };
 
 export function StatusBadge({ status }: { status: PaymentStatus }) {
   const tone = TONE[statusTone(status)];
   return (
-    <span className={`inline-flex items-center gap-stack-sm rounded-full px-3 py-1 text-label-md ${tone.chip}`}>
+    <span
+      className={`inline-flex items-center gap-stack-sm rounded-full px-3 py-1 text-label-md ${tone.chip}`}
+    >
       <span
         data-testid="status-dot"
         className={`h-1.5 w-1.5 rounded-full ${tone.dot} ${tone.pulse ? "motion-safe:animate-pulse" : ""}`}
@@ -1350,6 +1579,7 @@ git commit -m "feat(ui): FloatingInput + StatusBadge primitives + payment-status
 ### Task 9: Merchant layout — SideNav, mobile bottom nav, setup banner
 
 **Files:**
+
 - Create: `src/app/(merchant)/layout.tsx`
 - Create: `src/components/merchant/SideNav.tsx`
 - Create: `src/components/merchant/MobileNav.tsx`
@@ -1357,6 +1587,7 @@ git commit -m "feat(ui): FloatingInput + StatusBadge primitives + payment-status
 - Test: `tests/e2e/merchant-shell.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `requireRole` (`@/server/auth/sessions`), `getMerchantForUserOrNull`/`merchantSetupState` (`@/server/merchant/service`).
 - Produces: the `(merchant)` route-group shell. `SideNav` (lg+, `w-64`) + `MobileNav` (`h-16`, below `lg`) sharing one `MERCHANT_NAV` array; `SetupBanner` shown whenever `!setup.isComplete`.
 
@@ -1402,7 +1633,9 @@ export function SideNav({ businessName, pathname }: { businessName: string; path
   return (
     <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-outline-variant bg-surface-container-low p-stack-lg lg:flex">
       <div className="mb-stack-lg flex items-center gap-stack-sm">
-        <span className="material-symbols-outlined icon-filled text-primary">account_balance_wallet</span>
+        <span className="material-symbols-outlined icon-filled text-primary">
+          account_balance_wallet
+        </span>
         <span className="text-headline-md font-bold text-primary">HeyPay</span>
       </div>
       <div className="mb-stack-lg rounded-lg bg-surface-container p-stack-md">
@@ -1423,14 +1656,19 @@ export function SideNav({ businessName, pathname }: { businessName: string; path
                   : "text-on-surface-variant hover:bg-surface-container-high"
               }`}
             >
-              <span className={`material-symbols-outlined ${active ? "icon-filled" : ""}`}>{item.icon}</span>
+              <span className={`material-symbols-outlined ${active ? "icon-filled" : ""}`}>
+                {item.icon}
+              </span>
               {item.label}
             </Link>
           );
         })}
       </nav>
       <div className="mt-stack-lg flex flex-col gap-stack-sm border-t border-outline-variant pt-stack-md">
-        <Link href="/merchant/settings" className="flex min-h-11 items-center gap-stack-md px-stack-md py-stack-sm text-body-md text-on-surface-variant hover:bg-surface-container-high">
+        <Link
+          href="/merchant/settings"
+          className="flex min-h-11 items-center gap-stack-md px-stack-md py-stack-sm text-body-md text-on-surface-variant hover:bg-surface-container-high"
+        >
           <span className="material-symbols-outlined">support_agent</span>Support
         </Link>
         <form action="/api/auth/logout" method="post">
@@ -1467,7 +1705,9 @@ export function MobileNav({ pathname }: { pathname: string }) {
               active ? "text-primary" : "text-on-surface-variant"
             }`}
           >
-            <span className={`material-symbols-outlined ${active ? "icon-filled" : ""}`}>{item.icon}</span>
+            <span className={`material-symbols-outlined ${active ? "icon-filled" : ""}`}>
+              {item.icon}
+            </span>
             {item.label}
           </Link>
         );
@@ -1494,8 +1734,12 @@ export function SetupBanner({ setup }: { setup: SetupState }) {
     <div className="mb-stack-lg rounded-xl border border-secondary/30 bg-secondary-container/40 p-stack-lg">
       <div className="flex flex-wrap items-center justify-between gap-stack-md">
         <div>
-          <p className="text-headline-md text-on-secondary-container">Finish setting up your business</p>
-          <p className="text-body-sm text-on-surface-variant">Complete every step to start accepting payments.</p>
+          <p className="text-headline-md text-on-secondary-container">
+            Finish setting up your business
+          </p>
+          <p className="text-body-sm text-on-surface-variant">
+            Complete every step to start accepting payments.
+          </p>
         </div>
         <Link
           href="/merchant/onboarding"
@@ -1508,7 +1752,9 @@ export function SetupBanner({ setup }: { setup: SetupState }) {
       <ul className="mt-stack-md flex flex-wrap gap-stack-md">
         {steps.map((s) => (
           <li key={s.label} className="flex items-center gap-stack-sm text-body-sm">
-            <span className={`material-symbols-outlined ${s.done ? "icon-filled text-primary" : "text-outline"}`}>
+            <span
+              className={`material-symbols-outlined ${s.done ? "icon-filled text-primary" : "text-outline"}`}
+            >
               {s.done ? "check_circle" : "radio_button_unchecked"}
             </span>
             {s.label}
@@ -1573,6 +1819,7 @@ git commit -m "feat(merchant): route-group layout with SideNav, mobile nav, setu
 ### Task 10: Onboarding wizard — 4-step flow, progress bar, live payer preview
 
 **Files:**
+
 - Create: `src/app/(merchant)/merchant/onboarding/page.tsx`
 - Create: `src/components/merchant/onboarding/OnboardingWizard.tsx`
 - Create: `src/components/merchant/onboarding/ProgressBar.tsx`
@@ -1582,8 +1829,10 @@ git commit -m "feat(merchant): route-group layout with SideNav, mobile nav, setu
 - Test: `tests/components/merchant/onboarding-wizard.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `FloatingInput`, `SUPPORTED_BANKS` (`@/server/merchant/banks`), `MerchantDto`/`SetupState` types.
 - Produces:
+
   ```typescript
   // src/lib/client/upload.ts
   export async function presignAndUpload(file: File, prefix: "qrph" | "logo"): Promise<string>; // returns object key
@@ -1592,7 +1841,12 @@ git commit -m "feat(merchant): route-group layout with SideNav, mobile nav, setu
   // src/components/merchant/onboarding/ProgressBar.tsx
   export function ProgressBar({ step, total }: { step: number; total?: number }): JSX.Element;
   // src/components/merchant/onboarding/PhonePreview.tsx
-  export function PhonePreview(props: { businessName: string; city?: string; bankLast4?: string; amount?: string }): JSX.Element;
+  export function PhonePreview(props: {
+    businessName: string;
+    city?: string;
+    bankLast4?: string;
+    amount?: string;
+  }): JSX.Element;
   // src/components/merchant/onboarding/OnboardingWizard.tsx
   export function OnboardingWizard({ initial }: { initial: MerchantDto | null }): JSX.Element;
   ```
@@ -1641,7 +1895,11 @@ export async function presignAndUpload(file: File, prefix: "qrph" | "logo"): Pro
     body: JSON.stringify({ prefix, contentType: file.type, maxBytes: 5_000_000 }),
   });
   if (!res.ok) throw new Error("Could not prepare upload");
-  const { url, fields, key } = (await res.json()) as { url: string; fields: Record<string, string>; key: string };
+  const { url, fields, key } = (await res.json()) as {
+    url: string;
+    fields: Record<string, string>;
+    key: string;
+  };
   const form = new FormData();
   Object.entries(fields).forEach(([k, v]) => form.append(k, v));
   form.append("file", file);
@@ -1712,9 +1970,13 @@ export function PhonePreview({
 }) {
   return (
     <div className="mx-auto w-[280px] rounded-xl border-8 border-on-surface/90 bg-background p-stack-md shadow-lg">
-      <p className="mb-stack-md text-center text-label-md uppercase text-on-surface-variant">Payer preview</p>
+      <p className="mb-stack-md text-center text-label-md uppercase text-on-surface-variant">
+        Payer preview
+      </p>
       <div className="tonal-card rounded-lg p-stack-lg text-center">
-        <span className="material-symbols-outlined icon-filled text-3xl text-primary">storefront</span>
+        <span className="material-symbols-outlined icon-filled text-3xl text-primary">
+          storefront
+        </span>
         <p data-testid="preview-name" className="mt-stack-sm text-headline-md text-on-surface">
           {businessName || "Your business"}
         </p>
@@ -1753,7 +2015,11 @@ import { PhonePreview } from "./PhonePreview";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 async function callApi(path: string, method: string, body?: unknown) {
-  const res = await fetch(path, { method, headers: JSON_HEADERS, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(path, {
+    method,
+    headers: JSON_HEADERS,
+    body: body ? JSON.stringify(body) : undefined,
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error?.message ?? "Request failed");
   return data;
@@ -1778,14 +2044,22 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
   async function run(fn: () => Promise<void>) {
     setBusy(true);
     setError(null);
-    try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : "Something went wrong"); }
-    finally { setBusy(false); }
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const submitStep1 = () =>
     run(async () => {
       if (hasMerchant) await callApi("/api/merchant/me", "PATCH", { businessName });
-      else { await callApi("/api/merchant", "POST", { businessName }); setHasMerchant(true); }
+      else {
+        await callApi("/api/merchant", "POST", { businessName });
+        setHasMerchant(true);
+      }
       setStep(2);
     });
 
@@ -1800,7 +2074,11 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
     run(async () => {
       const raw = await decodeImageToRaw(file);
       let imageKey: string | undefined;
-      try { imageKey = await presignAndUpload(file, "qrph"); } catch { imageKey = undefined; }
+      try {
+        imageKey = await presignAndUpload(file, "qrph");
+      } catch {
+        imageKey = undefined;
+      }
       const data = await callApi("/api/merchant/qrph", "POST", { raw, imageKey });
       setQrphRaw(raw);
       setQrName(data.merchant.qrphMerchantName ?? "");
@@ -1809,7 +2087,9 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
 
   const submitStep3 = () =>
     run(async () => {
-      if (!qrphRaw) { await callApi("/api/merchant/qrph", "POST", { raw: qrphRaw }); }
+      if (!qrphRaw) {
+        await callApi("/api/merchant/qrph", "POST", { raw: qrphRaw });
+      }
       setStep(4);
     });
 
@@ -1822,11 +2102,16 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
   return (
     <div className="grid gap-margin-desktop lg:grid-cols-[1fr_320px]">
       <div className="tonal-card rounded-xl p-stack-lg lg:p-margin-desktop">
-        <p className="mb-stack-sm text-label-md uppercase text-on-surface-variant">Step {step} of 4</p>
+        <p className="mb-stack-sm text-label-md uppercase text-on-surface-variant">
+          Step {step} of 4
+        </p>
         <ProgressBar step={step} />
 
         {error && (
-          <p role="alert" className="mt-stack-md rounded-lg bg-error/10 px-stack-md py-stack-sm text-body-sm text-error">
+          <p
+            role="alert"
+            className="mt-stack-md rounded-lg bg-error/10 px-stack-md py-stack-sm text-body-sm text-error"
+          >
             {error}
           </p>
         )}
@@ -1835,43 +2120,83 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
           {step === 1 && (
             <>
               <h1 className="text-headline-lg-mobile lg:text-headline-lg">Business identity</h1>
-              <FloatingInput id="businessName" label="Business name" value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)} autoComplete="organization" />
+              <FloatingInput
+                id="businessName"
+                label="Business name"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                autoComplete="organization"
+              />
             </>
           )}
 
           {step === 2 && (
             <>
               <h1 className="text-headline-lg-mobile lg:text-headline-lg">Settlement account</h1>
-              <p className="text-body-sm text-on-surface-variant">PHP from each payment lands here.</p>
+              <p className="text-body-sm text-on-surface-variant">
+                PHP from each payment lands here.
+              </p>
               <fieldset className="grid grid-cols-2 gap-stack-md">
-                <legend className="mb-stack-sm text-label-md uppercase text-on-surface-variant">Bank or wallet</legend>
+                <legend className="mb-stack-sm text-label-md uppercase text-on-surface-variant">
+                  Bank or wallet
+                </legend>
                 {SUPPORTED_BANKS.map((b) => (
-                  <label key={b.code}
-                    className="flex min-h-11 cursor-pointer items-center gap-stack-md rounded-lg border-2 border-outline-variant p-stack-md has-[:checked]:border-primary has-[:checked]:bg-primary-container/30">
-                    <input type="radio" name="bank" value={b.code} className="sr-only"
-                      checked={bankCode === b.code} onChange={() => setBankCode(b.code)} />
+                  <label
+                    key={b.code}
+                    className="flex min-h-11 cursor-pointer items-center gap-stack-md rounded-lg border-2 border-outline-variant p-stack-md has-[:checked]:border-primary has-[:checked]:bg-primary-container/30"
+                  >
+                    <input
+                      type="radio"
+                      name="bank"
+                      value={b.code}
+                      className="sr-only"
+                      checked={bankCode === b.code}
+                      onChange={() => setBankCode(b.code)}
+                    />
                     <span className="material-symbols-outlined text-primary">account_balance</span>
                     <span className="text-body-sm font-medium">{b.name}</span>
                   </label>
                 ))}
               </fieldset>
-              <FloatingInput id="accountName" label="Account name" value={accountName}
-                onChange={(e) => setAccountName(e.target.value)} autoComplete="name" />
-              <FloatingInput id="accountNumber" label="Account number" inputMode="numeric" value={accountNumber}
-                onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))} />
+              <FloatingInput
+                id="accountName"
+                label="Account name"
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+                autoComplete="name"
+              />
+              <FloatingInput
+                id="accountNumber"
+                label="Account number"
+                inputMode="numeric"
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
+              />
             </>
           )}
 
           {step === 3 && (
             <>
               <h1 className="text-headline-lg-mobile lg:text-headline-lg">Link your QRPH</h1>
-              <p className="text-body-sm text-on-surface-variant">Upload a photo of your existing QRPH standee.</p>
+              <p className="text-body-sm text-on-surface-variant">
+                Upload a photo of your existing QRPH standee.
+              </p>
               <label className="relative flex h-48 cursor-pointer flex-col items-center justify-center gap-stack-sm overflow-hidden rounded-xl border-2 border-dashed border-outline-variant bg-surface-container-low">
-                <span className="material-symbols-outlined text-4xl text-primary">qr_code_scanner</span>
-                <span className="text-body-md">{qrphRaw ? "QRPH linked — replace?" : "Upload QRPH image"}</span>
-                <input type="file" accept="image/*" className="sr-only"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) onQrFile(f); }} />
+                <span className="material-symbols-outlined text-4xl text-primary">
+                  qr_code_scanner
+                </span>
+                <span className="text-body-md">
+                  {qrphRaw ? "QRPH linked — replace?" : "Upload QRPH image"}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onQrFile(f);
+                  }}
+                />
                 {busy && (
                   <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary motion-safe:animate-[scan_2s_linear_infinite]" />
                 )}
@@ -1898,21 +2223,31 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
 
         <div className="mt-margin-desktop flex items-center justify-between">
           {step > 1 ? (
-            <button onClick={() => setStep(step - 1)} disabled={busy}
-              className="min-h-11 rounded-full border-2 border-outline-variant px-stack-lg py-stack-sm text-body-md text-on-surface">
+            <button
+              onClick={() => setStep(step - 1)}
+              disabled={busy}
+              className="min-h-11 rounded-full border-2 border-outline-variant px-stack-lg py-stack-sm text-body-md text-on-surface"
+            >
               Back
             </button>
-          ) : <span />}
+          ) : (
+            <span />
+          )}
           {step < 4 ? (
-            <button disabled={busy}
+            <button
+              disabled={busy}
               onClick={step === 1 ? submitStep1 : step === 2 ? submitStep2 : submitStep3}
-              className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-secondary px-stack-lg py-stack-sm text-body-md font-semibold text-on-secondary transition-transform hover:-translate-y-0.5 disabled:opacity-60">
+              className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-secondary px-stack-lg py-stack-sm text-body-md font-semibold text-on-secondary transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+            >
               {busy ? "Saving…" : "Continue"}
               <span className="material-symbols-outlined">arrow_forward</span>
             </button>
           ) : (
-            <button disabled={busy} onClick={goLive}
-              className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary shadow-lg shadow-primary/20 disabled:opacity-60">
+            <button
+              disabled={busy}
+              onClick={goLive}
+              className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary shadow-lg shadow-primary/20 disabled:opacity-60"
+            >
               {busy ? "Going live…" : "Go live"}
               <span className="material-symbols-outlined icon-filled">verified</span>
             </button>
@@ -1972,6 +2307,7 @@ git commit -m "feat(merchant): 4-step onboarding wizard with progress bar + live
 ### Task 11: Merchant dashboard — earnings cards, transactions table, QR + bank card, support
 
 **Files:**
+
 - Create: `src/app/(merchant)/merchant/dashboard/page.tsx`
 - Create: `src/components/merchant/EarningsCards.tsx`
 - Create: `src/components/merchant/TransactionsTable.tsx`
@@ -1979,6 +2315,7 @@ git commit -m "feat(merchant): 4-step onboarding wizard with progress bar + live
 - Test: `tests/e2e/merchant-dashboard.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `requireRole`, `getMerchantForUser`/`getMerchantEarnings`/`listMerchantTransactions` (service), `StatusBadge`, `displayPhp`/`displayXlm`/`dec` (`@/lib/money`).
 - Produces: `EarningsCards({ earnings })`, `TransactionsTable({ items })`, `BusinessSummaryCard({ merchant })` — reused by Tasks 12/13.
 
@@ -1992,7 +2329,9 @@ test("dashboard shows earnings and a settled transaction row", async ({ page }) 
   await loginAs(page, {
     role: "MERCHANT",
     merchant: { status: "ACTIVE" },
-    payments: [{ status: "SETTLED", netSettledPhp: "150.00", amountXlm: "18.7500000", customer: "juan" }],
+    payments: [
+      { status: "SETTLED", netSettledPhp: "150.00", amountXlm: "18.7500000", customer: "juan" },
+    ],
   });
   await page.goto("/merchant/dashboard");
   await expect(page.getByText("Total Settled")).toBeVisible();
@@ -2020,17 +2359,26 @@ export function EarningsCards({ earnings }: { earnings: MerchantEarnings }) {
     <div className="grid grid-cols-1 gap-stack-lg md:grid-cols-2">
       <div className="tonal-card rounded-xl p-stack-lg">
         <p className="text-label-md uppercase text-on-surface-variant">Total Settled</p>
-        <p className="mt-stack-sm text-display-lg text-primary">{displayPhp(dec(earnings.totalSettledPhp))}</p>
+        <p className="mt-stack-sm text-display-lg text-primary">
+          {displayPhp(dec(earnings.totalSettledPhp))}
+        </p>
         {mom !== null && (
-          <p className={`mt-stack-sm inline-flex items-center gap-stack-sm text-body-sm ${momUp ? "text-primary" : "text-error"}`}>
-            <span className="material-symbols-outlined text-base">{momUp ? "trending_up" : "trending_down"}</span>
-            {momUp ? "+" : ""}{mom}% vs last month
+          <p
+            className={`mt-stack-sm inline-flex items-center gap-stack-sm text-body-sm ${momUp ? "text-primary" : "text-error"}`}
+          >
+            <span className="material-symbols-outlined text-base">
+              {momUp ? "trending_up" : "trending_down"}
+            </span>
+            {momUp ? "+" : ""}
+            {mom}% vs last month
           </p>
         )}
       </div>
       <div className="tonal-card rounded-xl p-stack-lg">
         <p className="text-label-md uppercase text-on-surface-variant">Pending XLM Trades</p>
-        <p className="mt-stack-sm font-mono text-headline-md text-secondary">{displayXlm(dec(earnings.pendingXlm))}</p>
+        <p className="mt-stack-sm font-mono text-headline-md text-secondary">
+          {displayXlm(dec(earnings.pendingXlm))}
+        </p>
         <p className="mt-stack-sm inline-flex items-center gap-stack-sm text-body-sm text-on-surface-variant">
           <span className="h-1.5 w-1.5 rounded-full bg-secondary motion-safe:animate-pulse" />
           Converting to PHP
@@ -2074,13 +2422,17 @@ export function TransactionsTable({ items }: { items: MerchantTxItem[] }) {
                 <p className="font-mono text-mono-data text-outline">{t.reference}</p>
               </td>
               <td className="px-stack-md py-stack-md">
-                <p className="font-mono text-mono-data font-semibold text-on-surface">{t.amountXlm} XLM</p>
+                <p className="font-mono text-mono-data font-semibold text-on-surface">
+                  {t.amountXlm} XLM
+                </p>
                 <p className="font-mono text-mono-data text-outline">≈ ₱{t.amountPhp}</p>
               </td>
               <td className="hidden px-stack-md py-stack-md font-mono text-mono-data text-on-surface md:table-cell">
                 {t.netSettledPhp ? `₱${t.netSettledPhp}` : "—"}
               </td>
-              <td className="px-stack-md py-stack-md"><StatusBadge status={t.status} /></td>
+              <td className="px-stack-md py-stack-md">
+                <StatusBadge status={t.status} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -2109,8 +2461,10 @@ export function BusinessSummaryCard({ merchant }: { merchant: MerchantDto }) {
           {merchant.settlementBankName} •••• {merchant.accountNumberLast4}
         </p>
       </div>
-      <Link href="/merchant/qr"
-        className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-lg border-2 border-primary px-stack-md py-stack-sm text-body-md font-medium text-primary">
+      <Link
+        href="/merchant/qr"
+        className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-lg border-2 border-primary px-stack-md py-stack-sm text-body-md font-medium text-primary"
+      >
         View &amp; share QR
         <span className="material-symbols-outlined">arrow_forward</span>
       </Link>
@@ -2125,7 +2479,10 @@ export function BusinessSummaryCard({ merchant }: { merchant: MerchantDto }) {
 import Link from "next/link";
 import { requireRole } from "@/server/auth/sessions";
 import {
-  getMerchantForUser, getMerchantEarnings, listMerchantTransactions, serializeMerchant,
+  getMerchantForUser,
+  getMerchantEarnings,
+  listMerchantTransactions,
+  serializeMerchant,
 } from "@/server/merchant/service";
 import { EarningsCards } from "@/components/merchant/EarningsCards";
 import { TransactionsTable } from "@/components/merchant/TransactionsTable";
@@ -2147,7 +2504,9 @@ export default async function MerchantDashboard() {
         <section className="lg:col-span-2">
           <div className="mb-stack-md flex items-center justify-between">
             <h2 className="text-headline-md">Business transactions</h2>
-            <Link href="/merchant/transactions" className="text-body-sm text-primary">View all</Link>
+            <Link href="/merchant/transactions" className="text-body-sm text-primary">
+              View all
+            </Link>
           </div>
           <TransactionsTable items={txPage.items} />
         </section>
@@ -2158,8 +2517,12 @@ export default async function MerchantDashboard() {
               <span className="material-symbols-outlined text-primary">support_agent</span>
               <p className="text-headline-md">Need help?</p>
             </div>
-            <p className="text-body-sm text-on-surface-variant">Our team is here for settlement or QR questions.</p>
-            <Link href="/merchant/settings" className="text-body-sm font-medium text-primary">Contact support</Link>
+            <p className="text-body-sm text-on-surface-variant">
+              Our team is here for settlement or QR questions.
+            </p>
+            <Link href="/merchant/settings" className="text-body-sm font-medium text-primary">
+              Contact support
+            </Link>
           </div>
         </div>
       </div>
@@ -2185,6 +2548,7 @@ git commit -m "feat(merchant): dashboard — earnings cards, transactions table,
 ### Task 12: Settlement history page + filters + CSV export
 
 **Files:**
+
 - Create: `src/app/(merchant)/merchant/transactions/page.tsx`
 - Create: `src/components/merchant/TransactionFilters.tsx`
 - Create: `src/app/api/merchant/transactions/export/route.ts`
@@ -2193,14 +2557,24 @@ git commit -m "feat(merchant): dashboard — earnings cards, transactions table,
 - Test: `tests/api/merchant/export.test.ts`
 
 **Interfaces:**
+
 - Consumes: `requireRole`, `parseQuery`, `txQuerySchema`, `listMerchantTransactions`/`allMerchantTransactions`/`getMerchantForUser`, `TransactionsTable`.
 - Produces:
+
   ```typescript
   // src/lib/csv.ts
   export function toCsv(headers: string[], rows: (string | number | null)[][]): string; // RFC-4180 quoting
   // GET /api/merchant/transactions/export?status&from&to -> text/csv attachment
   // src/components/merchant/TransactionFilters.tsx
-  export function TransactionFilters({ status, from, to }: { status?: string; from?: string; to?: string }): JSX.Element;
+  export function TransactionFilters({
+    status,
+    from,
+    to,
+  }: {
+    status?: string;
+    from?: string;
+    to?: string;
+  }): JSX.Element;
   ```
 
 - [ ] **Step 1: Write the failing tests**
@@ -2212,7 +2586,13 @@ import { describe, it, expect } from "vitest";
 import { toCsv } from "@/lib/csv";
 
 it("quotes fields containing commas, quotes, and newlines", () => {
-  const csv = toCsv(["a", "b"], [["x,y", 'he said "hi"'], ["line\nbreak", null]]);
+  const csv = toCsv(
+    ["a", "b"],
+    [
+      ["x,y", 'he said "hi"'],
+      ["line\nbreak", null],
+    ],
+  );
   expect(csv).toBe('a,b\r\n"x,y","he said ""hi"""\r\n"line\nbreak",\r\n');
 });
 ```
@@ -2229,7 +2609,9 @@ const USER = { id: "", username: "biz", role: "MERCHANT" as const, isActive: tru
 mockSession(USER);
 const ctx = { params: Promise.resolve({}) };
 
-beforeEach(async () => { await resetDb(); });
+beforeEach(async () => {
+  await resetDb();
+});
 
 it("returns a text/csv attachment of settlement rows", async () => {
   const { merchant, user } = await seedMerchantUser({});
@@ -2238,7 +2620,8 @@ it("returns a text/csv attachment of settlement rows", async () => {
   const { GET } = await import("@/app/api/merchant/transactions/export/route");
   const res = await GET(
     new NextRequest("http://localhost:3000/api/merchant/transactions/export?status=SETTLED", {
-      method: "GET", headers: { origin: "http://localhost:3000" },
+      method: "GET",
+      headers: { origin: "http://localhost:3000" },
     }),
     ctx,
   );
@@ -2288,7 +2671,15 @@ export const GET = route(async (req) => {
 
   const csv = toCsv(
     ["Reference", "Customer", "Received XLM", "Amount PHP", "Settled PHP", "Status", "Date"],
-    rows.map((r) => [r.reference, r.customer, r.amountXlm, r.amountPhp, r.netSettledPhp, r.status, r.createdAt]),
+    rows.map((r) => [
+      r.reference,
+      r.customer,
+      r.amountXlm,
+      r.amountPhp,
+      r.netSettledPhp,
+      r.status,
+      r.createdAt,
+    ]),
   );
   const filename = `heypay-settlements-${new Date().toISOString().slice(0, 10)}.csv`;
   return new Response(csv, {
@@ -2311,7 +2702,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 const STATUSES = ["", "SETTLED", "PDAX_TRADING", "PAYOUT_SUBMITTED", "FAILED", "REFUNDED"];
 
-export function TransactionFilters({ status, from, to }: { status?: string; from?: string; to?: string }) {
+export function TransactionFilters({
+  status,
+  from,
+  to,
+}: {
+  status?: string;
+  from?: string;
+  to?: string;
+}) {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -2327,23 +2726,40 @@ export function TransactionFilters({ status, from, to }: { status?: string; from
     <form className="flex flex-wrap items-end gap-stack-md">
       <label className="flex flex-col gap-stack-sm text-label-md uppercase text-on-surface-variant">
         Status
-        <select defaultValue={status ?? ""} onChange={(e) => update("status", e.target.value)}
-          className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md text-body-md text-on-surface">
-          {STATUSES.map((s) => <option key={s} value={s}>{s || "All"}</option>)}
+        <select
+          defaultValue={status ?? ""}
+          onChange={(e) => update("status", e.target.value)}
+          className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md text-body-md text-on-surface"
+        >
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s || "All"}
+            </option>
+          ))}
         </select>
       </label>
       <label className="flex flex-col gap-stack-sm text-label-md uppercase text-on-surface-variant">
         From
-        <input type="date" defaultValue={from ?? ""} onChange={(e) => update("from", e.target.value)}
-          className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md text-body-md" />
+        <input
+          type="date"
+          defaultValue={from ?? ""}
+          onChange={(e) => update("from", e.target.value)}
+          className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md text-body-md"
+        />
       </label>
       <label className="flex flex-col gap-stack-sm text-label-md uppercase text-on-surface-variant">
         To
-        <input type="date" defaultValue={to ?? ""} onChange={(e) => update("to", e.target.value)}
-          className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md text-body-md" />
+        <input
+          type="date"
+          defaultValue={to ?? ""}
+          onChange={(e) => update("to", e.target.value)}
+          className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md text-body-md"
+        />
       </label>
-      <a href={`/api/merchant/transactions/export?${params.toString()}`}
-        className="inline-flex min-h-11 items-center gap-stack-sm rounded-lg bg-primary px-stack-md py-stack-sm text-body-md font-medium text-on-primary">
+      <a
+        href={`/api/merchant/transactions/export?${params.toString()}`}
+        className="inline-flex min-h-11 items-center gap-stack-sm rounded-lg bg-primary px-stack-md py-stack-sm text-body-md font-medium text-on-primary"
+      >
         <span className="material-symbols-outlined">download</span>Export CSV
       </a>
     </form>
@@ -2369,7 +2785,13 @@ export default async function MerchantTransactionsPage({
   const user = await requireRole("MERCHANT");
   const merchant = await getMerchantForUser(user.id);
   const sp = await searchParams;
-  const q = txQuerySchema.parse({ status: sp.status, from: sp.from, to: sp.to, cursor: sp.cursor, limit: 25 });
+  const q = txQuerySchema.parse({
+    status: sp.status,
+    from: sp.from,
+    to: sp.to,
+    cursor: sp.cursor,
+    limit: 25,
+  });
   const page = await listMerchantTransactions(merchant.id, q);
 
   const nextParams = new URLSearchParams();
@@ -2384,8 +2806,10 @@ export default async function MerchantTransactionsPage({
       <TransactionFilters status={sp.status} from={sp.from} to={sp.to} />
       <TransactionsTable items={page.items} />
       {page.nextCursor && (
-        <Link href={`/merchant/transactions?${nextParams.toString()}`}
-          className="self-center rounded-full border-2 border-primary px-stack-lg py-stack-sm text-body-md text-primary">
+        <Link
+          href={`/merchant/transactions?${nextParams.toString()}`}
+          className="self-center rounded-full border-2 border-primary px-stack-lg py-stack-sm text-body-md text-primary"
+        >
           Load more
         </Link>
       )}
@@ -2411,11 +2835,13 @@ git commit -m "feat(merchant): settlement history page with filters + CSV export
 ### Task 13: Business QR page — render, download, share payment link
 
 **Files:**
+
 - Create: `src/app/(merchant)/merchant/qr/page.tsx`
 - Create: `src/components/merchant/BusinessQrCard.tsx`
 - Test: `tests/e2e/merchant-qr.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `requireRole`, `getMerchantForUser`, `QRCode` (`qrcode`, server-side render to SVG string), `BusinessQrCard` (client: download + copy link).
 - Produces: `BusinessQrCard({ qrSvg, paymentLink, businessName })`.
 
@@ -2483,15 +2909,21 @@ export function BusinessQrCard({
         dangerouslySetInnerHTML={{ __html: qrSvg }}
       />
       <div className="flex w-full items-center gap-stack-sm rounded-lg bg-surface-container-low px-stack-md py-stack-sm">
-        <span className="truncate font-mono text-mono-data text-on-surface-variant">{paymentLink}</span>
+        <span className="truncate font-mono text-mono-data text-on-surface-variant">
+          {paymentLink}
+        </span>
       </div>
       <div className="flex w-full gap-stack-md">
-        <button onClick={download}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary shadow-lg shadow-primary/20">
+        <button
+          onClick={download}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary shadow-lg shadow-primary/20"
+        >
           <span className="material-symbols-outlined">download</span>Download
         </button>
-        <button onClick={copy}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full border-2 border-primary px-stack-lg py-stack-sm text-body-md font-medium text-primary">
+        <button
+          onClick={copy}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full border-2 border-primary px-stack-lg py-stack-sm text-body-md font-medium text-primary"
+        >
           <span className="material-symbols-outlined">{copied ? "check" : "content_copy"}</span>
           {copied ? "Copied" : "Copy link"}
         </button>
@@ -2518,15 +2950,23 @@ export default async function MerchantQrPage() {
     return (
       <div className="tonal-card mx-auto max-w-lg rounded-xl p-margin-desktop text-center">
         <p className="text-headline-md">No QRPH linked yet</p>
-        <Link href="/merchant/onboarding" className="mt-stack-md inline-block text-primary">Link your QRPH</Link>
+        <Link href="/merchant/onboarding" className="mt-stack-md inline-block text-primary">
+          Link your QRPH
+        </Link>
       </div>
     );
   }
 
-  const qrSvg = await QRCode.toString(merchant.qrphRaw, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
+  const qrSvg = await QRCode.toString(merchant.qrphRaw, {
+    type: "svg",
+    margin: 1,
+    errorCorrectionLevel: "M",
+  });
   const paymentLink = `${process.env.APP_URL ?? ""}/pay?m=${merchant.id}`;
 
-  return <BusinessQrCard qrSvg={qrSvg} paymentLink={paymentLink} businessName={merchant.businessName} />;
+  return (
+    <BusinessQrCard qrSvg={qrSvg} paymentLink={paymentLink} businessName={merchant.businessName} />
+  );
 }
 ```
 
@@ -2547,11 +2987,13 @@ git commit -m "feat(merchant): business QR page — render, download SVG, copy p
 ### Task 14: Merchant settings — business name/logo, bank re-entry, re-link QRPH, password
 
 **Files:**
+
 - Create: `src/app/(merchant)/merchant/settings/page.tsx`
 - Create: `src/components/merchant/SettingsForms.tsx`
 - Test: `tests/components/merchant/settings-forms.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `requireRole`, `getMerchantForUser`/`serializeMerchant`, `FloatingInput`, `SUPPORTED_BANKS`, `presignAndUpload`, `decodeImageToRaw`. Reuses existing endpoints: `PATCH /api/merchant/me` (name+logoKey), `POST /api/merchant/settlement`, `POST /api/merchant/qrph`, `POST /api/auth/password`.
 - Produces: `SettingsForms({ merchant }: { merchant: MerchantDto })` — a client component with four independent save sections.
 
@@ -2604,7 +3046,11 @@ import type { MerchantDto } from "@/server/merchant/service";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 async function call(path: string, method: string, body?: unknown) {
-  const res = await fetch(path, { method, headers: JSON_HEADERS, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(path, {
+    method,
+    headers: JSON_HEADERS,
+    body: body ? JSON.stringify(body) : undefined,
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error?.message ?? "Request failed");
   return data;
@@ -2622,9 +3068,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Note({ msg }: { msg: { kind: "ok" | "err"; text: string } | null }) {
   if (!msg) return null;
   return (
-    <p role="status" className={`rounded-lg px-stack-md py-stack-sm text-body-sm ${
-      msg.kind === "ok" ? "bg-primary/10 text-primary" : "bg-error/10 text-error"
-    }`}>{msg.text}</p>
+    <p
+      role="status"
+      className={`rounded-lg px-stack-md py-stack-sm text-body-sm ${
+        msg.kind === "ok" ? "bg-primary/10 text-primary" : "bg-error/10 text-error"
+      }`}
+    >
+      {msg.text}
+    </p>
   );
 }
 
@@ -2636,41 +3087,72 @@ export function SettingsForms({ merchant }: { merchant: MerchantDto }) {
   const [pw, setPw] = useState({ currentPassword: "", newPassword: "" });
   const [note, setNote] = useState<Record<string, { kind: "ok" | "err"; text: string } | null>>({});
 
-  const set = (key: string, kind: "ok" | "err", text: string) => setNote((n) => ({ ...n, [key]: { kind, text } }));
+  const set = (key: string, kind: "ok" | "err", text: string) =>
+    setNote((n) => ({ ...n, [key]: { kind, text } }));
   const guard = (key: string, fn: () => Promise<void>) => async () => {
     setNote((n) => ({ ...n, [key]: null }));
-    try { await fn(); set(key, "ok", "Saved"); }
-    catch (e) { set(key, "err", e instanceof Error ? e.message : "Failed"); }
+    try {
+      await fn();
+      set(key, "ok", "Saved");
+    } catch (e) {
+      set(key, "err", e instanceof Error ? e.message : "Failed");
+    }
   };
 
-  const saveBusiness = guard("biz", async () => { await call("/api/merchant/me", "PATCH", { businessName }); });
-  const onLogo = (f: File) => guard("logo", async () => {
-    const key = await presignAndUpload(f, "logo");
-    await call("/api/merchant/me", "PATCH", { logoKey: key });
-  })();
-  const saveBank = guard("bank", async () => { await call("/api/merchant/settlement", "POST", { bankCode, accountName, accountNumber }); });
-  const onQr = (f: File) => guard("qr", async () => {
-    const raw = await decodeImageToRaw(f);
-    let imageKey: string | undefined;
-    try { imageKey = await presignAndUpload(f, "qrph"); } catch { imageKey = undefined; }
-    await call("/api/merchant/qrph", "POST", { raw, imageKey });
-  })();
-  const savePw = guard("pw", async () => { await call("/api/auth/password", "POST", pw); setPw({ currentPassword: "", newPassword: "" }); });
+  const saveBusiness = guard("biz", async () => {
+    await call("/api/merchant/me", "PATCH", { businessName });
+  });
+  const onLogo = (f: File) =>
+    guard("logo", async () => {
+      const key = await presignAndUpload(f, "logo");
+      await call("/api/merchant/me", "PATCH", { logoKey: key });
+    })();
+  const saveBank = guard("bank", async () => {
+    await call("/api/merchant/settlement", "POST", { bankCode, accountName, accountNumber });
+  });
+  const onQr = (f: File) =>
+    guard("qr", async () => {
+      const raw = await decodeImageToRaw(f);
+      let imageKey: string | undefined;
+      try {
+        imageKey = await presignAndUpload(f, "qrph");
+      } catch {
+        imageKey = undefined;
+      }
+      await call("/api/merchant/qrph", "POST", { raw, imageKey });
+    })();
+  const savePw = guard("pw", async () => {
+    await call("/api/auth/password", "POST", pw);
+    setPw({ currentPassword: "", newPassword: "" });
+  });
 
   return (
     <div className="grid grid-cols-1 gap-stack-lg lg:grid-cols-2">
       <Section title="Business identity">
-        <FloatingInput id="businessName" label="Business name" value={businessName}
-          onChange={(e) => setBusinessName(e.target.value)} />
+        <FloatingInput
+          id="businessName"
+          label="Business name"
+          value={businessName}
+          onChange={(e) => setBusinessName(e.target.value)}
+        />
         <label className="flex min-h-11 cursor-pointer items-center gap-stack-md rounded-lg border border-outline-variant px-stack-md py-stack-sm text-body-md text-on-surface-variant">
           <span className="material-symbols-outlined text-primary">image</span>
           {merchant.logoKey ? "Replace logo" : "Upload logo"}
-          <input type="file" accept="image/*" className="sr-only"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) onLogo(f); }} />
+          <input
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onLogo(f);
+            }}
+          />
         </label>
         <Note msg={note.biz ?? note.logo ?? null} />
-        <button onClick={saveBusiness}
-          className="min-h-11 self-start rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary">
+        <button
+          onClick={saveBusiness}
+          className="min-h-11 self-start rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary"
+        >
           Save business
         </button>
       </Section>
@@ -2679,39 +3161,81 @@ export function SettingsForms({ merchant }: { merchant: MerchantDto }) {
         <p className="font-mono text-mono-data text-on-surface-variant">
           Current: {merchant.settlementBankName} •••• {merchant.accountNumberLast4}
         </p>
-        <select value={bankCode} onChange={(e) => setBankCode(e.target.value)}
-          className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md text-body-md">
-          {SUPPORTED_BANKS.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+        <select
+          value={bankCode}
+          onChange={(e) => setBankCode(e.target.value)}
+          className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md text-body-md"
+        >
+          {SUPPORTED_BANKS.map((b) => (
+            <option key={b.code} value={b.code}>
+              {b.name}
+            </option>
+          ))}
         </select>
-        <FloatingInput id="settAccountName" label="Account name" value={accountName}
-          onChange={(e) => setAccountName(e.target.value)} />
-        <FloatingInput id="settAccountNumber" label="New account number" inputMode="numeric" value={accountNumber}
-          onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))} />
+        <FloatingInput
+          id="settAccountName"
+          label="Account name"
+          value={accountName}
+          onChange={(e) => setAccountName(e.target.value)}
+        />
+        <FloatingInput
+          id="settAccountNumber"
+          label="New account number"
+          inputMode="numeric"
+          value={accountNumber}
+          onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
+        />
         <Note msg={note.bank ?? null} />
-        <button onClick={saveBank}
-          className="min-h-11 self-start rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary">
+        <button
+          onClick={saveBank}
+          className="min-h-11 self-start rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary"
+        >
           Save bank
         </button>
       </Section>
 
       <Section title="QRPH">
-        <p className="text-body-sm text-on-surface-variant">Linked: {merchant.qrphMerchantName ?? "—"}</p>
+        <p className="text-body-sm text-on-surface-variant">
+          Linked: {merchant.qrphMerchantName ?? "—"}
+        </p>
         <label className="flex min-h-11 cursor-pointer items-center gap-stack-md rounded-lg border border-outline-variant px-stack-md py-stack-sm text-body-md text-on-surface-variant">
-          <span className="material-symbols-outlined text-primary">qr_code_scanner</span>Re-link QRPH
-          <input type="file" accept="image/*" className="sr-only"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) onQr(f); }} />
+          <span className="material-symbols-outlined text-primary">qr_code_scanner</span>Re-link
+          QRPH
+          <input
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onQr(f);
+            }}
+          />
         </label>
         <Note msg={note.qr ?? null} />
       </Section>
 
       <Section title="Change password">
-        <FloatingInput id="currentPassword" label="Current password" type="password" value={pw.currentPassword}
-          onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} autoComplete="current-password" />
-        <FloatingInput id="newPassword" label="New password" type="password" value={pw.newPassword}
-          onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} autoComplete="new-password" />
+        <FloatingInput
+          id="currentPassword"
+          label="Current password"
+          type="password"
+          value={pw.currentPassword}
+          onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })}
+          autoComplete="current-password"
+        />
+        <FloatingInput
+          id="newPassword"
+          label="New password"
+          type="password"
+          value={pw.newPassword}
+          onChange={(e) => setPw({ ...pw, newPassword: e.target.value })}
+          autoComplete="new-password"
+        />
         <Note msg={note.pw ?? null} />
-        <button onClick={savePw}
-          className="min-h-11 self-start rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary">
+        <button
+          onClick={savePw}
+          className="min-h-11 self-start rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary"
+        >
           Update password
         </button>
       </Section>
@@ -2757,6 +3281,7 @@ git commit -m "feat(merchant): settings — business/logo, bank re-entry, re-lin
 ## Self-Review
 
 **SPEC §5 merchant routes → tasks**
+
 - `/merchant/onboarding` (4-step wizard, live preview) → Task 10.
 - `/merchant/dashboard` (earnings + MoM, pending XLM, business txns table, business QR + bank, support card, setup banner) → Task 11 (+ banner from Task 9).
 - `/merchant/transactions` (filters status/date + CSV) → Task 12.
@@ -2765,6 +3290,7 @@ git commit -m "feat(merchant): settings — business/logo, bank re-entry, re-lin
 - Route-group shell (SideNav + mobile bottom nav, `requireRole(MERCHANT)`, setup banner) → Task 9.
 
 **SPEC §6 merchant endpoint table → tasks**
+
 - `POST /api/merchant` (step1 DRAFT) → Task 2.
 - `GET /api/merchant/me`, `PATCH /api/merchant/me` → Task 2.
 - `POST /api/merchant/settlement` (validate bank, encrypt account, last4) → Task 3.
@@ -2782,6 +3308,7 @@ git commit -m "feat(merchant): settings — business/logo, bank re-entry, re-lin
 **AGENT §6 PII / uploads / authz** — bank `accountNumber` envelope-encrypted via `encryptSecret`, only `last4` exposed/displayed (Tasks 1, 3, 14; asserted in Task 3 test that plaintext never persists or serializes). Uploads use presign + `verifyUploadedObject` magic-byte check (Tasks 4, 10, 14). Ownership enforced: every handler does `requireRole("MERCHANT")` + scopes by `getMerchantForUser(session.id)`; every mutation calls `assertSameOrigin`.
 
 **BRAND form/table patterns → tasks**
+
 - Floating-label inputs (`peer`) → Task 8 `FloatingInput`, used in Tasks 10/14.
 - 4-segment progress bar (filled = `primary`) → Task 10 `ProgressBar`.
 - Radio-card bank selector with `has-[:checked]:border-primary` → Task 10 (and select in Task 14).

@@ -1,5 +1,6 @@
+// src/server/queue/queues.ts
 import "server-only";
-import { Queue, type ConnectionOptions } from "bullmq";
+import { Queue } from "bullmq";
 import IORedis from "ioredis";
 import { db } from "@/server/db";
 
@@ -22,15 +23,15 @@ const defaultJobOpts = {
 };
 
 export const settleQueue = new Queue(QUEUE_NAMES.settle, {
-  connection: bullConnection as unknown as ConnectionOptions,
+  connection: bullConnection,
   defaultJobOptions: defaultJobOpts,
 });
 export const depositPollQueue = new Queue(QUEUE_NAMES.depositPoll, {
-  connection: bullConnection as unknown as ConnectionOptions,
+  connection: bullConnection,
   defaultJobOptions: defaultJobOpts,
 });
 export const reconcileQueue = new Queue(QUEUE_NAMES.reconcile, {
-  connection: bullConnection as unknown as ConnectionOptions,
+  connection: bullConnection,
   defaultJobOptions: defaultJobOpts,
 });
 
@@ -41,5 +42,6 @@ export async function enqueueSettle(paymentId: string): Promise<void> {
   });
   if (!payment) return;
   // jobId ties the job to (payment, status); BullMQ dedupes a duplicate of the same step.
-  await settleQueue.add("settle", { paymentId }, { jobId: `${paymentId}:${payment.status}` });
+  // Separator is "-" not ":" — BullMQ forbids ":" in a custom jobId (its internal key delimiter).
+  await settleQueue.add("settle", { paymentId }, { jobId: `${paymentId}-${payment.status}` });
 }
