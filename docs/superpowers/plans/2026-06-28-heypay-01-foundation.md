@@ -13,21 +13,25 @@
 ## Task 1 — Workspace scaffold & tooling config
 
 **Files**
+
 - Create: `package.json`, `pnpm-workspace.yaml` (optional, skipped), `tsconfig.json`, `next.config.ts`, `eslint.config.mjs`, `.prettierrc.json`, `.prettierignore`, `.gitignore`, `.npmrc`
 
 **Interfaces**
+
 - Consumes: AGENT §1/§2 tech stack + pinned versions; Global Constraints (Node 22, pnpm pinned, strict TS).
 - Produces: pnpm project with scripts `dev`, `build`, `start`, `worker:dev`, `worker:start`, `typecheck`, `lint`, `format:check`, `format`, `test`.
 
 **Steps**
 
 - [ ] Create `.npmrc`:
+
 ```ini
 auto-install-peers=true
 strict-peer-dependencies=false
 ```
 
 - [ ] Create `package.json` (versions reflect the current stable lines from AGENT §2; they are re-pinned to newest stable in the next step):
+
 ```json
 {
   "name": "heypay",
@@ -86,15 +90,18 @@ strict-peer-dependencies=false
 ```
 
 - [ ] Pin to newest stable and write the lockfile (AGENT prime directive #1):
+
 ```bash
 corepack enable && corepack prepare pnpm@latest --activate
 pnpm install
 pnpm up --latest next react react-dom prisma @prisma/client @prisma/adapter-pg pg tailwindcss @tailwindcss/postcss zod ioredis argon2 decimal.js vitest typescript
 pnpm audit --prod
 ```
+
 Expected: install completes; `pnpm-lock.yaml` is written; `pnpm audit --prod` prints `No known vulnerabilities found` (resolve any that appear before continuing). Re-sync the version strings in `package.json` to whatever `pnpm up --latest` resolved.
 
 - [ ] Create `tsconfig.json`:
+
 ```json
 {
   "compilerOptions": {
@@ -126,6 +133,7 @@ Expected: install completes; `pnpm-lock.yaml` is written; `pnpm audit --prod` pr
 ```
 
 - [ ] Create `next.config.ts`:
+
 ```ts
 import type { NextConfig } from "next";
 
@@ -138,6 +146,7 @@ export default nextConfig;
 ```
 
 - [ ] Create `eslint.config.mjs` (flat config):
+
 ```js
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
@@ -160,13 +169,17 @@ export default tseslint.config(
     rules: {
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs["core-web-vitals"].rules,
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
     },
   },
 );
 ```
 
 - [ ] Create `.prettierrc.json`:
+
 ```json
 {
   "semi": true,
@@ -177,6 +190,7 @@ export default tseslint.config(
 ```
 
 - [ ] Create `.prettierignore`:
+
 ```gitignore
 node_modules
 .next
@@ -186,6 +200,7 @@ pnpm-lock.yaml
 ```
 
 - [ ] Create `.gitignore`:
+
 ```gitignore
 # dependencies
 node_modules
@@ -213,9 +228,11 @@ coverage
 ```
 
 - [ ] Verify the toolchain installs cleanly:
+
 ```bash
 pnpm install
 ```
+
 Expected: `Done` with no errors; `pnpm-lock.yaml` present.
 
 - [ ] Commit: `chore: scaffold pnpm + Next.js 16 workspace with strict TS, ESLint flat config, Prettier`
@@ -225,15 +242,18 @@ Expected: `Done` with no errors; `pnpm-lock.yaml` present.
 ## Task 2 — Tailwind v4 CSS-first theme, fonts, and root layout
 
 **Files**
+
 - Create: `postcss.config.mjs`, `src/app/globals.css`, `src/app/layout.tsx`, `src/app/page.tsx`
 
 **Interfaces**
+
 - Consumes: BRAND §9 `@theme` (verbatim), §3 fonts (Lexend/Inter), §6 Material Symbols, Global Constraints theming rules.
 - Produces: token utilities (`bg-primary`, `text-display-lg`, `rounded-xl`, `p-stack-lg`, `.glass`, `.tonal-card`, `.icon-filled`) + bootable root layout.
 
 **Steps**
 
 - [ ] Create `postcss.config.mjs`:
+
 ```js
 const config = {
   plugins: {
@@ -245,6 +265,7 @@ export default config;
 ```
 
 - [ ] Create `src/app/globals.css` — the FULL BRAND §9 block copied verbatim, plus a base layer (background/body font), Material Symbols variation defaults, and the `.icon-filled` helper:
+
 ```css
 @import "tailwindcss";
 
@@ -258,7 +279,7 @@ export default config;
   --color-on-secondary: #ffffff;
   --color-secondary-container: #ffe0b2;
   --color-on-secondary-container: #e65100;
-  --color-accent: #ff9800;            /* alias of secondary */
+  --color-accent: #ff9800; /* alias of secondary */
   --color-tertiary: #0097a7;
   --color-on-tertiary: #ffffff;
 
@@ -289,21 +310,33 @@ export default config;
   --font-mono: "Inter", ui-monospace, monospace;
 
   /* ---- Type scale (text-<name>) ---- */
-  --text-display-lg: 48px;        --text-display-lg--line-height: 56px;
-  --text-display-lg--letter-spacing: -0.02em; --text-display-lg--font-weight: 700;
-  --text-headline-lg: 32px;       --text-headline-lg--line-height: 40px;
+  --text-display-lg: 48px;
+  --text-display-lg--line-height: 56px;
+  --text-display-lg--letter-spacing: -0.02em;
+  --text-display-lg--font-weight: 700;
+  --text-headline-lg: 32px;
+  --text-headline-lg--line-height: 40px;
   --text-headline-lg--font-weight: 600;
-  --text-headline-lg-mobile: 24px;--text-headline-lg-mobile--line-height: 32px;
+  --text-headline-lg-mobile: 24px;
+  --text-headline-lg-mobile--line-height: 32px;
   --text-headline-lg-mobile--font-weight: 600;
-  --text-headline-md: 24px;       --text-headline-md--line-height: 32px;
+  --text-headline-md: 24px;
+  --text-headline-md--line-height: 32px;
   --text-headline-md--font-weight: 500;
-  --text-body-lg: 18px;           --text-body-lg--line-height: 28px;
-  --text-body-md: 16px;           --text-body-md--line-height: 24px;
-  --text-body-sm: 14px;           --text-body-sm--line-height: 20px;
-  --text-label-md: 12px;          --text-label-md--line-height: 16px;
-  --text-label-md--letter-spacing: 0.05em; --text-label-md--font-weight: 600;
-  --text-mono-data: 14px;         --text-mono-data--line-height: 20px;
-  --text-mono-data--letter-spacing: -0.01em; --text-mono-data--font-weight: 500;
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 28px;
+  --text-body-md: 16px;
+  --text-body-md--line-height: 24px;
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 20px;
+  --text-label-md: 12px;
+  --text-label-md--line-height: 16px;
+  --text-label-md--letter-spacing: 0.05em;
+  --text-label-md--font-weight: 600;
+  --text-mono-data: 14px;
+  --text-mono-data--line-height: 20px;
+  --text-mono-data--letter-spacing: -0.01em;
+  --text-mono-data--font-weight: 500;
 
   /* ---- Radius (rounded-<name>) ---- */
   --radius-DEFAULT: 0.5rem;
@@ -329,10 +362,18 @@ export default config;
     font-family: var(--font-body);
   }
   .material-symbols-outlined {
-    font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+    font-variation-settings:
+      "FILL" 0,
+      "wght" 400,
+      "GRAD" 0,
+      "opsz" 24;
   }
   .icon-filled {
-    font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+    font-variation-settings:
+      "FILL" 1,
+      "wght" 400,
+      "GRAD" 0,
+      "opsz" 24;
   }
 }
 
@@ -350,11 +391,17 @@ export default config;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 ```
 
 - [ ] Create `src/app/layout.tsx` (loads Lexend + Inter + Material Symbols via Google Fonts links so the literal family names in `@theme` resolve; applies base background + body font):
+
 ```tsx
 import type { Metadata } from "next";
 import "./globals.css";
@@ -388,6 +435,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ```
 
 - [ ] Create `src/app/page.tsx` (minimal themed landing so the app boots and proves token utilities render; full marketing/redirect lands in Phase 6):
+
 ```tsx
 export default function HomePage() {
   return (
@@ -408,9 +456,11 @@ export default function HomePage() {
 ```
 
 - [ ] Verify a production build succeeds (static page, no DB needed):
+
 ```bash
 pnpm build
 ```
+
 Expected: `✓ Compiled successfully`; route `/` listed as a static page; exit 0.
 
 - [ ] Commit: `feat: add Tailwind v4 theme, fonts, and themed root layout`
@@ -420,15 +470,18 @@ Expected: `✓ Compiled successfully`; route `/` listed as a static page; exit 0
 ## Task 3 — Local infra: docker-compose + .env.example
 
 **Files**
+
 - Create: `docker-compose.yml`, `.env.example`
 
 **Interfaces**
+
 - Consumes: AGENT §9 (docker-compose, verbatim), AGENT §10 / SPEC §11 (env skeleton, placeholders only).
 - Produces: Postgres 17 + Redis 7 + MinIO locally; documented env contract.
 
 **Steps**
 
 - [ ] Create `docker-compose.yml` (verbatim per AGENT §9):
+
 ```yaml
 # docker-compose.yml (dev only)
 services:
@@ -455,6 +508,7 @@ volumes: { pgdata: {}, miniodata: {} }
 ```
 
 - [ ] Create `.env.example` (verbatim per AGENT §10; placeholders only — never commit real values):
+
 ```dotenv
 # --- App ---
 NODE_ENV=development
@@ -498,18 +552,22 @@ S3_FORCE_PATH_STYLE=true              # true for MinIO
 ```
 
 - [ ] Validate the compose file and bring infra up:
+
 ```bash
 docker compose config >/dev/null && echo "compose-ok"
 docker compose up -d
 docker compose ps
 ```
+
 Expected: prints `compose-ok`; `postgres`, `redis`, `minio` show state `running`/`Up`.
 
 - [ ] Create the local `.env` and the shadow DB needed by `migrate dev`:
+
 ```bash
 cp .env.example .env
 docker compose exec -T postgres psql -U heypay -d heypay -c "CREATE DATABASE heypay_shadow;" || true
 ```
+
 Expected: `.env` created; `CREATE DATABASE` (or an "already exists" notice — both fine).
 
 - [ ] Commit: `chore: add docker-compose (postgres/redis/minio) and .env.example skeleton`
@@ -519,16 +577,19 @@ Expected: `.env` created; `CREATE DATABASE` (or an "already exists" notice — b
 ## Task 4 — Prisma 7: schema, config, client/redis singletons, first migration
 
 **Files**
+
 - Create: `prisma.config.ts`, `prisma/schema.prisma`, `src/server/db.ts`, `src/server/redis.ts`
 - Generates: `prisma/migrations/<ts>_init/`, `src/generated/prisma/**`
 
 **Interfaces**
+
 - Consumes: SPEC §4 data model (verbatim), AGENT §3 structure, Global Constraints (driver adapter, shadow DB, migrations checked in).
 - Produces: `prisma` singleton (`@/server/db`), `redis` singleton (`@/server/redis`), generated `@/generated/prisma` (with `Role`, `Merchant`, `PrismaClient`, all enums/models).
 
 **Steps**
 
 - [ ] Create `prisma.config.ts` (Prisma 7 config; loads env, wires the seed command consumed in Task 5):
+
 ```ts
 import "dotenv/config";
 import path from "node:path";
@@ -544,6 +605,7 @@ export default defineConfig({
 ```
 
 - [ ] Create `prisma/schema.prisma` — the COMPLETE SPEC §4 model verbatim, with `provider = "prisma-client"`, the `src/generated/prisma` output, and `shadowDatabaseUrl` added per Global Constraints:
+
 ```prisma
 // prisma/schema.prisma
 generator client {
@@ -740,6 +802,7 @@ model IdempotencyKey {
 ```
 
 - [ ] Create `src/server/db.ts` (Prisma 7 singleton via `@prisma/adapter-pg`; server-only):
+
 ```ts
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -763,6 +826,7 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 ```
 
 - [ ] Create `src/server/redis.ts` (ioredis singleton; `maxRetriesPerRequest: null` required by BullMQ in later phases; server-only):
+
 ```ts
 import "server-only";
 import Redis from "ioredis";
@@ -782,21 +846,27 @@ if (process.env.NODE_ENV !== "production") globalForRedis.redis = redis;
 ```
 
 - [ ] Create the first migration and generate the client (docker infra from Task 3 must be up):
+
 ```bash
 pnpm prisma migrate dev --name init
 ```
+
 Expected: a new folder `prisma/migrations/<timestamp>_init/migration.sql` is created; output ends with `Your database is now in sync with your schema.` and `Generated Prisma Client ... to ./src/generated/prisma`.
 
 - [ ] Confirm the client and enums generated:
+
 ```bash
 pnpm exec node -e "import('./src/generated/prisma/index.js').then(m=>console.log(Object.keys(m.Role).join(',')))"
 ```
+
 Expected: `ADMIN,PAYER,MERCHANT`.
 
 - [ ] Verify types compile against the generated client:
+
 ```bash
 pnpm typecheck
 ```
+
 Expected: exit 0, no errors.
 
 - [ ] Commit: `feat: add Prisma 7 schema, driver-adapter client + redis singletons, init migration`
@@ -806,9 +876,11 @@ Expected: exit 0, no errors.
 ## Task 5 — Idempotent seed (admin + optional demo)
 
 **Files**
+
 - Create: `prisma/seed.ts`
 
 **Interfaces**
+
 - Consumes: SPEC §4 seed spec, AGENT §5 (argon2id seeded admin), `prisma.config.ts` seed wiring (Task 4), env `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`SEED_DEMO`.
 - Produces: `pnpm prisma db seed` upserts the admin idempotently; demo payer + demo merchant gated by `SEED_DEMO=true`.
 
@@ -817,6 +889,7 @@ Expected: exit 0, no errors.
 **Steps**
 
 - [ ] Create `prisma/seed.ts` (uses its own adapter-backed client; an inline minimal argon2id hash so the seed runs without Phase 2's password helper):
+
 ```ts
 import "dotenv/config";
 import * as argon2 from "argon2";
@@ -862,7 +935,9 @@ async function seedDemo(): Promise<void> {
     update: {},
     create: { username: "demo-payer", passwordHash: payerHash, role: Role.PAYER },
   });
-  console.log(`[seed] demo payer ready: ${payer.username} (custodial wallet stubbed until Phase 3)`);
+  console.log(
+    `[seed] demo payer ready: ${payer.username} (custodial wallet stubbed until Phase 3)`,
+  );
 
   // Demo merchant with a sample decoded QRPH + masked test bank account.
   // accountNumber is a placeholder; Phase 3 replaces it with an envelope-encrypted value.
@@ -879,7 +954,8 @@ async function seedDemo(): Promise<void> {
       userId: merchantUser.id,
       businessName: "Demo Sari-Sari Store",
       status: "ACTIVE",
-      qrphRaw: "00020101021128120008ph.qrph0104DEMO5204000053036085802PH5914DEMO SARI-SARI6006MANILA6304ABCD",
+      qrphRaw:
+        "00020101021128120008ph.qrph0104DEMO5204000053036085802PH5914DEMO SARI-SARI6006MANILA6304ABCD",
       qrphMerchantName: "DEMO SARI-SARI",
       qrphMerchantCity: "MANILA",
       qrphMerchantId: "DEMO-MID-0001",
@@ -911,22 +987,28 @@ main()
 ```
 
 - [ ] Run the seed (admin + demo, since `.env` has `SEED_DEMO=true`):
+
 ```bash
 pnpm prisma db seed
 ```
+
 Expected: prints `[seed] admin ready: admin`, `[seed] demo payer ready: demo-payer ...`, `[seed] demo merchant ready: demo-merchant`; exit 0.
 
 - [ ] Verify idempotency (re-run produces no duplicates):
+
 ```bash
 pnpm prisma db seed
 docker compose exec -T postgres psql -U heypay -d heypay -t -c "SELECT count(*) FROM \"User\" WHERE username='admin';"
 ```
+
 Expected: seed succeeds again; the count query prints `1`.
 
 - [ ] Verify the admin-only path works (gate off):
+
 ```bash
 SEED_DEMO=false pnpm prisma db seed
 ```
+
 Expected: prints `[seed] admin ready: admin` then `[seed] SEED_DEMO != 'true'; skipping demo data.`; exit 0.
 
 - [ ] Commit: `feat: add idempotent prisma seed (admin upsert + gated demo payer/merchant)`
@@ -936,16 +1018,19 @@ Expected: prints `[seed] admin ready: admin` then `[seed] SEED_DEMO != 'true'; s
 ## Task 6 — `vitest.config.ts` + `src/lib/money.ts` (TDD)
 
 **Files**
+
 - Create: `vitest.config.ts`, `src/lib/money.ts`
 - Test: `src/lib/money.test.ts`
 
 **Interfaces**
+
 - Consumes: Locked Money contract (overview).
 - Produces (verbatim signatures): `dec`, `formatXlm`, `formatPhp`, `displayPhp`, `displayXlm`, `phpToXlm`, `availableXlm`, re-exported `Decimal`.
 
 **Steps**
 
 - [ ] Create `vitest.config.ts` (node env, `@/` alias via tsconfig paths):
+
 ```ts
 import { defineConfig } from "vitest/config";
 import tsconfigPaths from "vite-tsconfig-paths";
@@ -961,6 +1046,7 @@ export default defineConfig({
 ```
 
 - [ ] Write the failing test `src/lib/money.test.ts`:
+
 ```ts
 import { describe, it, expect } from "vitest";
 import {
@@ -1031,12 +1117,15 @@ describe("availableXlm", () => {
 ```
 
 - [ ] Run the test, expect FAIL (module does not exist yet):
+
 ```bash
 pnpm vitest run src/lib/money.test.ts
 ```
+
 Expected: FAIL — `Error: Failed to load url ./money` / "Cannot find module", 0 passing.
 
 - [ ] Implement `src/lib/money.ts` (full code, no placeholders):
+
 ```ts
 import { Decimal } from "decimal.js";
 
@@ -1092,9 +1181,11 @@ export function availableXlm(cached: Decimal, reserved: Decimal): Decimal {
 ```
 
 - [ ] Run the test, expect PASS:
+
 ```bash
 pnpm vitest run src/lib/money.test.ts
 ```
+
 Expected: PASS — all describe blocks green (e.g. `Test Files 1 passed`, `Tests 9 passed`).
 
 - [ ] Commit: `feat: add money.ts (Decimal helpers, phpToXlm ROUND_UP) with vitest config and tests`
@@ -1104,16 +1195,19 @@ Expected: PASS — all describe blocks green (e.g. `Test Files 1 passed`, `Tests
 ## Task 7 — `src/lib/errors.ts` (TDD)
 
 **Files**
+
 - Create: `src/lib/errors.ts`
 - Test: `src/lib/errors.test.ts`
 
 **Interfaces**
+
 - Consumes: Locked Errors contract (overview).
 - Produces (verbatim): `ErrorEnvelope`, `AppError`, and constructors `badRequest`/`unauthorized`/`forbidden`/`notFound`/`conflict`/`tooManyRequests`/`serverError`. Adds an additive `AppError.toEnvelope()` helper (does not change the contract signature).
 
 **Steps**
 
 - [ ] Write the failing test `src/lib/errors.test.ts`:
+
 ```ts
 import { describe, it, expect } from "vitest";
 import {
@@ -1165,12 +1259,15 @@ describe("convenience constructors map to correct HTTP statuses", () => {
 ```
 
 - [ ] Run the test, expect FAIL (module does not exist yet):
+
 ```bash
 pnpm vitest run src/lib/errors.test.ts
 ```
+
 Expected: FAIL — cannot resolve `./errors`, 0 passing.
 
 - [ ] Implement `src/lib/errors.ts` (full code):
+
 ```ts
 export type ErrorEnvelope = { error: { code: string; message: string; details?: unknown } };
 
@@ -1220,9 +1317,11 @@ export const serverError = (msg = "Something went wrong."): AppError =>
 ```
 
 - [ ] Run the test, expect PASS:
+
 ```bash
 pnpm vitest run src/lib/errors.test.ts
 ```
+
 Expected: PASS — `Tests ... passed`.
 
 - [ ] Commit: `feat: add errors.ts (AppError + convenience constructors + envelope) with tests`
@@ -1232,16 +1331,19 @@ Expected: PASS — `Tests ... passed`.
 ## Task 8 — `src/lib/http.ts` (TDD)
 
 **Files**
+
 - Create: `src/lib/http.ts`
 - Test: `src/lib/http.test.ts`
 
 **Interfaces**
+
 - Consumes: Locked HTTP contract (overview); `AppError`/`badRequest`/`serverError` from `./errors`; `Role` type from `@/generated/prisma` (type-only, erased at runtime).
 - Produces (verbatim): `Handler`, `HandlerContext`, `route`, `json`, `parseBody`, `parseQuery`.
 
 **Steps**
 
 - [ ] Write the failing test `src/lib/http.test.ts`:
+
 ```ts
 import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
@@ -1334,12 +1436,15 @@ describe("route", () => {
 ```
 
 - [ ] Run the test, expect FAIL (module does not exist yet):
+
 ```bash
 pnpm vitest run src/lib/http.test.ts
 ```
+
 Expected: FAIL — cannot resolve `./http`, 0 passing.
 
 - [ ] Implement `src/lib/http.ts` (full code):
+
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -1416,15 +1521,19 @@ export function parseQuery<S extends z.ZodTypeAny>(req: NextRequest, schema: S):
 ```
 
 - [ ] Run the test, expect PASS:
+
 ```bash
 pnpm vitest run src/lib/http.test.ts
 ```
+
 Expected: PASS — all `route`/`parseBody`/`parseQuery`/`json` cases green.
 
 - [ ] Run the full Phase-1 quality gates:
+
 ```bash
 pnpm vitest run && pnpm typecheck && pnpm lint && pnpm format:check
 ```
+
 Expected: vitest all green; typecheck exit 0; lint exit 0; `format:check` reports all files formatted (run `pnpm format` first if needed, then re-check).
 
 - [ ] Commit: `feat: add http.ts route wrapper + parseBody/parseQuery/json with tests`

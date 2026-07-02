@@ -1,3 +1,4 @@
+// src/app/api/payments/[id]/route.ts
 import { route, json } from "@/lib/http";
 import { requireUser } from "@/server/auth/sessions";
 import { db } from "@/server/db";
@@ -6,7 +7,7 @@ import { notFound, forbidden } from "@/lib/errors";
 export const GET = route(async (_req, ctx) => {
   const user = await requireUser();
   const payment = await db.payment.findUnique({
-    where: { id: ctx.params.id },
+    where: { id: ctx.params.id! },
     include: {
       events: { orderBy: { createdAt: "asc" } },
       merchant: { select: { businessName: true } },

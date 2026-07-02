@@ -1,51 +1,48 @@
-// @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, cleanup } from "@testing-library/react";
+import { describe, it, expect } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { RecentPaymentsList } from "./RecentPaymentsList";
 import { dec } from "@/lib/money";
-import { RecentPaymentsList, type RecentPaymentItem } from "./RecentPaymentsList";
+import type { RecentPayment } from "@/server/payer/data";
 
-vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
-
-afterEach(cleanup);
-
-const items: RecentPaymentItem[] = [
+const rows: RecentPayment[] = [
   {
     id: "p1",
     reference: "TXN-AAAAAAAA",
-    merchantName: "Kape Co",
-    amountXlm: dec("8.3333334"),
-    amountPhp: dec("100.00"),
+    merchantName: "Sari Store",
+    merchantCity: "Manila",
+    amountXlm: dec("8.33"),
+    amountPhp: dec("100"),
     status: "SETTLED",
-    createdAt: new Date("2026-06-30T00:00:00Z"),
+    createdAt: new Date("2026-06-30T00:00:00Z").toISOString(),
   },
   {
     id: "p2",
     reference: "TXN-BBBBBBBB",
-    merchantName: "Tindahan",
-    amountXlm: dec("4.0"),
-    amountPhp: dec("48.00"),
+    merchantName: "Cafe Luna",
+    merchantCity: null,
+    amountXlm: dec("4"),
+    amountPhp: dec("48"),
     status: "PDAX_TRADING",
-    createdAt: new Date("2026-06-29T00:00:00Z"),
+    createdAt: new Date("2026-06-29T00:00:00Z").toISOString(),
   },
 ];
 
 describe("RecentPaymentsList", () => {
-  it("renders a row per payment with merchant, money, and status", () => {
-    const { getByText, container } = render(<RecentPaymentsList items={items} />);
-    expect(getByText("Kape Co")).toBeTruthy();
-    expect(getByText("Tindahan")).toBeTruthy();
-    expect(container.textContent).toContain("8.3333334 XLM");
-    expect(getByText("Settled")).toBeTruthy();
-    expect(getByText("Pending Trade")).toBeTruthy(); // PDAX_TRADING → Pending Trade
+  it("renders rows with merchant, money, and status badges", () => {
+    render(<RecentPaymentsList payments={rows} />);
+    expect(screen.getByText("Sari Store")).toBeInTheDocument();
+    expect(screen.getByText("Cafe Luna")).toBeInTheDocument();
+    expect(screen.getByText("Settled")).toBeInTheDocument();
+    expect(screen.getByText("Pending Trade")).toBeInTheDocument();
+    expect(screen.getByText("8.3300000 XLM")).toBeInTheDocument();
   });
 
-  it("renders an empty state with a Scan-to-Pay CTA when there are no payments", () => {
-    const { getByText, getByRole } = render(<RecentPaymentsList items={[]} />);
-    expect(getByText(/no payments yet/i)).toBeTruthy();
-    expect(getByRole("button", { name: /scan to pay/i })).toBeTruthy();
+  it("renders an empty state with a Scan CTA", () => {
+    render(<RecentPaymentsList payments={[]} />);
+    expect(screen.getByText("No payments yet")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Scan to Pay/ })).toHaveAttribute(
+      "href",
+      "/payer/scan",
+    );
   });
 });

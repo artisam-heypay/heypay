@@ -1,4 +1,4 @@
-import type { PaymentStatus } from "@/generated/prisma";
+import type { PaymentStatus } from "@/generated/prisma/client";
 
 export const PAYMENT_STEPS: { key: PaymentStatus; label: string }[] = [
   { key: "AUTHORIZED", label: "Payment authorized" },

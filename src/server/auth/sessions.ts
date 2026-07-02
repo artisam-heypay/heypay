@@ -3,7 +3,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { db } from "@/server/db";
 import { unauthorized, forbidden } from "@/lib/errors";
-import type { Role } from "@/generated/prisma";
+import type { Role } from "@/generated/prisma/client";
 
 export type SessionUser = { id: string; username: string; role: Role; isActive: boolean };
 
@@ -43,7 +43,13 @@ export async function createSession(
   const expiresAt = new Date(Date.now() + TTL_MS);
 
   await db.session.create({
-    data: { userId, tokenHash, expiresAt, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
+    data: {
+      userId,
+      tokenHash,
+      expiresAt,
+      ip: meta.ip ?? null,
+      userAgent: meta.userAgent ?? null,
+    },
   });
 
   const store = await cookies();

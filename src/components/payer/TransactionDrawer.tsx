@@ -1,19 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Icon, StatusBadge } from "@/components/ui";
-import type { PaymentStatus } from "@/generated/prisma";
 
-type Detail = {
+type PaymentDetail = {
   payment: {
     reference: string;
-    status: PaymentStatus;
+    status: string;
     amountPhp: string;
-    amountXlm: string;
     quotedRate: string;
+    amountXlm: string;
+    networkFeeXlm: string;
     merchantName: string;
     stellarTxHash: string | null;
+    createdAt: string;
   };
-  events: { fromStatus: PaymentStatus | null; toStatus: PaymentStatus; createdAt: string }[];
+  events: { fromStatus: string | null; toStatus: string; createdAt: string }[];
 };
 
 export function TransactionDrawer({
@@ -23,97 +24,99 @@ export function TransactionDrawer({
   paymentId: string;
   onClose: () => void;
 }) {
-  const [detail, setDetail] = useState<Detail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<PaymentDetail | null>(null);
 
   useEffect(() => {
-    const ctrl = new AbortController();
-    fetch(`/api/payments/${paymentId}`, { signal: ctrl.signal })
-      .then(async (r) => {
-        if (!r.ok) throw new Error("Could not load payment.");
-        setDetail((await r.json()) as Detail);
-      })
-      .catch((e: Error) => {
-        if (e.name !== "AbortError") setError(e.message);
-      });
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const controller = new AbortController();
+    fetch(`/api/payments/${paymentId}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: PaymentDetail | null) => setData(d))
+      .catch(() => {});
+    return () => controller.abort();
+  }, [paymentId]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
-    return () => {
-      ctrl.abort();
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [paymentId, onClose]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div
+        aria-hidden
+        onClick={onClose}
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+      />
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Payment details"
-        className="h-full w-full max-w-md overflow-y-auto bg-surface-container-lowest p-stack-lg"
-        onClick={(e) => e.stopPropagation()}
+        aria-label="Payment detail"
+        className="relative h-full w-full max-w-md overflow-y-auto bg-surface-container-lowest p-stack-lg shadow-xl"
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-headline-md font-display">Payment</h2>
+          <h2 className="font-display text-headline-md">Payment detail</h2>
           <button
             type="button"
-            aria-label="Close"
             onClick={onClose}
-            className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+            aria-label="Close"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
           >
             <Icon name="close" />
           </button>
         </div>
-        {error ? (
-          <p role="alert" className="mt-stack-md text-error">
-            {error}
-          </p>
-        ) : !detail ? (
-          <p className="mt-stack-md text-on-surface-variant">Loading…</p>
+
+        {!data ? (
+          <p className="mt-stack-lg text-body-md text-on-surface-variant">Loading…</p>
         ) : (
-          <div className="mt-stack-md flex flex-col gap-stack-md">
-            <p className="text-mono-data text-body-sm">{detail.payment.reference}</p>
-            <p className="font-display text-primary">{detail.payment.merchantName}</p>
-            <dl className="divide-y divide-outline-variant">
-              <div className="flex justify-between py-stack-sm">
-                <dt className="text-on-surface-variant">Amount</dt>
-                <dd className="text-mono-data">₱{detail.payment.amountPhp}</dd>
-              </div>
-              <div className="flex justify-between py-stack-sm">
-                <dt className="text-on-surface-variant">XLM</dt>
-                <dd className="text-mono-data">{detail.payment.amountXlm}</dd>
-              </div>
-              <div className="flex justify-between py-stack-sm">
-                <dt className="text-on-surface-variant">Rate</dt>
-                <dd className="text-mono-data">{detail.payment.quotedRate}</dd>
-              </div>
-              {detail.payment.stellarTxHash ? (
-                <div className="flex justify-between gap-stack-md py-stack-sm">
-                  <dt className="text-on-surface-variant">Stellar tx</dt>
-                  <dd className="truncate text-mono-data text-body-sm">
-                    {detail.payment.stellarTxHash}
-                  </dd>
-                </div>
-              ) : null}
-            </dl>
+          <div className="mt-stack-lg flex flex-col gap-stack-lg">
             <div>
-              <h3 className="text-label-md uppercase text-on-surface-variant">Timeline</h3>
-              <ul className="mt-stack-sm flex flex-col gap-stack-sm">
-                {detail.events.map((e, i) => (
+              <p className="font-mono text-mono-data text-on-surface-variant">
+                {data.payment.reference}
+              </p>
+              <p className="font-display text-headline-md">{data.payment.merchantName}</p>
+              <div className="mt-stack-sm">
+                <StatusBadge status={data.payment.status as never} />
+              </div>
+            </div>
+
+            <dl className="divide-y divide-outline-variant">
+              <Row label="Amount (PHP)" value={`₱${data.payment.amountPhp}`} />
+              <Row label="Rate" value={`1 XLM = ₱${data.payment.quotedRate}`} />
+              <Row label="XLM debited" value={`${data.payment.amountXlm} XLM`} />
+              <Row label="Network fee" value={`${data.payment.networkFeeXlm} XLM`} />
+              {data.payment.stellarTxHash && (
+                <Row label="Stellar tx" value={data.payment.stellarTxHash} mono />
+              )}
+            </dl>
+
+            <div>
+              <h3 className="font-display text-body-lg">Timeline</h3>
+              <ol className="mt-stack-sm flex flex-col gap-stack-sm">
+                {data.events.map((e, i) => (
                   <li key={i} className="flex items-center justify-between gap-stack-md">
-                    <StatusBadge status={e.toStatus} />
+                    <StatusBadge status={e.toStatus as never} label={e.toStatus} />
                     <span className="text-body-sm text-on-surface-variant">
                       {new Date(e.createdAt).toLocaleString()}
                     </span>
                   </li>
                 ))}
-              </ul>
+              </ol>
             </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-stack-md py-stack-sm">
+      <dt className="text-body-md text-on-surface-variant">{label}</dt>
+      <dd className={mono ? "truncate font-mono text-mono-data" : "font-mono text-mono-data"}>
+        {value}
+      </dd>
     </div>
   );
 }

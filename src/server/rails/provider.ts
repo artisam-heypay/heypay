@@ -1,3 +1,4 @@
+// src/server/rails/provider.ts
 import { Decimal } from "@/lib/money";
 
 export type Quote = { rate: Decimal; phpAmount: Decimal; xlmAmount: Decimal; expiresAt: Date };

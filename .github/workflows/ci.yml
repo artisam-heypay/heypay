@@ -1,9 +1,4 @@
 # .github/workflows/ci.yml
-#
-# Quality-gate CI. This is the canonical gate from Sprint 9 / issue #90 with the
-# Playwright e2e step intentionally omitted: the e2e suite, Playwright config and
-# the /api/health readiness endpoint land in Sprint 9. When that work merges, add
-# back the "Install Playwright browsers" / "E2E" / "Upload report" steps from #90.
 name: ci
 on:
   push:
@@ -77,17 +72,11 @@ jobs:
           PGPASSWORD=heypay psql -h localhost -U heypay -d heypay -c "CREATE DATABASE heypay_e2e;" || true
           PGPASSWORD=heypay psql -h localhost -U heypay -d heypay -c "CREATE DATABASE heypay_e2e_shadow;" || true
 
-      # Steps that depend on app artifacts are guarded so the gate degrades
-      # gracefully across the stacked PRs: each layer is checked on exactly
-      # what it contains. Once every artifact is present (the stack tip and
-      # `main`), every step runs at full strictness — guards become no-ops.
       - name: Prisma generate
-        run: |
-          if [ -f prisma/schema.prisma ]; then pnpm prisma generate; else echo "no prisma schema yet — skipping"; fi
+        run: pnpm prisma generate
 
       - name: Migrate (test db)
-        run: |
-          if [ -f prisma/schema.prisma ]; then pnpm prisma migrate deploy; else echo "no prisma schema yet — skipping"; fi
+        run: pnpm prisma migrate deploy
 
       - name: Typecheck
         run: pnpm typecheck
@@ -102,20 +91,21 @@ jobs:
         run: pnpm audit --prod
 
       - name: Unit + integration tests
-        run: pnpm vitest run --passWithNoTests
+        run: pnpm vitest run
 
       - name: Build
-        run: |
-          if [ -d src/app ]; then pnpm build; else echo "no Next app yet — skipping"; fi
-      # --- Sprint 9 (#90): re-add the Playwright e2e gate below once the suite exists ---
-      # - name: Install Playwright browsers
-      #     run: pnpm exec playwright install --with-deps chromium
-      # - name: E2E (mock rail + testnet)
-      #     run: pnpm playwright test
-      # - name: Upload Playwright report
-      #     if: always()
-      #     uses: actions/upload-artifact@v4
-      #     with:
-      #       name: playwright-report
-      #       path: playwright-report
-      #       retention-days: 7
+        run: pnpm build
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E (mock rail + testnet)
+        run: pnpm playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7

@@ -1,5 +1,6 @@
+// src/server/payments/idempotency.ts
 import "server-only";
-import { Prisma } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { badRequest, conflict } from "@/lib/errors";
 

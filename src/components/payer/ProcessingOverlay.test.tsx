@@ -1,34 +1,29 @@
-// @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, cleanup } from "@testing-library/react";
-
-vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
-
+import { describe, it, expect } from "vitest";
+import { render, screen } from "@testing-library/react";
 import { ProcessingOverlay } from "./ProcessingOverlay";
 
-afterEach(cleanup);
-
 describe("ProcessingOverlay", () => {
-  it("shows completed + in-progress steps for an in-flight status", () => {
-    const { container } = render(
-      <ProcessingOverlay status="PDAX_TRADING" php="500.00" merchantName="Kape Co" />,
+  it("shows the checklist with in-progress step while trading", () => {
+    render(
+      <ProcessingOverlay
+        status="PDAX_TRADING"
+        merchantName="Sari Store"
+        amountPhpDisplay="₱500.00"
+      />,
     );
-    // an earlier step is done (check_circle) and the current step is active (sync + pulse)
-    expect(container.textContent).toContain("check_circle");
-    expect(container.textContent).toContain("sync");
-    expect(container.querySelector(".animate-pulse")).toBeTruthy();
+    expect(screen.getByText("Converting XLM → PHP")).toBeInTheDocument();
+    expect(screen.getByText("Payment authorized")).toBeInTheDocument();
   });
 
-  it("shows the success headline (secondary) + Done on SETTLED", () => {
-    const { getByText, getByRole } = render(
-      <ProcessingOverlay status="SETTLED" php="500.00" merchantName="Kape Co" />,
+  it("shows success headline + Done on SETTLED", () => {
+    render(
+      <ProcessingOverlay status="SETTLED" merchantName="Sari Store" amountPhpDisplay="₱500.00" />,
     );
-    const headline = getByText(/₱500\.00 sent to Kape Co/i);
-    expect(headline.className).toContain("text-secondary");
-    expect(getByRole("button", { name: /done/i })).toBeTruthy();
+    const heading = screen.getByRole("heading", { name: /₱500\.00 sent to Sari Store/ });
+    expect(heading.className).toContain("text-secondary");
+    expect(screen.getByRole("link", { name: "Done" })).toHaveAttribute(
+      "href",
+      "/payer/transactions",
+    );
   });
 });

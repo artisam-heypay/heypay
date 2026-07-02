@@ -1,3 +1,4 @@
+// src/server/payments/quote.ts
 import "server-only";
 import { dec, phpToXlm, availableXlm, Decimal } from "@/lib/money";
 import { db } from "@/server/db";
@@ -28,8 +29,9 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   const wallet = await db.custodialWallet.findUnique({ where: { userId: input.payerId } });
   if (!wallet) throw conflict("payer wallet not found");
 
-  const quote = await withRetry(() =>
-    rail.getQuote({ sell: "XLM", buy: "PHP", phpAmount: input.amountPhp }),
+  const quote = await withRetry(
+    () => rail.getQuote({ sell: "XLM", buy: "PHP", phpAmount: input.amountPhp }),
+    { label: "rail.getQuote" },
   );
   const rate = quote.rate;
   const amountXlm = phpToXlm(input.amountPhp, rate); // ROUND_UP, 7dp (payer covers)

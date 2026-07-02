@@ -1,5 +1,6 @@
+// src/server/payments/confirm.ts
 import "server-only";
-import { PaymentStatus } from "@/generated/prisma";
+import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { dec, availableXlm } from "@/lib/money";
 import { conflict, forbidden, notFound } from "@/lib/errors";

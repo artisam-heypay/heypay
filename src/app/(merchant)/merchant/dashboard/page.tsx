@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { Role } from "@/generated/prisma";
 import { requireRole } from "@/server/auth/sessions";
 import {
-  getMerchantForUser,
+  requireMerchant,
   getMerchantEarnings,
   listMerchantTransactions,
   serializeMerchant,
@@ -12,16 +11,34 @@ import { TransactionsTable } from "@/components/merchant/TransactionsTable";
 import { BusinessSummaryCard } from "@/components/merchant/BusinessSummaryCard";
 
 export default async function MerchantDashboard() {
-  const user = await requireRole(Role.MERCHANT);
-  const merchant = await getMerchantForUser(user.id);
+  const user = await requireRole("MERCHANT");
+  const merchant = await requireMerchant(user.id);
   const [earnings, txPage] = await Promise.all([
     getMerchantEarnings(merchant.id),
     listMerchantTransactions(merchant.id, { limit: 8 }),
   ]);
 
+  const isLive = merchant.status === "ACTIVE";
+  const statusLabel = isLive ? "Live" : merchant.status.replace(/_/g, " ").toLowerCase();
+
   return (
     <div className="flex flex-col gap-stack-lg">
-      <h1 className="text-headline-lg-mobile lg:text-headline-lg">Dashboard</h1>
+      <div className="flex items-center gap-stack-md">
+        <h1 className="text-headline-lg-mobile lg:text-headline-lg">Dashboard</h1>
+        <span
+          className={`inline-flex items-center gap-stack-sm rounded-full px-stack-md py-1 text-label-md uppercase ${
+            isLive
+              ? "bg-primary-container text-on-primary-container"
+              : "bg-surface-container-high text-on-surface-variant"
+          }`}
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${isLive ? "bg-primary" : "bg-outline"}`}
+            aria-hidden
+          />
+          {statusLabel}
+        </span>
+      </div>
       <EarningsCards earnings={earnings} />
       <div className="grid grid-cols-1 gap-stack-lg lg:grid-cols-3">
         <section className="lg:col-span-2">

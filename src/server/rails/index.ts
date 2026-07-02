@@ -1,3 +1,4 @@
+// src/server/rails/index.ts
 import "server-only";
 import type { PaymentRailProvider } from "@/server/rails/provider";
 import { mockProvider } from "@/server/rails/mock";

@@ -1,58 +1,59 @@
 import Link from "next/link";
-import { Button, Card, Icon, MoneyAmount, StatusBadge } from "@/components/ui";
-import type { Decimal } from "@/lib/money";
-import type { PaymentStatus } from "@/generated/prisma";
+import { Card, Icon, MoneyAmount, StatusBadge } from "@/components/ui";
+import type { RecentPayment } from "@/server/payer/data";
 
-export type RecentPaymentItem = {
-  id: string;
-  reference: string;
-  merchantName: string;
-  amountXlm: Decimal;
-  amountPhp: Decimal;
-  status: PaymentStatus;
-  createdAt: Date | string;
-};
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-export function RecentPaymentsList({ items }: { items: RecentPaymentItem[] }) {
-  if (items.length === 0) {
-    return (
-      <Card>
-        <div className="flex flex-col items-center gap-stack-md py-stack-lg text-center">
-          <Icon name="history" className="text-4xl text-on-surface-variant" />
-          <p className="text-on-surface-variant">No payments yet</p>
-          <Link href="/payer/scan">
-            <Button variant="primary-pill" trailingIcon="qr_code_scanner">
-              Scan to Pay
-            </Button>
-          </Link>
-        </div>
-      </Card>
-    );
-  }
+export function RecentPaymentsList({ payments }: { payments: RecentPayment[] }) {
   return (
     <Card>
       <div className="flex items-center justify-between">
-        <h2 className="text-headline-md font-display">Recent Payments</h2>
-        <Link href="/payer/transactions" className="text-body-sm text-primary">
+        <h2 className="font-display text-headline-md">Recent Payments</h2>
+        <Link
+          href="/payer/transactions"
+          className="rounded-lg text-body-sm text-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+        >
           View all
         </Link>
       </div>
-      <ul className="mt-stack-md divide-y divide-outline-variant">
-        {items.map((p) => (
-          <li key={p.id} className="flex items-center justify-between gap-stack-md py-stack-md">
-            <div className="flex flex-col">
-              <span className="font-display">{p.merchantName}</span>
-              <span className="text-body-sm text-on-surface-variant">
-                {new Date(p.createdAt).toLocaleDateString()}
-              </span>
-            </div>
-            <div className="flex items-center gap-stack-md">
-              <StatusBadge status={p.status} />
-              <MoneyAmount size="row" xlm={p.amountXlm} php={p.amountPhp} />
-            </div>
-          </li>
-        ))}
-      </ul>
+
+      {payments.length === 0 ? (
+        <div className="flex flex-col items-center gap-stack-md py-stack-lg text-center">
+          <Icon name="history" className="text-4xl text-on-surface-variant" />
+          <p className="text-body-md text-on-surface-variant">No payments yet</p>
+          <Link
+            href="/payer/scan"
+            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+          >
+            Scan to Pay
+            <Icon name="qr_code_scanner" />
+          </Link>
+        </div>
+      ) : (
+        <ul className="mt-stack-md divide-y divide-outline-variant">
+          {payments.map((p) => (
+            <li key={p.id} className="flex items-center justify-between gap-stack-md py-stack-md">
+              <div className="min-w-0">
+                <p className="truncate font-display text-body-md">{p.merchantName}</p>
+                <p className="text-body-sm text-on-surface-variant">
+                  {p.merchantCity ? `${p.merchantCity} · ` : ""}
+                  {formatDate(p.createdAt)}
+                </p>
+                <div className="mt-1">
+                  <StatusBadge status={p.status} />
+                </div>
+              </div>
+              <MoneyAmount xlm={p.amountXlm} php={p.amountPhp} size="row" />
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@10.12.1",
   "engines": {
     "node": ">=22"
   },
@@ -11,18 +11,22 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "worker:dev": "node --conditions=react-server --watch --import tsx src/worker/index.ts",
+    "worker:dev": "node --conditions=react-server --import tsx --watch src/worker/index.ts",
     "worker:start": "node --conditions=react-server --import tsx src/worker/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e:serve": "concurrently -k -n web,worker -c blue,magenta \"pnpm start\" \"pnpm worker:start\"",
+    "test:e2e": "playwright test",
+    "test:e2e:up": "docker compose -f docker-compose.test.yml up -d --wait",
+    "test:e2e:down": "docker compose -f docker-compose.test.yml down -v"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1075.0",
-    "@aws-sdk/s3-presigned-post": "^3.1075.0",
-    "@aws-sdk/s3-request-presigner": "^3.1075.0",
+    "@aws-sdk/client-s3": "^3.1076.0",
+    "@aws-sdk/s3-presigned-post": "^3.1076.0",
+    "@aws-sdk/s3-request-presigner": "^3.1076.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@stellar/stellar-sdk": "^16.0.1",
@@ -38,39 +42,36 @@
     "server-only": "^0.0.1",
     "sharp": "^0.35.2",
     "sodium-native": "^5.1.0",
-    "zod": "^4.4.3"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.39.4",
     "@next/eslint-plugin-next": "^16.2.9",
-    "@tailwindcss/postcss": "^4.3.1",
-    "@testing-library/dom": "^10.4.1",
+    "@playwright/test": "^1.61.1",
+    "@tailwindcss/postcss": "^4.3.2",
+    "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.20.0",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.3",
-    "argon2": "^0.44.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "argon2": "^0.41.1",
     "aws-sdk-client-mock": "^4.1.0",
-    "dotenv": "^17.4.2",
-    "eslint": "^10.6.0",
+    "concurrently": "^10.0.3",
+    "dotenv": "^16.6.1",
+    "eslint": "^9.39.4",
     "jsdom": "^29.1.1",
-    "prettier": "^3.9.1",
+    "prettier": "^3.9.4",
     "prisma": "^7.8.0",
     "qrcode": "^1.5.4",
-    "tailwindcss": "^4.3.1",
+    "tailwindcss": "^4.3.2",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.0",
-    "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^4.1.9"
-  },
-  "pnpm": {
-    "overrides": {
-      "postcss@<8.5.10": ">=8.5.10",
-      "@hono/node-server@<1.19.13": "^1.19.13"
-    }
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.62.1",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^2.1.9"
   }
 }
