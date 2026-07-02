@@ -1,7 +1,7 @@
 import "dotenv/config";
 import * as argon2 from "argon2";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, Role } from "../src/generated/prisma/client";
+import { PrismaClient, Role, MerchantStatus } from "../src/generated/prisma/client";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is not set");
@@ -27,6 +27,21 @@ async function seedAdmin(): Promise<void> {
     create: { username, passwordHash, role: Role.ADMIN },
   });
   console.log(`[seed] admin ready: ${admin.username}`);
+
+  // For managed/e2e deploys where the admin is pre-provisioned, mark the force-change
+  // gate satisfied by recording the password-change audit the gate looks for (idempotent).
+  if (process.env.SEED_ADMIN_PWCHANGE_DONE === "true") {
+    const already = await prisma.auditLog.findFirst({
+      where: { actorId: admin.id, action: "auth.password.change" },
+      select: { id: true },
+    });
+    if (!already) {
+      await prisma.auditLog.create({
+        data: { actorId: admin.id, action: "auth.password.change", target: admin.id },
+      });
+    }
+    console.log("[seed] admin password-change gate marked satisfied");
+  }
 }
 
 async function seedDemo(): Promise<void> {
@@ -52,11 +67,7 @@ async function seedDemo(): Promise<void> {
   const merchantUser = await prisma.user.upsert({
     where: { username: "demo-merchant" },
     update: {},
-    create: {
-      username: "demo-merchant",
-      passwordHash: merchantHash,
-      role: Role.MERCHANT,
-    },
+    create: { username: "demo-merchant", passwordHash: merchantHash, role: Role.MERCHANT },
   });
   await prisma.merchant.upsert({
     where: { userId: merchantUser.id },
@@ -64,7 +75,7 @@ async function seedDemo(): Promise<void> {
     create: {
       userId: merchantUser.id,
       businessName: "Demo Sari-Sari Store",
-      status: "ACTIVE",
+      status: MerchantStatus.ACTIVE,
       qrphRaw:
         "00020101021128120008ph.qrph0104DEMO5204000053036085802PH5914DEMO SARI-SARI6006MANILA6304ABCD",
       qrphMerchantName: "DEMO SARI-SARI",

@@ -4,7 +4,7 @@
 
 **Goal:** Make HeyPay shippable: server-to-server webhook + upload endpoints, a green Playwright happy-path suite over the mock rail, reproducible container/CI/Railway config, an authoritative `.env.example`, and a verified quality-gate checklist.
 
-**Architecture:** The PDAX webhook (`POST /api/webhooks/pdax`) and presign endpoint (`POST /api/uploads/presign`) are thin Route Handlers reusing Phase 1–8 services (state machine, storage, idempotency table). e2e tests boot the *production build* of both the `web` and `worker` processes against a throwaway Postgres/Redis (`docker-compose.test.yml`), seeded by a Playwright `globalSetup`, with the mock rail driving deterministic settlement. Deployment uses one multi-stage `Dockerfile` shared by `web` and `worker`, `railway.json` declaring both services + Postgres/Redis plugins + a `migrate deploy` release command, and a GitHub Actions workflow running the full gate.
+**Architecture:** The PDAX webhook (`POST /api/webhooks/pdax`) and presign endpoint (`POST /api/uploads/presign`) are thin Route Handlers reusing Phase 1–8 services (state machine, storage, idempotency table). e2e tests boot the _production build_ of both the `web` and `worker` processes against a throwaway Postgres/Redis (`docker-compose.test.yml`), seeded by a Playwright `globalSetup`, with the mock rail driving deterministic settlement. Deployment uses one multi-stage `Dockerfile` shared by `web` and `worker`, `railway.json` declaring both services + Postgres/Redis plugins + a `migrate deploy` release command, and a GitHub Actions workflow running the full gate.
 
 **Tech Stack:** Next.js 16.2.x Route Handlers · Prisma 7 · Redis/BullMQ · `@playwright/test` · Vitest (integration) · Docker (multi-stage, pnpm frozen lockfile) · Railway (`railway.json`) · GitHub Actions.
 
@@ -62,10 +62,12 @@ heypay/
 ## Task 1: Public health endpoint
 
 **Files:**
+
 - Create: `src/app/api/health/route.ts`
 - Test: `tests/integration/health.test.ts`
 
 **Interfaces:**
+
 - Consumes: `prisma` (`@/server/db`), `redis` (`@/server/redis`) — singletons from Phase 1.
 - Produces: `GET /api/health` → `200 {status:"ok",checks:{db,redis}}` when both reachable, else `503 {status:"degraded",...}`. Consumed by `playwright.config.ts` (Task 6) readiness and `railway.json` (Task 9) health check.
 
@@ -139,10 +141,12 @@ git commit -m "feat(api): add public /api/health endpoint for Railway + e2e read
 ## Task 2: PDAX webhook handler (`POST /api/webhooks/pdax`)
 
 **Files:**
+
 - Create: `src/app/api/webhooks/pdax/route.ts`
 - Test: `tests/integration/webhooks-pdax.test.ts`
 
 **Interfaces:**
+
 - Consumes:
   - `prisma` (`@/server/db`) — `payment`, `idempotencyKey` models (SPEC §4).
   - `dec` (`@/lib/money`).
@@ -153,7 +157,7 @@ git commit -m "feat(api): add public /api/health endpoint for Railway + e2e read
     export function advanceOnRailCallback(input: {
       paymentId: string;
       kind: "trade" | "cashout";
-      externalRef: string;                 // pdaxTradeRef | pdaxCashoutRef
+      externalRef: string; // pdaxTradeRef | pdaxCashoutRef
       state: "PENDING" | "FILLED" | "SETTLED" | "FAILED";
       feePhp?: Decimal;
       netPhp?: Decimal;
@@ -163,6 +167,7 @@ git commit -m "feat(api): add public /api/health endpoint for Railway + e2e read
 - Produces: `POST /api/webhooks/pdax` — verifies HMAC signature (`X-PDAX-Signature`, sha256 of raw body with `PDAX_WEBHOOK_SECRET`) **and** optional source-IP allowlist (`PDAX_WEBHOOK_IP_ALLOWLIST`), Zod-validates the payload, is idempotent by `eventId` (via `IdempotencyKey` scope `webhook.pdax`), and advances the matched payment. Returns `200 {ok:true}` on success, `401` on bad signature/IP, `400` on malformed body, `200 {ok:true,unmatched:true}` for an unknown ref (so PDAX stops retrying). **No session/CSRF** (server-to-server); reads the **raw** body for signature verification.
 
 **Design notes (Global Constraint: webhook security):**
+
 - The handler does **not** use the `route()` wrapper (which enforces CSRF/session); it is the deliberate exception and substitutes signature + allowlist checks.
 - Falls back to worker polling: if PDAX never calls the webhook, the Phase 5 worker still advances the payment by polling `getTradeStatus`/`getPayoutStatus`. The webhook is an accelerator, not the only path — hence it routes through the same idempotent advancer.
 
@@ -196,8 +201,11 @@ function makeReq(body: string, sig: string | null): NextRequest {
   return new NextRequest("http://localhost/api/webhooks/pdax", { method: "POST", body, headers });
 }
 const validBody = JSON.stringify({
-  eventId: "evt_1", type: "trade.updated", reference: "TRADE-REF-1",
-  status: "FILLED", feePhp: "12.50",
+  eventId: "evt_1",
+  type: "trade.updated",
+  reference: "TRADE-REF-1",
+  status: "FILLED",
+  feePhp: "12.50",
 });
 
 describe("POST /api/webhooks/pdax", () => {
@@ -214,7 +222,12 @@ describe("POST /api/webhooks/pdax", () => {
     expect(await res.json()).toMatchObject({ ok: true });
     expect(advanceOnRailCallback).toHaveBeenCalledTimes(1);
     expect(advanceOnRailCallback).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentId: "pay_1", kind: "trade", externalRef: "TRADE-REF-1", state: "FILLED" }),
+      expect.objectContaining({
+        paymentId: "pay_1",
+        kind: "trade",
+        externalRef: "TRADE-REF-1",
+        state: "FILLED",
+      }),
     );
     expect(idem.create).toHaveBeenCalledTimes(1);
   });
@@ -342,7 +355,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const expiresAt = new Date(Date.now() + RETENTION_MS);
   if (!payment) {
-    await prisma.idempotencyKey.create({ data: { key: idemKey, scope: "webhook.pdax", expiresAt } });
+    await prisma.idempotencyKey.create({
+      data: { key: idemKey, scope: "webhook.pdax", expiresAt },
+    });
     return NextResponse.json({ ok: true, unmatched: true });
   }
 
@@ -377,10 +392,12 @@ git commit -m "feat(api): add idempotent PDAX webhook with HMAC + IP allowlist v
 ## Task 3: Presigned upload endpoint (`POST /api/uploads/presign`)
 
 **Files:**
+
 - Create: `src/app/api/uploads/presign/route.ts`
 - Test: `tests/integration/uploads-presign.test.ts`
 
 **Interfaces:**
+
 - Consumes:
   - `route`, `json`, `parseBody` (`@/lib/http`); `requireUser` (`@/server/auth/sessions`); `badRequest` (`@/lib/errors`).
   - `presignUpload`, `verifyUploadedObject` (`@/server/storage/s3`) — Phase 3 contract:
@@ -391,7 +408,7 @@ git commit -m "feat(api): add idempotent PDAX webhook with HMAC + IP allowlist v
 - Produces: `POST /api/uploads/presign`. Discriminated body:
   - `{action:"presign", prefix, contentType, sizeBytes}` → validates content-type allowlist + size cap (5 MiB) server-side, returns `{url, fields, key}`.
   - `{action:"verify", key}` → re-validates the uploaded object via `verifyUploadedObject`, returns `{ok:true}`.
-  Requires a valid session (any role). 401 unauthenticated, 400 on bad content-type/oversize/unknown action.
+    Requires a valid session (any role). 401 unauthenticated, 400 on bad content-type/oversize/unknown action.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -417,33 +434,62 @@ function makeReq(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/uploads/presign", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json", origin: "http://localhost", "sec-fetch-site": "same-origin" },
+    headers: {
+      "content-type": "application/json",
+      origin: "http://localhost",
+      "sec-fetch-site": "same-origin",
+    },
   });
 }
 const ctx = { params: Promise.resolve({}) };
 
 describe("POST /api/uploads/presign", () => {
   beforeEach(() => {
-    requireUser.mockReset().mockResolvedValue({ id: "u1", username: "u", role: "MERCHANT", isActive: true });
+    requireUser
+      .mockReset()
+      .mockResolvedValue({ id: "u1", username: "u", role: "MERCHANT", isActive: true });
     presignUpload.mockClear();
     verifyUploadedObject.mockClear();
   });
 
   it("returns a presigned POST for a valid image request", async () => {
-    const res = await POST(makeReq({ action: "presign", prefix: "qrph", contentType: "image/png", sizeBytes: 1024 }), ctx);
+    const res = await POST(
+      makeReq({ action: "presign", prefix: "qrph", contentType: "image/png", sizeBytes: 1024 }),
+      ctx,
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ key: "qrph/abc.png", url: expect.any(String) });
-    expect(presignUpload).toHaveBeenCalledWith({ prefix: "qrph", contentType: "image/png", maxBytes: 5 * 1024 * 1024 });
+    expect(presignUpload).toHaveBeenCalledWith({
+      prefix: "qrph",
+      contentType: "image/png",
+      maxBytes: 5 * 1024 * 1024,
+    });
   });
 
   it("rejects a disallowed content type with 400", async () => {
-    const res = await POST(makeReq({ action: "presign", prefix: "qrph", contentType: "application/pdf", sizeBytes: 1024 }), ctx);
+    const res = await POST(
+      makeReq({
+        action: "presign",
+        prefix: "qrph",
+        contentType: "application/pdf",
+        sizeBytes: 1024,
+      }),
+      ctx,
+    );
     expect(res.status).toBe(400);
     expect(presignUpload).not.toHaveBeenCalled();
   });
 
   it("rejects an oversize request with 400", async () => {
-    const res = await POST(makeReq({ action: "presign", prefix: "logo", contentType: "image/jpeg", sizeBytes: 6 * 1024 * 1024 }), ctx);
+    const res = await POST(
+      makeReq({
+        action: "presign",
+        prefix: "logo",
+        contentType: "image/jpeg",
+        sizeBytes: 6 * 1024 * 1024,
+      }),
+      ctx,
+    );
     expect(res.status).toBe(400);
   });
 
@@ -455,7 +501,9 @@ describe("POST /api/uploads/presign", () => {
   });
 
   it("401s when unauthenticated", async () => {
-    requireUser.mockRejectedValueOnce(Object.assign(new Error("unauthorized"), { code: "UNAUTHORIZED", status: 401 }));
+    requireUser.mockRejectedValueOnce(
+      Object.assign(new Error("unauthorized"), { code: "UNAUTHORIZED", status: 401 }),
+    );
     const res = await POST(makeReq({ action: "verify", key: "qrph/abc.png" }), ctx);
     expect(res.status).toBe(401);
   });
@@ -529,9 +577,11 @@ git commit -m "feat(api): add presigned upload endpoint with content-type/size +
 ## Task 4: Finalize `.env.example` (authoritative list)
 
 **Files:**
+
 - Modify (overwrite): `.env.example`
 
 **Interfaces:**
+
 - Produces: the single authoritative env list. Extends AGENT §10 with the Phase 9 additions: `PORT`, `LOG_LEVEL`, optional `SENTRY_DSN`, the webhook secrets (`PDAX_WEBHOOK_SECRET`, `PDAX_WEBHOOK_IP_ALLOWLIST`), `S3_PUBLIC_URL` (signed-GET base), and the e2e overrides (`E2E_PORT`, `E2E_DATABASE_URL`, `E2E_REDIS_URL`). Every env name referenced by Phases 1–9 appears here with a placeholder.
 
 - [ ] **Step 1: Write the file (complete contents)**
@@ -627,6 +677,7 @@ git commit -m "chore(env): finalize authoritative .env.example with webhook + e2
 ## Task 5: e2e infrastructure — throwaway services, Playwright config, global setup, fixtures
 
 **Files:**
+
 - Create: `docker-compose.test.yml`
 - Create: `playwright.config.ts`
 - Create: `tests/e2e/global-setup.ts`
@@ -634,6 +685,7 @@ git commit -m "chore(env): finalize authoritative .env.example with webhook + e2
 - Modify: `package.json` (scripts)
 
 **Interfaces:**
+
 - Consumes: `/api/health` (Task 1) for webServer readiness; `pnpm prisma migrate deploy` + `pnpm prisma db seed` (Phases 1); the `web` (`pnpm start`) + `worker` (`pnpm worker:start`) entrypoints.
 - Produces:
   - `playwright.config.ts` booting the production build of web + worker against `E2E_DATABASE_URL`/`E2E_REDIS_URL` with `PAYMENT_RAIL=mock`, `STELLAR_NETWORK=testnet`.
@@ -696,7 +748,8 @@ Expected: lockfile updated; `concurrently` appears under `devDependencies`.
 import { execSync } from "node:child_process";
 
 const E2E_DATABASE_URL =
-  process.env.E2E_DATABASE_URL ?? "postgresql://heypay:heypay@localhost:5433/heypay_e2e?schema=public";
+  process.env.E2E_DATABASE_URL ??
+  "postgresql://heypay:heypay@localhost:5433/heypay_e2e?schema=public";
 
 export default async function globalSetup(): Promise<void> {
   const env = {
@@ -721,7 +774,8 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = process.env.E2E_PORT ?? "3100";
 const BASE_URL = `http://localhost:${PORT}`;
 const E2E_DATABASE_URL =
-  process.env.E2E_DATABASE_URL ?? "postgresql://heypay:heypay@localhost:5433/heypay_e2e?schema=public";
+  process.env.E2E_DATABASE_URL ??
+  "postgresql://heypay:heypay@localhost:5433/heypay_e2e?schema=public";
 const E2E_REDIS_URL = process.env.E2E_REDIS_URL ?? "redis://localhost:6380";
 
 export default defineConfig({
@@ -761,7 +815,8 @@ export default defineConfig({
       SHADOW_DATABASE_URL: E2E_DATABASE_URL.replace("heypay_e2e", "heypay_e2e_shadow"),
       REDIS_URL: E2E_REDIS_URL,
       SESSION_SECRET: process.env.SESSION_SECRET ?? "e2e-session-secret-not-for-prod-0123456789",
-      ENCRYPTION_MASTER_KEY: process.env.ENCRYPTION_MASTER_KEY ?? "base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+      ENCRYPTION_MASTER_KEY:
+        process.env.ENCRYPTION_MASTER_KEY ?? "base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
       ENCRYPTION_KEY_VERSION: "1",
       ADMIN_USERNAME: process.env.ADMIN_USERNAME ?? "admin",
       ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "admin-e2e-pass",
@@ -789,7 +844,10 @@ export const DEMO_QRPH_RAW =
 export const DEMO_QRPH_MERCHANT_NAME = "HEYPAY DEMO MERCHANT";
 
 export function uniqueUser(prefix: string): { username: string; password: string } {
-  return { username: `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1e4)}`, password: "Sup3r-Secret-Pw!" };
+  return {
+    username: `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1e4)}`,
+    password: "Sup3r-Secret-Pw!",
+  };
 }
 
 export async function signup(
@@ -801,7 +859,10 @@ export async function signup(
   expect(res.ok(), `signup failed: ${res.status()} ${await res.text()}`).toBeTruthy();
 }
 
-export async function login(page: Page, user: { username: string; password: string }): Promise<void> {
+export async function login(
+  page: Page,
+  user: { username: string; password: string },
+): Promise<void> {
   await page.goto("/login");
   await page.getByLabel(/username/i).fill(user.username);
   await page.getByLabel(/password/i).fill(user.password);
@@ -810,15 +871,24 @@ export async function login(page: Page, user: { username: string; password: stri
 }
 
 // Fund a testnet account via friendbot (idempotent enough for a fresh account).
-export async function fundWithFriendbot(request: APIRequestContext, publicKey: string): Promise<void> {
-  const res = await request.get(`https://friendbot.stellar.org/?addr=${encodeURIComponent(publicKey)}`);
+export async function fundWithFriendbot(
+  request: APIRequestContext,
+  publicKey: string,
+): Promise<void> {
+  const res = await request.get(
+    `https://friendbot.stellar.org/?addr=${encodeURIComponent(publicKey)}`,
+  );
   // 200 = funded now; 400 = already funded — both acceptable.
   expect([200, 400]).toContain(res.status());
 }
 
 // Create + onboard + go-live a merchant entirely via the API; returns its id.
-export async function ensureActiveMerchant(request: APIRequestContext): Promise<{ merchantId: string }> {
-  const create = await request.post("/api/merchant", { data: { businessName: DEMO_QRPH_MERCHANT_NAME } });
+export async function ensureActiveMerchant(
+  request: APIRequestContext,
+): Promise<{ merchantId: string }> {
+  const create = await request.post("/api/merchant", {
+    data: { businessName: DEMO_QRPH_MERCHANT_NAME },
+  });
   expect(create.ok(), `merchant create failed: ${await create.text()}`).toBeTruthy();
   const { merchant } = await create.json();
 
@@ -857,9 +927,11 @@ git commit -m "test(e2e): add Playwright config, throwaway compose, global setup
 ## Task 6: e2e spec — payer happy path (signup → prefund → scan → quote → confirm → SETTLED)
 
 **Files:**
+
 - Create: `tests/e2e/payer-happy-path.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `tests/e2e/fixtures.ts`; endpoints `/api/auth/signup`, `/api/wallet/deposit-address`, `/api/wallet/sync`, `/api/qrph/decode`, `/api/payments/quote`, `/api/payments/[id]/confirm`, `/api/payments/[id]`; payer UI routes `/payer/scan`, `/payer/pay/[paymentId]/confirm`. The worker (mock rail) drives the payment to `SETTLED`.
 
 > The spec drives the real flow through the API where the UI would just be a thin shell (signup, prefund, quote) and through the UI for the headline confirm screen, then polls `GET /api/payments/[id]` until `SETTLED`. With `PAYMENT_RAIL=mock` the worker settles deterministically.
@@ -879,7 +951,10 @@ import {
   ensureActiveMerchant,
 } from "./fixtures";
 
-test("payer pays a QRPH merchant from XLM balance through to SETTLED", async ({ page, baseURL }) => {
+test("payer pays a QRPH merchant from XLM balance through to SETTLED", async ({
+  page,
+  baseURL,
+}) => {
   test.slow(); // settlement + friendbot funding take time
 
   // --- Setup: an ACTIVE merchant exists (own API session, isolated cookies) ---
@@ -922,7 +997,9 @@ test("payer pays a QRPH merchant from XLM balance through to SETTLED", async ({ 
   const merchantId: string = decoded.merchant.id;
 
   // --- Quote: lock a rate for a PHP amount ---
-  const quoteRes = await payerCtx.post("/api/payments/quote", { data: { merchantId, amountPhp: "250.00" } });
+  const quoteRes = await payerCtx.post("/api/payments/quote", {
+    data: { merchantId, amountPhp: "250.00" },
+  });
   expect(quoteRes.ok(), await quoteRes.text()).toBeTruthy();
   const quote = await quoteRes.json();
   expect(quote.paymentId).toBeTruthy();
@@ -966,7 +1043,7 @@ Expected (before Phases 5–6 wiring is verified end-to-end): FAIL — typically
 
 - [ ] **Step 3: Drive to PASS**
 
-If a step fails, fix the *application* wiring it exercises (decode resolution, quote balance check, worker settlement under mock rail, confirm-screen copy) — not the test. Re-run until green.
+If a step fails, fix the _application_ wiring it exercises (decode resolution, quote balance check, worker settlement under mock rail, confirm-screen copy) — not the test. Re-run until green.
 
 Run: `pnpm playwright test tests/e2e/payer-happy-path.spec.ts`
 Expected: PASS (1 passed).
@@ -983,9 +1060,11 @@ git commit -m "test(e2e): payer happy path signup→prefund→scan→confirm→S
 ## Task 7: e2e spec — merchant onboarding → go-live → settlement appears
 
 **Files:**
+
 - Create: `tests/e2e/merchant-go-live.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `tests/e2e/fixtures.ts`; merchant UI routes `/merchant/onboarding`, `/merchant/dashboard`, `/merchant/transactions`; endpoints used by the wizard; the payer-side helpers to generate a real settlement against this merchant.
 
 > Drives the 4-step onboarding wizard through the UI to "Go Live", then makes a payer settle a payment to this merchant (via API for speed) and asserts the settlement is visible in the merchant's business transactions.
@@ -1004,7 +1083,10 @@ import {
   fundWithFriendbot,
 } from "./fixtures";
 
-test("merchant completes onboarding, goes live, and sees a settlement", async ({ page, baseURL }) => {
+test("merchant completes onboarding, goes live, and sees a settlement", async ({
+  page,
+  baseURL,
+}) => {
   test.slow();
 
   // --- Merchant signs up + onboards via the wizard UI ---
@@ -1052,13 +1134,18 @@ test("merchant completes onboarding, goes live, and sees a settlement", async ({
   const { publicKey } = await addr.json();
   await fundWithFriendbot(payerCtx, publicKey);
   await expect
-    .poll(async () => {
-      const s = await payerCtx.post("/api/wallet/sync", { data: {} });
-      return s.ok() ? Number((await s.json()).balanceXlm) : 0;
-    }, { timeout: 60_000, intervals: [2000] })
+    .poll(
+      async () => {
+        const s = await payerCtx.post("/api/wallet/sync", { data: {} });
+        return s.ok() ? Number((await s.json()).balanceXlm) : 0;
+      },
+      { timeout: 60_000, intervals: [2000] },
+    )
     .toBeGreaterThan(100);
 
-  const quoteRes = await payerCtx.post("/api/payments/quote", { data: { merchantId, amountPhp: "175.00" } });
+  const quoteRes = await payerCtx.post("/api/payments/quote", {
+    data: { merchantId, amountPhp: "175.00" },
+  });
   expect(quoteRes.ok(), await quoteRes.text()).toBeTruthy();
   const { paymentId } = await quoteRes.json();
   const confirmRes = await payerCtx.post(`/api/payments/${paymentId}/confirm`, {
@@ -1068,10 +1155,13 @@ test("merchant completes onboarding, goes live, and sees a settlement", async ({
   expect(confirmRes.ok(), await confirmRes.text()).toBeTruthy();
 
   await expect
-    .poll(async () => {
-      const r = await payerCtx.get(`/api/payments/${paymentId}`);
-      return r.ok() ? (await r.json()).payment.status : "ERR";
-    }, { timeout: 90_000, intervals: [2000] })
+    .poll(
+      async () => {
+        const r = await payerCtx.get(`/api/payments/${paymentId}`);
+        return r.ok() ? (await r.json()).payment.status : "ERR";
+      },
+      { timeout: 90_000, intervals: [2000] },
+    )
     .toBe("SETTLED");
 
   // --- Settlement appears in the merchant's business transactions ---
@@ -1106,9 +1196,11 @@ git commit -m "test(e2e): merchant onboarding→go-live→settlement visible"
 ## Task 8: e2e spec — admin login → view payments → force MockProvider failure → retry/refund
 
 **Files:**
+
 - Create: `tests/e2e/admin-retry-refund.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `tests/e2e/fixtures.ts`; admin login (seeded `ADMIN_USERNAME`/`ADMIN_PASSWORD`); admin routes `/admin/payments`; endpoints `POST /api/admin/payments/[id]/retry`, `POST /api/admin/payments/[id]/refund`; the MockProvider forced-failure switch from Phase 4.
 - The MockProvider exposes a deterministic failure trigger driven by the quote amount: a magic PHP amount (`66.66`) makes `getTradeStatus`/`getPayoutStatus` return `FAILED`, sending the payment to `FAILED`/`REFUND_PENDING`. (Phase 4 `MockProvider` Produces this: "forced-failure switch"; this spec depends on amount `66.66` triggering it. If Phase 4 used a different trigger, update this constant to match.)
 
@@ -1142,13 +1234,18 @@ test("admin views a failed payment and refunds it", async ({ page, baseURL }) =>
   const { publicKey } = await addr.json();
   await fundWithFriendbot(payerCtx, publicKey);
   await expect
-    .poll(async () => {
-      const s = await payerCtx.post("/api/wallet/sync", { data: {} });
-      return s.ok() ? Number((await s.json()).balanceXlm) : 0;
-    }, { timeout: 60_000, intervals: [2000] })
+    .poll(
+      async () => {
+        const s = await payerCtx.post("/api/wallet/sync", { data: {} });
+        return s.ok() ? Number((await s.json()).balanceXlm) : 0;
+      },
+      { timeout: 60_000, intervals: [2000] },
+    )
     .toBeGreaterThan(100);
 
-  const quoteRes = await payerCtx.post("/api/payments/quote", { data: { merchantId, amountPhp: FORCE_FAIL_PHP } });
+  const quoteRes = await payerCtx.post("/api/payments/quote", {
+    data: { merchantId, amountPhp: FORCE_FAIL_PHP },
+  });
   expect(quoteRes.ok(), await quoteRes.text()).toBeTruthy();
   const { paymentId } = await quoteRes.json();
   const confirmRes = await payerCtx.post(`/api/payments/${paymentId}/confirm`, {
@@ -1159,10 +1256,13 @@ test("admin views a failed payment and refunds it", async ({ page, baseURL }) =>
 
   // --- Wait until the payment reaches a failure-family terminal/branch state ---
   await expect
-    .poll(async () => {
-      const r = await payerCtx.get(`/api/payments/${paymentId}`);
-      return r.ok() ? (await r.json()).payment.status : "ERR";
-    }, { timeout: 90_000, intervals: [2000] })
+    .poll(
+      async () => {
+        const r = await payerCtx.get(`/api/payments/${paymentId}`);
+        return r.ok() ? (await r.json()).payment.status : "ERR";
+      },
+      { timeout: 90_000, intervals: [2000] },
+    )
     .toMatch(/FAILED|REFUND_PENDING/);
 
   // --- Admin logs in and finds the payment ---
@@ -1173,21 +1273,29 @@ test("admin views a failed payment and refunds it", async ({ page, baseURL }) =>
   await expect(row.getByText(/FAILED|REFUND_PENDING/)).toBeVisible();
 
   // --- Admin triggers a refund via the admin API (authenticated as admin) ---
-  const refundRes = await page.request.post(`/api/admin/payments/${paymentId}/refund`, { data: {} });
+  const refundRes = await page.request.post(`/api/admin/payments/${paymentId}/refund`, {
+    data: {},
+  });
   expect(refundRes.ok(), await refundRes.text()).toBeTruthy();
 
   // --- Observe the payment reach REFUNDED ---
   await expect
-    .poll(async () => {
-      const r = await page.request.get(`/api/payments/${paymentId}`);
-      return r.ok() ? (await r.json()).payment.status : "ERR";
-    }, { timeout: 90_000, intervals: [2000] })
+    .poll(
+      async () => {
+        const r = await page.request.get(`/api/payments/${paymentId}`);
+        return r.ok() ? (await r.json()).payment.status : "ERR";
+      },
+      { timeout: 90_000, intervals: [2000] },
+    )
     .toBe("REFUNDED");
 
   // --- The admin payments view reflects the refund ---
   await page.reload();
   await expect(
-    page.getByRole("row", { hasText: paymentId.slice(0, 8) }).first().getByText(/REFUNDED/),
+    page
+      .getByRole("row", { hasText: paymentId.slice(0, 8) })
+      .first()
+      .getByText(/REFUNDED/),
   ).toBeVisible({ timeout: 15_000 });
 
   await payerCtx.dispose();
@@ -1224,10 +1332,12 @@ git commit -m "test(e2e): admin views forced MockProvider failure and refunds"
 ## Task 9: Multi-stage Dockerfile + `.dockerignore`
 
 **Files:**
+
 - Create: `Dockerfile`
 - Create: `.dockerignore`
 
 **Interfaces:**
+
 - Consumes: `package.json` scripts `build` (`next build`), `start` (`next start`), `worker:start` (`tsx src/worker/index.ts` or compiled equivalent); Prisma generator output `src/generated/prisma`; `pnpm-lock.yaml`.
 - Produces: one image used by both Railway services. Web runs the default `CMD`; the worker service overrides the start command to `pnpm worker:start`. Non-root runtime; pnpm via corepack; `prisma generate` at build time; frozen lockfile.
 
@@ -1329,9 +1439,11 @@ git commit -m "build: multi-stage Dockerfile (pnpm frozen, prisma generate, non-
 ## Task 10: `railway.json` — web + worker services
 
 **Files:**
+
 - Create: `railway.json`
 
 **Interfaces:**
+
 - Consumes: the `Dockerfile` (Task 9); `/api/health` (Task 1); `pnpm prisma migrate deploy`; scripts `start` and `worker:start`.
 - Produces: a Railway config declaring two services (`web`, `worker`) built from the shared Dockerfile, a release command running migrations, a health check on `/api/health` for `web`, and documented Postgres/Redis plugins + env-group + pooled-DB-URL conventions.
 
@@ -1383,6 +1495,7 @@ Expected: `railway.json valid`
 - [ ] **Step 3: Document the Railway setup (commit message body + repo notes)**
 
 Confirm the following are documented (in the commit body and/or `README`/deploy notes — do not put secrets in git):
+
 - Add **Postgres** and **Redis** plugins → they inject `DATABASE_URL` / `REDIS_URL`.
 - Create two services from this repo: `web` (start `pnpm start`) and `worker` (start `pnpm worker:start`); both build from `Dockerfile`.
 - Set the **web** service `DATABASE_URL` to the **pooled** connection string.
@@ -1410,9 +1523,11 @@ Setup notes:
 ## Task 11: CI workflow (`.github/workflows/ci.yml`)
 
 **Files:**
+
 - Create: `.github/workflows/ci.yml`
 
 **Interfaces:**
+
 - Consumes: every quality-gate command — `pnpm install --frozen-lockfile`, `pnpm prisma migrate deploy`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm audit --prod`, `pnpm vitest run`, `pnpm playwright test`; service containers for Postgres + Redis; the `/api/health` readiness used by Playwright.
 - Produces: a single `ci` workflow gating PRs/pushes. Runs the mock rail + testnet for e2e.
 
@@ -1554,39 +1669,41 @@ git commit -m "ci: full quality gate (typecheck/lint/format/audit/vitest/playwri
 ## Task 12: Final quality-gate checklist (AGENT §12 + SPEC §12)
 
 **Files:**
+
 - None created. This task runs and records the gate; each item below has the exact command + expected result. Treat any failure as a defect to fix in the owning phase before declaring "done".
 
 **Interfaces:**
+
 - Consumes: everything from Phases 1–9.
 
 - [ ] **Static gates clean** — `pnpm typecheck && pnpm lint && pnpm format:check`
-  Expected: all exit 0; no `any` at boundaries.
+      Expected: all exit 0; no `any` at boundaries.
 - [ ] **Dependency hygiene** — `pnpm audit --prod`
-  Expected: `No known vulnerabilities found`. Lockfile committed (`git status --porcelain pnpm-lock.yaml` empty); `packageManager` pinned (`grep packageManager package.json`).
+      Expected: `No known vulnerabilities found`. Lockfile committed (`git status --porcelain pnpm-lock.yaml` empty); `packageManager` pinned (`grep packageManager package.json`).
 - [ ] **Deps current** — `pnpm outdated || true`
-  Expected: review output; no known-vulnerable majors left behind.
+      Expected: review output; no known-vulnerable majors left behind.
 - [ ] **Unit tests** (QRPH TLV+CRC, quote/fee math, state-machine transitions, envelope encryption round-trip) — `pnpm vitest run tests/unit`
-  Expected: all pass.
+      Expected: all pass.
 - [ ] **Integration tests** (API handlers vs throwaway Postgres; webhook; presign; health) — `docker compose up -d && pnpm vitest run tests/integration`
-  Expected: all pass.
+      Expected: all pass.
 - [ ] **E2E** (mock rail + testnet: payer happy path; merchant go-live; admin retry/refund) — `pnpm test:e2e:up && pnpm playwright test`
-  Expected: 3 passed.
+      Expected: 3 passed.
 - [ ] **Migrations apply cleanly + seed idempotent** — `pnpm prisma migrate deploy && pnpm prisma db seed && pnpm prisma db seed`
-  Expected: migrations applied; admin upserted both runs with no error/duplicate.
+      Expected: migrations applied; admin upserted both runs with no error/duplicate.
 - [ ] **Clean-checkout bootstrap works** — follow AGENT §9 from a fresh clone: `pnpm install && docker compose up -d && cp .env.example .env && pnpm prisma migrate dev && pnpm prisma db seed && pnpm dev` (and `pnpm worker:dev`)
-  Expected: web boots on :3000, worker consumes queues, no missing-env errors.
+      Expected: web boots on :3000, worker consumes queues, no missing-env errors.
 - [ ] **Security headers present** — `curl -sI http://localhost:3000/login`
-  Expected: `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Content-Security-Policy`, and `Permissions-Policy` (camera only on `/payer/scan`).
+      Expected: `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Content-Security-Policy`, and `Permissions-Policy` (camera only on `/payer/scan`).
 - [ ] **CSRF + rate limits active** — `curl -s -X POST http://localhost:3000/api/payments/quote -H 'content-type: application/json' -d '{}'` from a foreign origin
-  Expected: 403 (origin check) / 401 (no session); repeated `/api/auth/login` attempts → 429.
+      Expected: 403 (origin check) / 401 (no session); repeated `/api/auth/login` attempts → 429.
 - [ ] **Webhook security** — `curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/api/webhooks/pdax -H 'content-type: application/json' -d '{"eventId":"x","type":"trade.updated","reference":"r","status":"FILLED"}'`
-  Expected: `401` (no/invalid signature); a correctly-signed replay is idempotent.
+      Expected: `401` (no/invalid signature); a correctly-signed replay is idempotent.
 - [ ] **No secret/PII in logs** — `grep -riE '(secret|password|S[A-Z2-7]{55}|accountNumber)' <captured app logs>`
-  Expected: no plaintext secrets, wallet secrets (`S...`), full account numbers, or session tokens.
+      Expected: no plaintext secrets, wallet secrets (`S...`), full account numbers, or session tokens.
 - [ ] **Docker image builds + runs non-root** — `docker build -t heypay:gate . && docker run --rm heypay:gate id -u`
-  Expected: build succeeds; prints `1001`.
+      Expected: build succeeds; prints `1001`.
 - [ ] **Railway config valid** — `node -e "JSON.parse(require('fs').readFileSync('railway.json','utf8'))"`
-  Expected: no error; `web` + `worker` start commands present; release command = `prisma migrate deploy`; health check `/api/health`.
+      Expected: no error; `web` + `worker` start commands present; release command = `prisma migrate deploy`; health check `/api/health`.
 - [ ] **Commit the gate result**
 
 ```bash
@@ -1598,6 +1715,7 @@ git commit --allow-empty -m "chore: phase 9 quality gates verified (typecheck/li
 ## Self-Review
 
 **Spec coverage (this phase's slice):**
+
 - **SPEC §6 webhooks** (`POST /api/webhooks/pdax`, signature/IP allowlist, untrusted/Zod, idempotent by external ref, advance via state machine, polling fallback) → **Task 2**.
 - **SPEC §6 uploads** (`POST /api/uploads/presign`, content-type+size, `verifyUploadedObject` re-validation) → **Task 3**.
 - **SPEC §10 testing** (unit/integration/e2e; mock rail + testnet happy path) → Tasks **5–8**, **12**; **resilience** (idempotent webhook/jobs) → Task 2.
@@ -1613,6 +1731,7 @@ git commit --allow-empty -m "chore: phase 9 quality gates verified (typecheck/li
 **Placeholder scan:** No `TBD`/`TODO`/"add error handling"/"similar to Task N"/"write tests for the above". Every code step shows full file contents; every verify step gives an exact command + expected output. The e2e specs deliberately FAIL first (app-wiring gaps), then PASS — that is the prescribed TDD cycle, not a placeholder.
 
 **Type/name consistency vs Locked Shared Contracts:**
+
 - Money: `dec` (Task 2) matches `@/lib/money` contract.
 - HTTP: `route`, `json`, `parseBody` (Task 3) match `@/lib/http`.
 - Auth: `requireUser` (Task 3) matches `@/server/auth/sessions`.

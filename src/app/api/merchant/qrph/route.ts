@@ -15,8 +15,10 @@ export const POST = route(async (req) => {
   const existing = await getMerchantForUser(user.id);
   const { raw, imageKey } = await parseBody(req, qrphSchema);
 
-  const decoded = decodeQrph(raw); // throws badRequest on malformed TLV / non-PHP currency
+  const decoded = decodeQrph(raw); // throws badRequest on malformed TLV
   if (!decoded.crcValid) throw badRequest("QRPH CRC validation failed");
+  if (decoded.currency && decoded.currency !== "608")
+    throw badRequest("Only PHP (608) QRPH is supported");
 
   // Uniqueness: no other merchant may already own this code.
   const dupe = await prisma.merchant.findFirst({

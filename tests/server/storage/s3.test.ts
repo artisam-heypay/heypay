@@ -8,10 +8,11 @@ import {
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// `vi.mock` is hoisted above imports, so the spy is created via `vi.hoisted`.
-const { createPresignedPost } = vi.hoisted(() => ({ createPresignedPost: vi.fn() }));
-vi.mock("@aws-sdk/s3-presigned-post", () => ({ createPresignedPost }));
+vi.mock("@aws-sdk/s3-presigned-post", async () => ({
+  createPresignedPost: vi.fn(),
+}));
 
+import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import {
   __resetS3ForTests,
   ensureBucket,
@@ -19,6 +20,7 @@ import {
   verifyUploadedObject,
 } from "@/server/storage/s3";
 
+const mockedPresign = createPresignedPost as unknown as ReturnType<typeof vi.fn>;
 const s3Mock = mockClient(S3Client);
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const NOT_IMAGE = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]); // "%PDF-"
@@ -31,14 +33,14 @@ beforeEach(() => {
   process.env.S3_SECRET_KEY = "heypay-secret";
   process.env.S3_FORCE_PATH_STYLE = "true";
   s3Mock.reset();
-  createPresignedPost.mockReset();
+  mockedPresign.mockReset();
   __resetS3ForTests();
 });
 afterEach(() => vi.clearAllMocks());
 
 describe("presignUpload", () => {
   it("returns a random key under the prefix and a size-bounded policy", async () => {
-    createPresignedPost.mockResolvedValue({
+    mockedPresign.mockResolvedValue({
       url: "http://localhost:9000/heypay-uploads",
       fields: { key: "x" },
     });
@@ -49,7 +51,7 @@ describe("presignUpload", () => {
     });
     expect(out.key).toMatch(/^qrph\/[0-9a-f-]+\.png$/);
     expect(out.url).toContain("heypay-uploads");
-    const args = createPresignedPost.mock.calls[0]![1];
+    const args = mockedPresign.mock.calls[0]![1];
     expect(args.Conditions).toEqual(
       expect.arrayContaining([["content-length-range", 1, 1_000_000]]),
     );

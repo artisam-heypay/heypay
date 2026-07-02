@@ -1,8 +1,10 @@
 import "server-only";
+import { redirect } from "next/navigation";
 import { prisma } from "@/server/db";
 import { notFound } from "@/lib/errors";
 import { dec, formatXlm, formatPhp } from "@/lib/money";
-import type { Merchant, Payment, PaymentStatus, MerchantStatus } from "@/generated/prisma";
+import type { Merchant, Payment, PaymentStatus } from "@/generated/prisma/client";
+import { MerchantStatus } from "@/generated/prisma/client";
 import type { TxQuery } from "@/lib/schemas/merchant";
 
 export type MerchantDto = {
@@ -101,6 +103,13 @@ export async function getMerchantForUser(userId: string): Promise<Merchant> {
   return m;
 }
 
+/** For Server Components: redirect to onboarding instead of rendering a 404. */
+export async function requireMerchant(userId: string): Promise<Merchant> {
+  const m = await getMerchantForUserOrNull(userId);
+  if (!m) redirect("/merchant/onboarding");
+  return m;
+}
+
 function monthStart(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 }
@@ -115,9 +124,9 @@ export async function getMerchantEarnings(merchantId: string): Promise<MerchantE
     select: { amountXlm: true },
   });
 
-  let total = dec(0);
-  let thisMonth = dec(0);
-  let lastMonth = dec(0);
+  let total = dec(0),
+    thisMonth = dec(0),
+    lastMonth = dec(0);
   const now = new Date();
   const curStart = monthStart(now);
   const prevStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import type { Role } from "@/generated/prisma";
+import type { Role } from "@/generated/prisma/client";
 import { AppError, badRequest, serverError, type ErrorEnvelope } from "./errors";
 
 export type HandlerContext = {

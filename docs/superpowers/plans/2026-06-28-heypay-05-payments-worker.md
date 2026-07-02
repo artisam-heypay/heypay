@@ -34,12 +34,15 @@ DB-touching tests run against a throwaway Postgres (the docker-compose `postgres
 ## Task 1: Payment reference generator
 
 **Files:**
+
 - Create: `src/server/payments/reference.ts`
 - Test: `src/server/payments/reference.test.ts`
 
 **Interfaces:**
+
 - Consumes: nothing (Node `crypto`).
 - Produces (LOCKED — overview "Payment reference"):
+
   ```typescript
   // Generate a human-facing unique reference: "TXN-" + 8 uppercase base32 chars.
   export function newPaymentReference(): string;
@@ -107,13 +110,16 @@ git commit -m "feat(payments): add newPaymentReference TXN base32 generator" -m 
 ## Task 2: Idempotency helper
 
 **Files:**
+
 - Create: `src/server/payments/idempotency.ts`
 - Create: `tests/helpers/db.ts` (shared DB reset + factories, reused by later tasks)
 - Test: `src/server/payments/idempotency.test.ts`
 
 **Interfaces:**
+
 - Consumes: `db` (`@/server/db`), `conflict`, `badRequest` (`@/lib/errors`), `Prisma` (`@/generated/prisma`).
 - Produces:
+
   ```typescript
   // Runs fn once per (scope,key); stores the JSON result; replays return the stored result.
   // Concurrent in-flight call for the same key throws conflict(). Missing key throws badRequest().
@@ -124,11 +130,18 @@ git commit -m "feat(payments): add newPaymentReference TXN base32 generator" -m 
     opts?: { ttlSec?: number },
   ): Promise<T>;
   ```
+
   ```typescript
   // tests/helpers/db.ts
   export function resetDb(): Promise<void>;
-  export function makePayer(opts?: { cachedXlm?: string; reservedXlm?: string }): Promise<{ user: User; wallet: CustodialWallet }>;
-  export function makeMerchant(opts?: { status?: MerchantStatus; accountNumber?: string }): Promise<{ user: User; merchant: Merchant }>;
+  export function makePayer(opts?: {
+    cachedXlm?: string;
+    reservedXlm?: string;
+  }): Promise<{ user: User; wallet: CustodialWallet }>;
+  export function makeMerchant(opts?: {
+    status?: MerchantStatus;
+    accountNumber?: string;
+  }): Promise<{ user: User; merchant: Merchant }>;
   ```
 
 - [ ] **Step 1: Write the shared test DB helper**
@@ -154,7 +167,10 @@ export async function resetDb(): Promise<void> {
   await db.user.deleteMany();
 }
 
-export async function makePayer(opts?: { cachedXlm?: string; reservedXlm?: string }): Promise<{ user: User; wallet: CustodialWallet }> {
+export async function makePayer(opts?: {
+  cachedXlm?: string;
+  reservedXlm?: string;
+}): Promise<{ user: User; wallet: CustodialWallet }> {
   const user = await db.user.create({
     data: { username: `payer-${randomUUID()}`, passwordHash: "x", role: "PAYER" },
   });
@@ -170,7 +186,10 @@ export async function makePayer(opts?: { cachedXlm?: string; reservedXlm?: strin
   return { user, wallet };
 }
 
-export async function makeMerchant(opts?: { status?: MerchantStatus; accountNumber?: string }): Promise<{ user: User; merchant: Merchant }> {
+export async function makeMerchant(opts?: {
+  status?: MerchantStatus;
+  accountNumber?: string;
+}): Promise<{ user: User; merchant: Merchant }> {
   const user = await db.user.create({
     data: { username: `merchant-${randomUUID()}`, passwordHash: "x", role: "MERCHANT" },
   });
@@ -232,15 +251,20 @@ describe("withIdempotencyKey", () => {
       await gate;
       return { done: true };
     });
-    await expect(withIdempotencyKey(key, "test.scope", async () => ({ done: false })))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      withIdempotencyKey(key, "test.scope", async () => ({ done: false })),
+    ).rejects.toMatchObject({ status: 409 });
     release();
     await expect(slow).resolves.toEqual({ done: true });
   });
 
   it("throws badRequest (400) when the key is missing", async () => {
-    await expect(withIdempotencyKey("", "test.scope", async () => 1)).rejects.toBeInstanceOf(AppError);
-    await expect(withIdempotencyKey(undefined, "test.scope", async () => 1)).rejects.toMatchObject({ status: 400 });
+    await expect(withIdempotencyKey("", "test.scope", async () => 1)).rejects.toBeInstanceOf(
+      AppError,
+    );
+    await expect(withIdempotencyKey(undefined, "test.scope", async () => 1)).rejects.toMatchObject({
+      status: 400,
+    });
   });
 });
 ```
@@ -310,20 +334,23 @@ git commit -m "feat(payments): add withIdempotencyKey helper + test DB factories
 ## Task 3: Settlement state machine
 
 **Files:**
+
 - Create: `src/server/payments/state-machine.ts`
 - Test: `src/server/payments/state-machine.test.ts`
 
 **Interfaces:**
+
 - Consumes: `db`, `conflict` (`@/lib/errors`), `PaymentStatus`, `Payment`, `Prisma` (`@/generated/prisma`).
 - Produces:
+
   ```typescript
   import { PaymentStatus, Payment, Prisma } from "@/generated/prisma";
   export type TxClient = Prisma.TransactionClient;
 
   // Legal transition table (authoritative — matches overview "Settlement State Machine").
   export const TRANSITIONS: Record<PaymentStatus, PaymentStatus[]>;
-  export const TERMINAL: ReadonlySet<PaymentStatus>;            // SETTLED, FAILED, REFUNDED
-  export const XLM_MOVED: ReadonlySet<PaymentStatus>;           // states where XLM has left the wallet
+  export const TERMINAL: ReadonlySet<PaymentStatus>; // SETTLED, FAILED, REFUNDED
+  export const XLM_MOVED: ReadonlySet<PaymentStatus>; // states where XLM has left the wallet
   export function canTransition(from: PaymentStatus, to: PaymentStatus): boolean;
   export function isTerminal(status: PaymentStatus): boolean;
   // Happy-path next status for the worker to drive, or null if terminal / manual-only.
@@ -345,7 +372,15 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { resetDb, makePayer, makeMerchant } from "../../../tests/helpers/db";
 import { db } from "@/server/db";
 import { newPaymentReference } from "./reference";
-import { TRANSITIONS, TERMINAL, XLM_MOVED, canTransition, isTerminal, nextStep, applyTransition } from "./state-machine";
+import {
+  TRANSITIONS,
+  TERMINAL,
+  XLM_MOVED,
+  canTransition,
+  isTerminal,
+  nextStep,
+  applyTransition,
+} from "./state-machine";
 
 describe("state machine (pure)", () => {
   it("encodes the authoritative happy path", () => {
@@ -388,9 +423,10 @@ describe("state machine (pure)", () => {
   });
 
   it("every status appears as a key in TRANSITIONS", () => {
-    for (const s of Object.values(
-      { ...require("@/generated/prisma").PaymentStatus } as Record<string, string>,
-    )) {
+    for (const s of Object.values({ ...require("@/generated/prisma").PaymentStatus } as Record<
+      string,
+      string
+    >)) {
       expect(TRANSITIONS).toHaveProperty(s);
     }
   });
@@ -404,9 +440,14 @@ describe("applyTransition (persisted)", () => {
     const { merchant } = await makeMerchant();
     return db.payment.create({
       data: {
-        reference: newPaymentReference(), payerId: user.id, merchantId: merchant.id,
-        amountPhp: "100.00", quotedRate: "12.00000000", amountXlm: "8.3333334",
-        networkFeeXlm: "0.0000100", status: "QUOTED",
+        reference: newPaymentReference(),
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: "100.00",
+        quotedRate: "12.00000000",
+        amountXlm: "8.3333334",
+        networkFeeXlm: "0.0000100",
+        status: "QUOTED",
         quoteExpiresAt: new Date(Date.now() + 90_000),
       },
     });
@@ -466,7 +507,10 @@ export const TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
 
 export const TERMINAL: ReadonlySet<PaymentStatus> = new Set([S.SETTLED, S.FAILED, S.REFUNDED]);
 export const XLM_MOVED: ReadonlySet<PaymentStatus> = new Set([
-  S.STELLAR_CONFIRMED, S.PDAX_TRADING, S.PDAX_TRADED, S.PAYOUT_SUBMITTED,
+  S.STELLAR_CONFIRMED,
+  S.PDAX_TRADING,
+  S.PDAX_TRADED,
+  S.PAYOUT_SUBMITTED,
 ]);
 
 const NEXT: Partial<Record<PaymentStatus, PaymentStatus>> = {
@@ -507,7 +551,12 @@ export async function applyTransition(
     data: { status: toStatus },
   });
   await client.paymentEvent.create({
-    data: { paymentId: payment.id, fromStatus: payment.status, toStatus, detail: detail ?? undefined },
+    data: {
+      paymentId: payment.id,
+      fromStatus: payment.status,
+      toStatus,
+      detail: detail ?? undefined,
+    },
   });
   return updated;
 }
@@ -534,19 +583,26 @@ git commit -m "feat(payments): add settlement state machine (transitions, nextSt
 ## Task 4: Quote domain (`createQuote`)
 
 **Files:**
+
 - Create: `src/server/payments/quote.ts`
 - Test: `src/server/payments/quote.test.ts`
 
 **Interfaces:**
+
 - Consumes: `rail` (`@/server/rails`), `dec`, `phpToXlm`, `availableXlm`, `Decimal` (`@/lib/money`), `newPaymentReference` (Task 1), `withRetry` (Task 6 — but quote ships before the worker; **create `src/lib/retry.ts` here if not present**, see note), `db`, `notFound`/`conflict` (`@/lib/errors`).
 - Produces:
   ```typescript
   import { Decimal } from "@/lib/money";
-  export const STELLAR_BASE_FEE_XLM: Decimal;       // 100 stroops = 0.0000100 XLM (1 payment op)
+  export const STELLAR_BASE_FEE_XLM: Decimal; // 100 stroops = 0.0000100 XLM (1 payment op)
   export type CreateQuoteInput = { payerId: string; merchantId: string; amountPhp: Decimal };
   export type CreateQuoteResult = {
-    paymentId: string; reference: string; amountPhp: Decimal;
-    rate: Decimal; amountXlm: Decimal; networkFeeXlm: Decimal; quoteExpiresAt: Date;
+    paymentId: string;
+    reference: string;
+    amountPhp: Decimal;
+    rate: Decimal;
+    amountXlm: Decimal;
+    networkFeeXlm: Decimal;
+    quoteExpiresAt: Date;
   };
   export function createQuote(input: CreateQuoteInput): Promise<CreateQuoteResult>;
   ```
@@ -581,7 +637,11 @@ describe("createQuote", () => {
   it("computes amountXlm (ROUND_UP) + base fee and persists a QUOTED Payment + rate snapshot", async () => {
     const { user } = await makePayer({ cachedXlm: "100.0000000" });
     const { merchant } = await makeMerchant();
-    const res = await createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") });
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("100"),
+    });
 
     expect(res.rate.toString()).toBe("12");
     // 100 / 12 = 8.3333333... → ROUND_UP at 7dp = 8.3333334
@@ -601,16 +661,18 @@ describe("createQuote", () => {
   it("rejects insufficient available funds with conflict (409)", async () => {
     const { user } = await makePayer({ cachedXlm: "5.0000000" }); // needs ~8.33 XLM
     const { merchant } = await makeMerchant();
-    await expect(createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }),
+    ).rejects.toMatchObject({ status: 409 });
     expect(await db.payment.count()).toBe(0);
   });
 
   it("rejects a non-ACTIVE merchant with notFound (404)", async () => {
     const { user } = await makePayer();
     const { merchant } = await makeMerchant({ status: "DRAFT" });
-    await expect(createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }))
-      .rejects.toMatchObject({ status: 404 });
+    await expect(
+      createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });
 ```
@@ -637,26 +699,38 @@ export const STELLAR_BASE_FEE_XLM: Decimal = dec("0.0000100");
 
 export type CreateQuoteInput = { payerId: string; merchantId: string; amountPhp: Decimal };
 export type CreateQuoteResult = {
-  paymentId: string; reference: string; amountPhp: Decimal;
-  rate: Decimal; amountXlm: Decimal; networkFeeXlm: Decimal; quoteExpiresAt: Date;
+  paymentId: string;
+  reference: string;
+  amountPhp: Decimal;
+  rate: Decimal;
+  amountXlm: Decimal;
+  networkFeeXlm: Decimal;
+  quoteExpiresAt: Date;
 };
 
 export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteResult> {
   const merchant = await db.merchant.findUnique({ where: { id: input.merchantId } });
-  if (!merchant || merchant.status !== "ACTIVE") throw notFound("merchant not available for payment");
+  if (!merchant || merchant.status !== "ACTIVE")
+    throw notFound("merchant not available for payment");
 
   const wallet = await db.custodialWallet.findUnique({ where: { userId: input.payerId } });
   if (!wallet) throw conflict("payer wallet not found");
 
-  const quote = await withRetry(() => rail.getQuote({ sell: "XLM", buy: "PHP", phpAmount: input.amountPhp }), {
-    label: "rail.getQuote",
-  });
+  const quote = await withRetry(
+    () => rail.getQuote({ sell: "XLM", buy: "PHP", phpAmount: input.amountPhp }),
+    {
+      label: "rail.getQuote",
+    },
+  );
   const rate = quote.rate;
   const amountXlm = phpToXlm(input.amountPhp, rate); // ROUND_UP, 7dp (payer covers)
   const networkFeeXlm = STELLAR_BASE_FEE_XLM;
   const requiredXlm = amountXlm.plus(networkFeeXlm);
 
-  const available = availableXlm(dec(wallet.cachedXlmBalance.toString()), dec(wallet.reservedXlm.toString()));
+  const available = availableXlm(
+    dec(wallet.cachedXlmBalance.toString()),
+    dec(wallet.reservedXlm.toString()),
+  );
   if (available.lessThan(requiredXlm)) {
     throw conflict("insufficient available XLM balance", {
       availableXlm: available.toFixed(7),
@@ -665,7 +739,9 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   }
 
   const payment = await db.$transaction(async (tx) => {
-    await tx.exchangeRateSnapshot.create({ data: { pair: "XLMPHP", rate: rate.toFixed(8), source: "PDAX" } });
+    await tx.exchangeRateSnapshot.create({
+      data: { pair: "XLMPHP", rate: rate.toFixed(8), source: "PDAX" },
+    });
     const p = await tx.payment.create({
       data: {
         reference: newPaymentReference(),
@@ -681,7 +757,12 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
       },
     });
     await tx.paymentEvent.create({
-      data: { paymentId: p.id, fromStatus: "CREATED", toStatus: "QUOTED", detail: { rate: rate.toFixed(8) } },
+      data: {
+        paymentId: p.id,
+        fromStatus: "CREATED",
+        toStatus: "QUOTED",
+        detail: { rate: rate.toFixed(8) },
+      },
     });
     return p;
   });
@@ -717,12 +798,15 @@ git commit -m "feat(payments): add createQuote (rate lock, fee, funds check, QUO
 ## Task 5: Confirm domain (`confirmPayment`)
 
 **Files:**
+
 - Create: `src/server/payments/confirm.ts`
 - Test: `src/server/payments/confirm.test.ts`
 
 **Interfaces:**
+
 - Consumes: `withIdempotencyKey` (Task 2), `applyTransition` (Task 3), `enqueueSettle` (`@/server/queue/queues`, Task 6 — **mock it in this task's test**), `dec`, `availableXlm` (`@/lib/money`), `db`, `notFound`/`forbidden`/`conflict` (`@/lib/errors`).
 - Produces:
+
   ```typescript
   import { PaymentStatus } from "@/generated/prisma";
   export type ConfirmPaymentInput = { paymentId: string; payerId: string; idemKey: string };
@@ -753,9 +837,14 @@ async function makeQuoted(opts?: { cachedXlm?: string; expiresInMs?: number }) {
   const { merchant } = await makeMerchant();
   const payment = await db.payment.create({
     data: {
-      reference: newPaymentReference(), payerId: user.id, merchantId: merchant.id,
-      amountPhp: "100.00", quotedRate: "12.00000000", amountXlm: "8.3333334",
-      networkFeeXlm: "0.0000100", status: "QUOTED",
+      reference: newPaymentReference(),
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: "100.00",
+      quotedRate: "12.00000000",
+      amountXlm: "8.3333334",
+      networkFeeXlm: "0.0000100",
+      status: "QUOTED",
       quoteExpiresAt: new Date(Date.now() + (opts?.expiresInMs ?? 90_000)),
     },
   });
@@ -763,23 +852,33 @@ async function makeQuoted(opts?: { cachedXlm?: string; expiresInMs?: number }) {
 }
 
 describe("confirmPayment", () => {
-  beforeEach(async () => { await resetDb(); enqueueSettle.mockClear(); });
+  beforeEach(async () => {
+    await resetDb();
+    enqueueSettle.mockClear();
+  });
 
   it("reserves funds, sets AUTHORIZED, enqueues settlement", async () => {
     const { user, wallet, payment } = await makeQuoted();
-    const res = await confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: randomUUID() });
+    const res = await confirmPayment({
+      paymentId: payment.id,
+      payerId: user.id,
+      idemKey: randomUUID(),
+    });
     expect(res).toEqual({ paymentId: payment.id, status: "AUTHORIZED" });
 
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.reservedXlm.toFixed(7)).toBe("8.3333434"); // 8.3333334 + 0.0000100
-    expect(await db.paymentEvent.count({ where: { paymentId: payment.id, toStatus: "AUTHORIZED" } })).toBe(1);
+    expect(
+      await db.paymentEvent.count({ where: { paymentId: payment.id, toStatus: "AUTHORIZED" } }),
+    ).toBe(1);
     expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
   });
 
   it("rejects an expired quote with conflict (409) and reserves nothing", async () => {
     const { user, wallet, payment } = await makeQuoted({ expiresInMs: -1000 });
-    await expect(confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: randomUUID() }))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: randomUUID() }),
+    ).rejects.toMatchObject({ status: 409 });
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
     expect(enqueueSettle).not.toHaveBeenCalled();
@@ -799,8 +898,9 @@ describe("confirmPayment", () => {
   it("rejects confirming another user's payment with forbidden (403)", async () => {
     const { payment } = await makeQuoted();
     const { user: stranger } = await makePayer();
-    await expect(confirmPayment({ paymentId: payment.id, payerId: stranger.id, idemKey: randomUUID() }))
-      .rejects.toMatchObject({ status: 403 });
+    await expect(
+      confirmPayment({ paymentId: payment.id, payerId: stranger.id, idemKey: randomUUID() }),
+    ).rejects.toMatchObject({ status: 403 });
   });
 });
 ```
@@ -837,7 +937,8 @@ export async function confirmPayment(input: ConfirmPaymentInput): Promise<Confir
 
     // Already authorised (e.g. a retried request with a fresh key) → return current state.
     if (payment.status === "AUTHORIZED") return { paymentId: payment.id, status: payment.status };
-    if (payment.status !== "QUOTED") throw conflict(`cannot confirm payment in status ${payment.status}`);
+    if (payment.status !== "QUOTED")
+      throw conflict(`cannot confirm payment in status ${payment.status}`);
     if (!payment.quoteExpiresAt || payment.quoteExpiresAt.getTime() < Date.now()) {
       throw conflict("quote expired; please re-quote");
     }
@@ -848,7 +949,10 @@ export async function confirmPayment(input: ConfirmPaymentInput): Promise<Confir
 
     const updated = await db.$transaction(async (tx) => {
       const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-      const available = availableXlm(dec(w.cachedXlmBalance.toString()), dec(w.reservedXlm.toString()));
+      const available = availableXlm(
+        dec(w.cachedXlmBalance.toString()),
+        dec(w.reservedXlm.toString()),
+      );
       if (available.lessThan(total)) throw conflict("insufficient available XLM balance");
       await tx.custodialWallet.update({
         where: { id: w.id },
@@ -880,14 +984,17 @@ git commit -m "feat(payments): add confirmPayment (reserve funds, AUTHORIZED, en
 ## Task 6: Retry/poll utilities + BullMQ queues + `enqueueSettle`
 
 **Files:**
+
 - Create/extend: `src/lib/retry.ts` (created in Task 4; add `pollUntil` + finalize `withRetry` here)
 - Create: `src/server/queue/queues.ts`
 - Test: `src/lib/retry.test.ts`
 - Test: `src/server/queue/queues.test.ts`
 
 **Interfaces:**
+
 - Consumes: `db` (`@/server/db`), `REDIS_URL` env, `bullmq` `Queue`, `ioredis`.
 - Produces:
+
   ```typescript
   // src/lib/retry.ts
   export type RetryOpts = { retries?: number; baseMs?: number; maxMs?: number; label?: string };
@@ -895,14 +1002,22 @@ git commit -m "feat(payments): add confirmPayment (reserve funds, AUTHORIZED, en
   export function withRetry<T>(fn: () => Promise<T>, opts?: RetryOpts): Promise<T>;
   export type PollOpts = { attempts?: number; intervalMs?: number; label?: string };
   // Calls fn until done(value) is true; throws after `attempts`. Returns the last value when done.
-  export function pollUntil<T>(fn: () => Promise<T>, done: (v: T) => boolean, opts?: PollOpts): Promise<T>;
+  export function pollUntil<T>(
+    fn: () => Promise<T>,
+    done: (v: T) => boolean,
+    opts?: PollOpts,
+  ): Promise<T>;
 
   // src/server/queue/queues.ts  (LOCKED contract)
-  export const QUEUE_NAMES: { readonly settle: "settle"; readonly depositPoll: "deposit-poll"; readonly reconcile: "reconcile" };
+  export const QUEUE_NAMES: {
+    readonly settle: "settle";
+    readonly depositPoll: "deposit-poll";
+    readonly reconcile: "reconcile";
+  };
   export const settleQueue: import("bullmq").Queue;
   export const depositPollQueue: import("bullmq").Queue;
   export const reconcileQueue: import("bullmq").Queue;
-  export const bullConnection: import("ioredis").Redis;   // shared connection for Queues + Workers
+  export const bullConnection: import("ioredis").Redis; // shared connection for Queues + Workers
   // Enqueue the next settlement step. jobId = `${paymentId}:${currentStatus}` for idempotency.
   export function enqueueSettle(paymentId: string): Promise<void>;
   ```
@@ -922,7 +1037,8 @@ describe("withRetry", () => {
   });
 
   it("retries then succeeds", async () => {
-    const fn = vi.fn()
+    const fn = vi
+      .fn()
       .mockRejectedValueOnce(new Error("boom"))
       .mockRejectedValueOnce(new Error("boom"))
       .mockResolvedValue("ok");
@@ -940,13 +1056,22 @@ describe("withRetry", () => {
 describe("pollUntil", () => {
   it("resolves when the predicate is satisfied", async () => {
     let n = 0;
-    const v = await pollUntil(async () => ++n, (x) => x >= 3, { attempts: 5, intervalMs: 1 });
+    const v = await pollUntil(
+      async () => ++n,
+      (x) => x >= 3,
+      { attempts: 5, intervalMs: 1 },
+    );
     expect(v).toBe(3);
   });
 
   it("throws when not done within attempts", async () => {
-    await expect(pollUntil(async () => 0, (x) => x === 1, { attempts: 3, intervalMs: 1, label: "trade" }))
-      .rejects.toThrow(/trade/);
+    await expect(
+      pollUntil(
+        async () => 0,
+        (x) => x === 1,
+        { attempts: 3, intervalMs: 1, label: "trade" },
+      ),
+    ).rejects.toThrow(/trade/);
   });
 });
 ```
@@ -984,7 +1109,11 @@ export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOpts = {}): 
   throw lastErr;
 }
 
-export async function pollUntil<T>(fn: () => Promise<T>, done: (v: T) => boolean, opts: PollOpts = {}): Promise<T> {
+export async function pollUntil<T>(
+  fn: () => Promise<T>,
+  done: (v: T) => boolean,
+  opts: PollOpts = {},
+): Promise<T> {
   const attempts = opts.attempts ?? 30;
   const intervalMs = opts.intervalMs ?? 1_000;
   let value!: T;
@@ -993,7 +1122,9 @@ export async function pollUntil<T>(fn: () => Promise<T>, done: (v: T) => boolean
     if (done(value)) return value;
     if (i < attempts - 1) await sleep(intervalMs);
   }
-  throw new Error(`pollUntil timed out${opts.label ? ` (${opts.label})` : ""} after ${attempts} attempts`);
+  throw new Error(
+    `pollUntil timed out${opts.label ? ` (${opts.label})` : ""} after ${attempts} attempts`,
+  );
 }
 ```
 
@@ -1013,18 +1144,29 @@ import { newPaymentReference } from "@/server/payments/reference";
 
 const add = vi.fn(async () => {});
 vi.mock("bullmq", () => ({
-  Queue: vi.fn().mockImplementation((name: string) => ({ name, add, close: vi.fn(async () => {}) })),
+  Queue: vi
+    .fn()
+    .mockImplementation((name: string) => ({ name, add, close: vi.fn(async () => {}) })),
   Worker: vi.fn(),
 }));
-vi.mock("ioredis", () => ({ default: vi.fn().mockImplementation(() => ({ quit: vi.fn(async () => {}) })) }));
+vi.mock("ioredis", () => ({
+  default: vi.fn().mockImplementation(() => ({ quit: vi.fn(async () => {}) })),
+}));
 
 import { QUEUE_NAMES, enqueueSettle } from "./queues";
 
 describe("queues", () => {
-  beforeEach(async () => { await resetDb(); add.mockClear(); });
+  beforeEach(async () => {
+    await resetDb();
+    add.mockClear();
+  });
 
   it("exposes the locked QUEUE_NAMES", () => {
-    expect(QUEUE_NAMES).toEqual({ settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" });
+    expect(QUEUE_NAMES).toEqual({
+      settle: "settle",
+      depositPoll: "deposit-poll",
+      reconcile: "reconcile",
+    });
   });
 
   it("enqueueSettle uses jobId `${paymentId}:${status}` for idempotency", async () => {
@@ -1032,9 +1174,14 @@ describe("queues", () => {
     const { merchant } = await makeMerchant();
     const p = await db.payment.create({
       data: {
-        reference: newPaymentReference(), payerId: user.id, merchantId: merchant.id,
-        amountPhp: "100.00", quotedRate: "12.00000000", amountXlm: "8.3333334",
-        networkFeeXlm: "0.0000100", status: "AUTHORIZED",
+        reference: newPaymentReference(),
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: "100.00",
+        quotedRate: "12.00000000",
+        amountXlm: "8.3333334",
+        networkFeeXlm: "0.0000100",
+        status: "AUTHORIZED",
       },
     });
     await enqueueSettle(p.id);
@@ -1077,12 +1224,24 @@ const defaultJobOpts = {
   removeOnFail: 5_000,
 };
 
-export const settleQueue = new Queue(QUEUE_NAMES.settle, { connection: bullConnection, defaultJobOptions: defaultJobOpts });
-export const depositPollQueue = new Queue(QUEUE_NAMES.depositPoll, { connection: bullConnection, defaultJobOptions: defaultJobOpts });
-export const reconcileQueue = new Queue(QUEUE_NAMES.reconcile, { connection: bullConnection, defaultJobOptions: defaultJobOpts });
+export const settleQueue = new Queue(QUEUE_NAMES.settle, {
+  connection: bullConnection,
+  defaultJobOptions: defaultJobOpts,
+});
+export const depositPollQueue = new Queue(QUEUE_NAMES.depositPoll, {
+  connection: bullConnection,
+  defaultJobOptions: defaultJobOpts,
+});
+export const reconcileQueue = new Queue(QUEUE_NAMES.reconcile, {
+  connection: bullConnection,
+  defaultJobOptions: defaultJobOpts,
+});
 
 export async function enqueueSettle(paymentId: string): Promise<void> {
-  const payment = await db.payment.findUnique({ where: { id: paymentId }, select: { status: true } });
+  const payment = await db.payment.findUnique({
+    where: { id: paymentId },
+    select: { status: true },
+  });
   if (!payment) return;
   // jobId ties the job to (payment, status); BullMQ dedupes a duplicate of the same step.
   await settleQueue.add("settle", { paymentId }, { jobId: `${paymentId}:${payment.status}` });
@@ -1106,10 +1265,12 @@ git commit -m "feat(queue): add withRetry/pollUntil + BullMQ queues and enqueueS
 ## Task 7: Worker settlement processor (`jobs/settle.ts`)
 
 **Files:**
+
 - Create: `src/server/queue/jobs/settle.ts`
 - Test: `src/server/queue/jobs/settle.test.ts`
 
 **Interfaces:**
+
 - Consumes: `db`, `rail` (`@/server/rails`), `walletService` (`@/server/stellar/wallet`), `applyTransition`/`nextStep`/`isTerminal`/`XLM_MOVED` (`@/server/payments/state-machine`), `enqueueSettle` (`@/server/queue/queues`), `withRetry`/`pollUntil` (`@/lib/retry`), `decryptSecret` (`@/server/crypto/envelope`), `audit` (`@/server/auth/audit`), `dec` (`@/lib/money`), `PaymentStatus`.
 - Produces:
   ```typescript
@@ -1171,9 +1332,14 @@ async function makeAuthorized() {
   const { merchant } = await makeMerchant({ accountNumber: "9988776655" });
   const payment = await db.payment.create({
     data: {
-      reference: newPaymentReference(), payerId: user.id, merchantId: merchant.id,
-      amountPhp: "100.00", quotedRate: "12.00000000", amountXlm: "8.3333334",
-      networkFeeXlm: "0.0000100", status: "AUTHORIZED",
+      reference: newPaymentReference(),
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: "100.00",
+      quotedRate: "12.00000000",
+      amountXlm: "8.3333334",
+      networkFeeXlm: "0.0000100",
+      status: "AUTHORIZED",
     },
   });
   return { user, wallet, merchant, payment };
@@ -1214,12 +1380,14 @@ describe("processSettleJob", () => {
     // bank account decrypted to plaintext for the rail call
     expect(cashOutPhpToBank.mock.calls[0][0].bank.accountNumber).toBe("9988776655");
 
-    const debits = await db.walletTransaction.findMany({ where: { walletId: wallet.id, type: "PAYMENT_DEBIT" } });
+    const debits = await db.walletTransaction.findMany({
+      where: { walletId: wallet.id, type: "PAYMENT_DEBIT" },
+    });
     expect(debits).toHaveLength(1);
     expect(debits[0].amountXlm.toFixed(7)).toBe("-8.3333434");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");          // reservation released
-    expect(w.cachedXlmBalance.toFixed(7)).toBe("91.6666566");     // 100 - 8.3333434
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000"); // reservation released
+    expect(w.cachedXlmBalance.toFixed(7)).toBe("91.6666566"); // 100 - 8.3333434
   });
 
   it("forced Stellar-confirm failure → FAILED, reservation released, no debit (no double-debit)", async () => {
@@ -1231,7 +1399,9 @@ describe("processSettleJob", () => {
 
     expect(final.status).toBe("FAILED");
     expect(final.failureReason).toMatch(/stellar/i);
-    expect(await db.walletTransaction.count({ where: { walletId: wallet.id, type: "PAYMENT_DEBIT" } })).toBe(0);
+    expect(
+      await db.walletTransaction.count({ where: { walletId: wallet.id, type: "PAYMENT_DEBIT" } }),
+    ).toBe(0);
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
     expect(sellCryptoForPhp).not.toHaveBeenCalled();
@@ -1247,15 +1417,22 @@ describe("processSettleJob", () => {
     const final = await drive(payment.id);
 
     expect(final.status).toBe("REFUNDED");
-    const debits = await db.walletTransaction.findMany({ where: { walletId: wallet.id, type: "PAYMENT_DEBIT" } });
-    const credits = await db.walletTransaction.findMany({ where: { walletId: wallet.id, type: "REFUND_CREDIT" } });
+    const debits = await db.walletTransaction.findMany({
+      where: { walletId: wallet.id, type: "PAYMENT_DEBIT" },
+    });
+    const credits = await db.walletTransaction.findMany({
+      where: { walletId: wallet.id, type: "REFUND_CREDIT" },
+    });
     expect(debits).toHaveLength(1);
     expect(credits).toHaveLength(1);
     expect(credits[0].amountXlm.toFixed(7)).toBe("8.3333434");
     // admin alerted
     expect(await db.auditLog.count({ where: { action: "payment.refunded" } })).toBe(1);
     // event trail includes REFUND_PENDING then REFUNDED
-    const evs = await db.paymentEvent.findMany({ where: { paymentId: payment.id }, orderBy: { createdAt: "asc" } });
+    const evs = await db.paymentEvent.findMany({
+      where: { paymentId: payment.id },
+      orderBy: { createdAt: "asc" },
+    });
     const toStatuses = evs.map((e) => e.toStatus);
     expect(toStatuses).toContain("REFUND_PENDING");
     expect(toStatuses).toContain("REFUNDED");
@@ -1282,7 +1459,13 @@ import { withRetry, pollUntil } from "@/lib/retry";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { audit } from "@/server/auth/audit";
 import { enqueueSettle } from "@/server/queue/queues";
-import { applyTransition, isTerminal, nextStep, XLM_MOVED, type TxClient } from "@/server/payments/state-machine";
+import {
+  applyTransition,
+  isTerminal,
+  nextStep,
+  XLM_MOVED,
+  type TxClient,
+} from "@/server/payments/state-machine";
 
 type PaymentWithRels = Awaited<ReturnType<typeof loadPayment>>;
 
@@ -1307,7 +1490,10 @@ export async function processSettleJob(job: { data: { paymentId: string } }): Pr
     return; // terminal/refund path handled; do not rethrow
   }
 
-  const fresh = await db.payment.findUniqueOrThrow({ where: { id: payment.id }, select: { status: true } });
+  const fresh = await db.payment.findUniqueOrThrow({
+    where: { id: payment.id },
+    select: { status: true },
+  });
   if (!isTerminal(fresh.status) && nextStep(fresh.status) !== null) {
     await enqueueSettle(payment.id);
   }
@@ -1315,14 +1501,22 @@ export async function processSettleJob(job: { data: { paymentId: string } }): Pr
 
 async function dispatch(p: PaymentWithRels): Promise<void> {
   switch (p.status) {
-    case PaymentStatus.AUTHORIZED:        return stepSubmitStellar(p);
-    case PaymentStatus.STELLAR_SUBMITTED: return stepConfirmStellar(p);
-    case PaymentStatus.STELLAR_CONFIRMED: return stepRequestTrade(p);
-    case PaymentStatus.PDAX_TRADING:      return stepPollTrade(p);
-    case PaymentStatus.PDAX_TRADED:       return stepRequestPayout(p);
-    case PaymentStatus.PAYOUT_SUBMITTED:  return stepPollPayout(p);
-    case PaymentStatus.REFUND_PENDING:    return stepRefund(p);
-    default: return; // CREATED/QUOTED are driven synchronously by quote/confirm
+    case PaymentStatus.AUTHORIZED:
+      return stepSubmitStellar(p);
+    case PaymentStatus.STELLAR_SUBMITTED:
+      return stepConfirmStellar(p);
+    case PaymentStatus.STELLAR_CONFIRMED:
+      return stepRequestTrade(p);
+    case PaymentStatus.PDAX_TRADING:
+      return stepPollTrade(p);
+    case PaymentStatus.PDAX_TRADED:
+      return stepRequestPayout(p);
+    case PaymentStatus.PAYOUT_SUBMITTED:
+      return stepPollPayout(p);
+    case PaymentStatus.REFUND_PENDING:
+      return stepRefund(p);
+    default:
+      return; // CREATED/QUOTED are driven synchronously by quote/confirm
   }
 }
 
@@ -1334,12 +1528,13 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
   let txHash = p.stellarTxHash;
   if (!txHash) {
     const res = await withRetry(
-      () => walletService.sendXlm({
-        encryptedSecret: wallet.encryptedSecret,
-        destination: process.env.PDAX_XLM_DEPOSIT_ADDRESS!,
-        amountXlm: total,
-        memo: p.reference,
-      }),
+      () =>
+        walletService.sendXlm({
+          encryptedSecret: wallet.encryptedSecret,
+          destination: process.env.PDAX_XLM_DEPOSIT_ADDRESS!,
+          amountXlm: total,
+          memo: p.reference,
+        }),
       { label: "sendXlm" },
     );
     txHash = res.txHash;
@@ -1352,14 +1547,21 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
 async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
   const total = dec(p.amountXlm.toString()).plus(p.networkFeeXlm.toString());
-  const ok = await withRetry(() => walletService.confirmTx(p.stellarTxHash!), { label: "confirmTx" });
+  const ok = await withRetry(() => walletService.confirmTx(p.stellarTxHash!), {
+    label: "confirmTx",
+  });
 
   if (!ok) {
     // Tx definitively failed → XLM never moved → release reservation, FAILED (no refund needed).
     await db.$transaction(async (tx) => {
       await releaseReservation(tx, wallet.id, total);
-      await applyTransition(tx, p, PaymentStatus.FAILED, { failureReason: "stellar tx failed to confirm" });
-      await tx.payment.update({ where: { id: p.id }, data: { failureReason: "stellar tx failed to confirm" } });
+      await applyTransition(tx, p, PaymentStatus.FAILED, {
+        failureReason: "stellar tx failed to confirm",
+      });
+      await tx.payment.update({
+        where: { id: p.id },
+        data: { failureReason: "stellar tx failed to confirm" },
+      });
     });
     return;
   }
@@ -1367,13 +1569,20 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
   await db.$transaction(async (tx) => {
     const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     // Idempotency: skip if a debit already exists for this payment.
-    const existing = await tx.walletTransaction.findFirst({ where: { paymentId: p.id, type: "PAYMENT_DEBIT" } });
+    const existing = await tx.walletTransaction.findFirst({
+      where: { paymentId: p.id, type: "PAYMENT_DEBIT" },
+    });
     if (!existing) {
       const newBalance = dec(w.cachedXlmBalance.toString()).minus(total);
       await tx.walletTransaction.create({
         data: {
-          walletId: w.id, type: "PAYMENT_DEBIT", amountXlm: total.negated().toFixed(7),
-          balanceAfter: newBalance.toFixed(7), stellarTxHash: p.stellarTxHash, paymentId: p.id, memo: p.reference,
+          walletId: w.id,
+          type: "PAYMENT_DEBIT",
+          amountXlm: total.negated().toFixed(7),
+          balanceAfter: newBalance.toFixed(7),
+          stellarTxHash: p.stellarTxHash,
+          paymentId: p.id,
+          memo: p.reference,
         },
       });
       await tx.custodialWallet.update({
@@ -1404,7 +1613,11 @@ async function stepRequestTrade(p: PaymentWithRels): Promise<void> {
 
 // PDAX_TRADING → PDAX_TRADED (poll; FAILED state throws → refund)
 async function stepPollTrade(p: PaymentWithRels): Promise<void> {
-  const status = await pollUntil(() => rail.getTradeStatus(p.pdaxTradeRef!), (s) => s.state !== "PENDING", TRADE_POLL);
+  const status = await pollUntil(
+    () => rail.getTradeStatus(p.pdaxTradeRef!),
+    (s) => s.state !== "PENDING",
+    TRADE_POLL,
+  );
   if (status.state !== "FILLED") throw new Error(`PDAX trade ${p.pdaxTradeRef} failed`);
   const feePhp = status.feePhp ? dec(status.feePhp.toString()) : dec("0");
   await db.payment.update({ where: { id: p.id }, data: { pdaxFeePhp: feePhp.toFixed(2) } });
@@ -1417,11 +1630,16 @@ async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
   if (!payoutRef) {
     const accountNumber = decryptSecret(p.merchant.accountNumber);
     const res = await withRetry(
-      () => rail.cashOutPhpToBank({
-        ref: p.reference,
-        phpAmount: dec(p.amountPhp.toString()),
-        bank: { bankCode: p.merchant.settlementBankCode, accountName: p.merchant.accountName, accountNumber },
-      }),
+      () =>
+        rail.cashOutPhpToBank({
+          ref: p.reference,
+          phpAmount: dec(p.amountPhp.toString()),
+          bank: {
+            bankCode: p.merchant.settlementBankCode,
+            accountName: p.merchant.accountName,
+            accountNumber,
+          },
+        }),
       { label: "cashOutPhpToBank" },
     );
     payoutRef = res.payoutRef;
@@ -1432,7 +1650,11 @@ async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
 
 // PAYOUT_SUBMITTED → SETTLED (poll; FAILED state throws → refund)
 async function stepPollPayout(p: PaymentWithRels): Promise<void> {
-  const status = await pollUntil(() => rail.getPayoutStatus(p.pdaxCashoutRef!), (s) => s.state !== "PENDING", PAYOUT_POLL);
+  const status = await pollUntil(
+    () => rail.getPayoutStatus(p.pdaxCashoutRef!),
+    (s) => s.state !== "PENDING",
+    PAYOUT_POLL,
+  );
   if (status.state !== "SETTLED") throw new Error(`PDAX payout ${p.pdaxCashoutRef} failed`);
   const netPhp = status.netPhp
     ? dec(status.netPhp.toString())
@@ -1449,24 +1671,37 @@ async function stepRefund(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
   const total = dec(p.amountXlm.toString()).plus(p.networkFeeXlm.toString());
   await db.$transaction(async (tx) => {
-    const existing = await tx.walletTransaction.findFirst({ where: { paymentId: p.id, type: "REFUND_CREDIT" } });
+    const existing = await tx.walletTransaction.findFirst({
+      where: { paymentId: p.id, type: "REFUND_CREDIT" },
+    });
     if (!existing) {
       const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
       const newBalance = dec(w.cachedXlmBalance.toString()).plus(total);
       await tx.walletTransaction.create({
         data: {
-          walletId: w.id, type: "REFUND_CREDIT", amountXlm: total.toFixed(7),
-          balanceAfter: newBalance.toFixed(7), paymentId: p.id, memo: `refund ${p.reference}`,
+          walletId: w.id,
+          type: "REFUND_CREDIT",
+          amountXlm: total.toFixed(7),
+          balanceAfter: newBalance.toFixed(7),
+          paymentId: p.id,
+          memo: `refund ${p.reference}`,
         },
       });
-      await tx.custodialWallet.update({ where: { id: w.id }, data: { cachedXlmBalance: newBalance.toFixed(7) } });
+      await tx.custodialWallet.update({
+        where: { id: w.id },
+        data: { cachedXlmBalance: newBalance.toFixed(7) },
+      });
     }
     await applyTransition(tx, p, PaymentStatus.REFUNDED, { refundedXlm: total.toFixed(7) });
   });
   await audit({
     action: "payment.refunded",
     target: p.id,
-    metadata: { reference: p.reference, refundedXlm: total.toFixed(7), reason: p.failureReason ?? "settlement failed after XLM moved" },
+    metadata: {
+      reference: p.reference,
+      refundedXlm: total.toFixed(7),
+      reason: p.failureReason ?? "settlement failed after XLM moved",
+    },
   });
 }
 
@@ -1489,7 +1724,10 @@ async function handleFailure(p: PaymentWithRels, err: unknown): Promise<void> {
   // Pre-XLM-move failure → FAILED; release any reservation still held.
   const total = dec(p.amountXlm.toString()).plus(p.networkFeeXlm.toString());
   await db.$transaction(async (tx) => {
-    if (current.status === PaymentStatus.AUTHORIZED || current.status === PaymentStatus.STELLAR_SUBMITTED) {
+    if (
+      current.status === PaymentStatus.AUTHORIZED ||
+      current.status === PaymentStatus.STELLAR_SUBMITTED
+    ) {
       await releaseReservation(tx, p.payer.wallet!.id, total);
     }
     await tx.payment.update({ where: { id: p.id }, data: { failureReason: reason } });
@@ -1497,7 +1735,11 @@ async function handleFailure(p: PaymentWithRels, err: unknown): Promise<void> {
   });
 }
 
-async function releaseReservation(tx: TxClient, walletId: string, total: import("@/lib/money").Decimal): Promise<void> {
+async function releaseReservation(
+  tx: TxClient,
+  walletId: string,
+  total: import("@/lib/money").Decimal,
+): Promise<void> {
   const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: walletId } });
   const next = dec(w.reservedXlm.toString()).minus(total);
   await tx.custodialWallet.update({
@@ -1526,17 +1768,21 @@ git commit -m "feat(worker): add resumable settlement processor (stellar→trade
 ## Task 8: Deposit poller (`jobs/deposit-poller.ts`)
 
 **Files:**
+
 - Create: `src/server/queue/jobs/deposit-poller.ts`
 - Test: `src/server/queue/jobs/deposit-poller.test.ts`
 
 **Interfaces:**
+
 - Consumes: `db`, `walletService.listIncomingPayments` (`@/server/stellar/wallet`), `redis` (`@/server/redis` — ioredis singleton for the persisted Horizon cursor), `dec` (`@/lib/money`).
 - Produces:
   ```typescript
   import { Decimal } from "@/lib/money";
   // Sync one wallet's incoming Horizon payments → PREFUND_DEPOSIT rows + cachedXlmBalance.
   // Cursor persisted in Redis (`horizon:cursor:<walletId>`). Idempotent by stellarTxHash.
-  export function syncWalletDeposits(walletId: string): Promise<{ balanceXlm: Decimal; newDeposits: number }>;
+  export function syncWalletDeposits(
+    walletId: string,
+  ): Promise<{ balanceXlm: Decimal; newDeposits: number }>;
   // Repeatable job: sync every wallet.
   export function processDepositPollJob(): Promise<void>;
   ```
@@ -1562,19 +1808,34 @@ const store = new Map<string, string>();
 vi.mock("@/server/redis", () => ({
   redis: {
     get: vi.fn(async (k: string) => store.get(k) ?? null),
-    set: vi.fn(async (k: string, v: string) => { store.set(k, v); return "OK"; }),
+    set: vi.fn(async (k: string, v: string) => {
+      store.set(k, v);
+      return "OK";
+    }),
   },
 }));
 
 import { syncWalletDeposits } from "./deposit-poller";
 
 describe("syncWalletDeposits", () => {
-  beforeEach(async () => { vi.clearAllMocks(); store.clear(); await resetDb(); });
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    store.clear();
+    await resetDb();
+  });
 
   it("credits a new deposit exactly once (idempotent by stellarTxHash)", async () => {
     const { wallet } = await makePayer({ cachedXlm: "0.0000000" });
     listIncomingPayments.mockResolvedValue({
-      items: [{ id: "op1", amountXlm: dec("25"), from: "GSENDER", txHash: "DEPOSITHASH1", createdAt: new Date() }],
+      items: [
+        {
+          id: "op1",
+          amountXlm: dec("25"),
+          from: "GSENDER",
+          txHash: "DEPOSITHASH1",
+          createdAt: new Date(),
+        },
+      ],
       cursor: "cursor-1",
     });
 
@@ -1586,7 +1847,9 @@ describe("syncWalletDeposits", () => {
     const second = await syncWalletDeposits(wallet.id);
     expect(second.newDeposits).toBe(0);
 
-    const txs = await db.walletTransaction.findMany({ where: { walletId: wallet.id, type: "PREFUND_DEPOSIT" } });
+    const txs = await db.walletTransaction.findMany({
+      where: { walletId: wallet.id, type: "PREFUND_DEPOSIT" },
+    });
     expect(txs).toHaveLength(1);
     expect(txs[0].amountXlm.toFixed(7)).toBe("25.0000000");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
@@ -1622,10 +1885,15 @@ import { dec, Decimal } from "@/lib/money";
 
 const cursorKey = (walletId: string) => `horizon:cursor:${walletId}`;
 
-export async function syncWalletDeposits(walletId: string): Promise<{ balanceXlm: Decimal; newDeposits: number }> {
+export async function syncWalletDeposits(
+  walletId: string,
+): Promise<{ balanceXlm: Decimal; newDeposits: number }> {
   const wallet = await db.custodialWallet.findUniqueOrThrow({ where: { id: walletId } });
   const cursor = (await redis.get(cursorKey(walletId))) ?? undefined;
-  const { items, cursor: newCursor } = await walletService.listIncomingPayments(wallet.stellarPublicKey, cursor);
+  const { items, cursor: newCursor } = await walletService.listIncomingPayments(
+    wallet.stellarPublicKey,
+    cursor,
+  );
 
   let newDeposits = 0;
   let balance = dec(wallet.cachedXlmBalance.toString());
@@ -1640,11 +1908,18 @@ export async function syncWalletDeposits(walletId: string): Promise<{ balanceXlm
       await db.$transaction(async (tx) => {
         await tx.walletTransaction.create({
           data: {
-            walletId, type: "PREFUND_DEPOSIT", amountXlm: amount.toFixed(7),
-            balanceAfter: after.toFixed(7), stellarTxHash: item.txHash, memo: `deposit from ${item.from}`,
+            walletId,
+            type: "PREFUND_DEPOSIT",
+            amountXlm: amount.toFixed(7),
+            balanceAfter: after.toFixed(7),
+            stellarTxHash: item.txHash,
+            memo: `deposit from ${item.from}`,
           },
         });
-        await tx.custodialWallet.update({ where: { id: walletId }, data: { cachedXlmBalance: after.toFixed(7) } });
+        await tx.custodialWallet.update({
+          where: { id: walletId },
+          data: { cachedXlmBalance: after.toFixed(7) },
+        });
       });
       balance = after;
       newDeposits++;
@@ -1665,7 +1940,10 @@ export async function processDepositPollJob(): Promise<void> {
     try {
       await syncWalletDeposits(w.id);
     } catch (err) {
-      console.error("[deposit-poll] wallet sync failed", { walletId: w.id, error: (err as Error).message });
+      console.error("[deposit-poll] wallet sync failed", {
+        walletId: w.id,
+        error: (err as Error).message,
+      });
     }
   }
 }
@@ -1688,10 +1966,12 @@ git commit -m "feat(worker): add deposit poller (Horizon cursor, idempotent PREF
 ## Task 9: Reconciliation job (`jobs/reconcile.ts`)
 
 **Files:**
+
 - Create: `src/server/queue/jobs/reconcile.ts`
 - Test: `src/server/queue/jobs/reconcile.test.ts`
 
 **Interfaces:**
+
 - Consumes: `db`, `walletService.getBalance` (`@/server/stellar/wallet`), `audit` (`@/server/auth/audit`), `dec` (`@/lib/money`).
 - Produces:
   ```typescript
@@ -1718,7 +1998,10 @@ vi.mock("@/server/stellar/wallet", () => ({
 import { processReconcileJob } from "./reconcile";
 
 describe("processReconcileJob", () => {
-  beforeEach(async () => { vi.clearAllMocks(); await resetDb(); });
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetDb();
+  });
 
   it("flags drift between cached balance and Horizon to AuditLog", async () => {
     const { wallet } = await makePayer({ cachedXlm: "10.0000000" });
@@ -1728,7 +2011,9 @@ describe("processReconcileJob", () => {
     expect(res.checked).toBe(1);
     expect(res.drift).toBe(1);
 
-    const logs = await db.auditLog.findMany({ where: { action: "reconcile.drift", target: wallet.id } });
+    const logs = await db.auditLog.findMany({
+      where: { action: "reconcile.drift", target: wallet.id },
+    });
     expect(logs).toHaveLength(1);
     expect(logs[0].metadata).toMatchObject({ cachedXlm: "10.0000000", horizonXlm: "9.0000000" });
   });
@@ -1769,7 +2054,10 @@ export async function processReconcileJob(): Promise<{ checked: number; drift: n
     try {
       horizon = await walletService.getBalance(wallet.stellarPublicKey);
     } catch (err) {
-      console.error("[reconcile] getBalance failed", { walletId: wallet.id, error: (err as Error).message });
+      console.error("[reconcile] getBalance failed", {
+        walletId: wallet.id,
+        error: (err as Error).message,
+      });
       continue;
     }
     const cached = dec(wallet.cachedXlmBalance.toString());
@@ -1809,11 +2097,13 @@ git commit -m "feat(worker): add reconciliation job (wallet cache vs Horizon dri
 ## Task 10: Worker entrypoint (`src/worker/index.ts`)
 
 **Files:**
+
 - Create: `src/worker/index.ts`
 - Modify: `package.json` (add `worker:dev` / `worker:start` scripts)
 - Test: none (thin wiring; covered by job-processor unit tests + e2e in Phase 9). Verify it boots.
 
 **Interfaces:**
+
 - Consumes: `Worker` (`bullmq`), `bullConnection`/`QUEUE_NAMES`/`depositPollQueue`/`reconcileQueue` (`@/server/queue/queues`), `processSettleJob`/`processDepositPollJob`/`processReconcileJob` (jobs), `ensureBucket` (`@/server/storage/s3` — Phase 3 storage bootstrap).
 - Produces: a long-running process with three Workers + two repeatable jobs + graceful shutdown.
 
@@ -1825,7 +2115,12 @@ git commit -m "feat(worker): add reconciliation job (wallet cache vs Horizon dri
 // src/worker/index.ts
 import "server-only";
 import { Worker } from "bullmq";
-import { QUEUE_NAMES, bullConnection, depositPollQueue, reconcileQueue } from "@/server/queue/queues";
+import {
+  QUEUE_NAMES,
+  bullConnection,
+  depositPollQueue,
+  reconcileQueue,
+} from "@/server/queue/queues";
 import { processSettleJob } from "@/server/queue/jobs/settle";
 import { processDepositPollJob } from "@/server/queue/jobs/deposit-poller";
 import { processReconcileJob } from "@/server/queue/jobs/reconcile";
@@ -1836,33 +2131,49 @@ async function main() {
 
   const settleWorker = new Worker(
     QUEUE_NAMES.settle,
-    async (job) => { await processSettleJob({ data: job.data as { paymentId: string } }); },
+    async (job) => {
+      await processSettleJob({ data: job.data as { paymentId: string } });
+    },
     { connection: bullConnection, concurrency: 5 },
   );
   const depositWorker = new Worker(
     QUEUE_NAMES.depositPoll,
-    async () => { await processDepositPollJob(); },
+    async () => {
+      await processDepositPollJob();
+    },
     { connection: bullConnection, concurrency: 1 },
   );
   const reconcileWorker = new Worker(
     QUEUE_NAMES.reconcile,
-    async () => { await processReconcileJob(); },
+    async () => {
+      await processReconcileJob();
+    },
     { connection: bullConnection, concurrency: 1 },
   );
 
   for (const w of [settleWorker, depositWorker, reconcileWorker]) {
-    w.on("failed", (job, err) => console.error(`[worker] ${w.name} job ${job?.id} failed`, err.message));
+    w.on("failed", (job, err) =>
+      console.error(`[worker] ${w.name} job ${job?.id} failed`, err.message),
+    );
   }
 
   // Repeatable jobs (idempotent processors). jobId keeps a single repeatable schedule.
   await depositPollQueue.add("poll", {}, { repeat: { every: 30_000 }, jobId: "deposit-poll-cron" });
-  await reconcileQueue.add("reconcile", {}, { repeat: { every: 5 * 60_000 }, jobId: "reconcile-cron" });
+  await reconcileQueue.add(
+    "reconcile",
+    {},
+    { repeat: { every: 5 * 60_000 }, jobId: "reconcile-cron" },
+  );
 
   console.log("[worker] started: settle, deposit-poll, reconcile");
 
   const shutdown = async (signal: string) => {
     console.log(`[worker] ${signal} received, shutting down`);
-    await Promise.allSettled([settleWorker.close(), depositWorker.close(), reconcileWorker.close()]);
+    await Promise.allSettled([
+      settleWorker.close(),
+      depositWorker.close(),
+      reconcileWorker.close(),
+    ]);
     await bullConnection.quit();
     process.exit(0);
   };
@@ -1901,6 +2212,7 @@ git commit -m "feat(worker): add worker entrypoint (workers, repeatable jobs, gr
 ## Task 11: Wallet API routes
 
 **Files:**
+
 - Create: `src/app/api/wallet/route.ts` (GET)
 - Create: `src/app/api/wallet/deposit-address/route.ts` (GET)
 - Create: `src/app/api/wallet/sync/route.ts` (POST)
@@ -1908,6 +2220,7 @@ git commit -m "feat(worker): add worker entrypoint (workers, repeatable jobs, gr
 - Test: `tests/integration/wallet.test.ts`
 
 **Interfaces:**
+
 - Consumes: `route`/`json`/`parseQuery` (`@/lib/http`), `requireUser` (`@/server/auth/sessions`), `assertSameOrigin` (`@/server/auth/csrf`), `db`, `dec`/`availableXlm`/`displayPhp`/`Decimal` (`@/lib/money`), `rail.getQuote` (for approxPhp), `syncWalletDeposits` (`@/server/queue/jobs/deposit-poller`), `notFound`/`conflict` (`@/lib/errors`), `qrcode` (deposit QR SVG).
 - Produces (response shapes per SPEC §6):
   ```typescript
@@ -1929,16 +2242,30 @@ import { resetDb, makePayer } from "../helpers/db";
 import { db } from "@/server/db";
 import { dec } from "@/lib/money";
 
-const sessionUser = { current: null as null | { id: string; username: string; role: "PAYER"; isActive: boolean } };
+const sessionUser = {
+  current: null as null | { id: string; username: string; role: "PAYER"; isActive: boolean },
+};
 vi.mock("@/server/auth/sessions", () => ({
   requireUser: vi.fn(async () => {
-    if (!sessionUser.current) throw new (require("@/lib/errors").AppError)("unauthorized", "no session", 401);
+    if (!sessionUser.current)
+      throw new (require("@/lib/errors").AppError)("unauthorized", "no session", 401);
     return sessionUser.current;
   }),
 }));
-vi.mock("@/server/rails", () => ({ rail: { getQuote: vi.fn(async () => ({ rate: dec("12"), phpAmount: dec("0"), xlmAmount: dec("0"), expiresAt: new Date() })) } }));
+vi.mock("@/server/rails", () => ({
+  rail: {
+    getQuote: vi.fn(async () => ({
+      rate: dec("12"),
+      phpAmount: dec("0"),
+      xlmAmount: dec("0"),
+      expiresAt: new Date(),
+    })),
+  },
+}));
 const syncWalletDeposits = vi.fn(async () => ({ balanceXlm: dec("42"), newDeposits: 1 }));
-vi.mock("@/server/queue/jobs/deposit-poller", () => ({ syncWalletDeposits: (id: string) => syncWalletDeposits(id) }));
+vi.mock("@/server/queue/jobs/deposit-poller", () => ({
+  syncWalletDeposits: (id: string) => syncWalletDeposits(id),
+}));
 
 import { GET as getWallet } from "@/app/api/wallet/route";
 import { POST as postSync } from "@/app/api/wallet/sync/route";
@@ -1947,7 +2274,10 @@ import { GET as getTxns } from "@/app/api/wallet/transactions/route";
 const noParams = { params: Promise.resolve({}) };
 
 describe("wallet API", () => {
-  beforeEach(async () => { vi.clearAllMocks(); await resetDb(); });
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetDb();
+  });
 
   it("GET /api/wallet returns balance, reserved, available and approxPhp", async () => {
     const { user, wallet } = await makePayer({ cachedXlm: "10.0000000", reservedXlm: "2.0000000" });
@@ -1955,13 +2285,21 @@ describe("wallet API", () => {
     const res = await getWallet(new NextRequest("http://localhost/api/wallet"), noParams);
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body).toMatchObject({ publicKey: wallet.stellarPublicKey, balanceXlm: "10.0000000", reservedXlm: "2.0000000", availableXlm: "8.0000000" });
+    expect(body).toMatchObject({
+      publicKey: wallet.stellarPublicKey,
+      balanceXlm: "10.0000000",
+      reservedXlm: "2.0000000",
+      availableXlm: "8.0000000",
+    });
   });
 
   it("POST /api/wallet/sync reconciles via syncWalletDeposits", async () => {
     const { user } = await makePayer();
     sessionUser.current = { id: user.id, username: user.username, role: "PAYER", isActive: true };
-    const req = new NextRequest("http://localhost/api/wallet/sync", { method: "POST", headers: { origin: "http://localhost", "sec-fetch-site": "same-origin" } });
+    const req = new NextRequest("http://localhost/api/wallet/sync", {
+      method: "POST",
+      headers: { origin: "http://localhost", "sec-fetch-site": "same-origin" },
+    });
     const res = await postSync(req, noParams);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ balanceXlm: "42.0000000" });
@@ -1972,13 +2310,27 @@ describe("wallet API", () => {
     const { user, wallet } = await makePayer();
     sessionUser.current = { id: user.id, username: user.username, role: "PAYER", isActive: true };
     for (let i = 0; i < 3; i++) {
-      await db.walletTransaction.create({ data: { walletId: wallet.id, type: "PREFUND_DEPOSIT", amountXlm: "1.0000000", balanceAfter: `${i + 1}.0000000`, stellarTxHash: `H${i}` } });
+      await db.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: "PREFUND_DEPOSIT",
+          amountXlm: "1.0000000",
+          balanceAfter: `${i + 1}.0000000`,
+          stellarTxHash: `H${i}`,
+        },
+      });
     }
-    const res = await getTxns(new NextRequest("http://localhost/api/wallet/transactions?limit=2"), noParams);
+    const res = await getTxns(
+      new NextRequest("http://localhost/api/wallet/transactions?limit=2"),
+      noParams,
+    );
     const body = await res.json();
     expect(body.items).toHaveLength(2);
     expect(body.nextCursor).toBeTruthy();
-    const res2 = await getTxns(new NextRequest(`http://localhost/api/wallet/transactions?limit=2&cursor=${body.nextCursor}`), noParams);
+    const res2 = await getTxns(
+      new NextRequest(`http://localhost/api/wallet/transactions?limit=2&cursor=${body.nextCursor}`),
+      noParams,
+    );
     const body2 = await res2.json();
     expect(body2.items).toHaveLength(1);
     expect(body2.nextCursor).toBeNull();
@@ -2044,7 +2396,12 @@ export const GET = route(async () => {
   const wallet = await db.custodialWallet.findUnique({ where: { userId: user.id } });
   if (!wallet) throw notFound("wallet not found");
   const qrSvg = await QRCode.toString(wallet.stellarPublicKey, { type: "svg", margin: 1 });
-  return json({ publicKey: wallet.stellarPublicKey, qrSvg, network: "stellar", memoRequired: false });
+  return json({
+    publicKey: wallet.stellarPublicKey,
+    qrSvg,
+    network: "stellar",
+    memoRequired: false,
+  });
 });
 ```
 
@@ -2098,8 +2455,14 @@ export const GET = route(async (req) => {
   });
   const hasMore = rows.length > limit;
   const items = (hasMore ? rows.slice(0, limit) : rows).map((t) => ({
-    id: t.id, type: t.type, amountXlm: t.amountXlm.toFixed(7), balanceAfter: t.balanceAfter.toFixed(7),
-    stellarTxHash: t.stellarTxHash, paymentId: t.paymentId, memo: t.memo, createdAt: t.createdAt.toISOString(),
+    id: t.id,
+    type: t.type,
+    amountXlm: t.amountXlm.toFixed(7),
+    balanceAfter: t.balanceAfter.toFixed(7),
+    stellarTxHash: t.stellarTxHash,
+    paymentId: t.paymentId,
+    memo: t.memo,
+    createdAt: t.createdAt.toISOString(),
   }));
   return json({ items, nextCursor: hasMore ? rows[limit - 1].id : null });
 });
@@ -2122,10 +2485,12 @@ git commit -m "feat(api): add wallet routes (balance, deposit-address, sync, tra
 ## Task 12: QRPH decode route
 
 **Files:**
+
 - Create: `src/app/api/qrph/decode/route.ts` (POST)
 - Test: `tests/integration/qrph-decode.test.ts`
 
 **Interfaces:**
+
 - Consumes: `route`/`json`/`parseBody` (`@/lib/http`), `requireRole` (`@/server/auth/sessions`), `assertSameOrigin` (`@/server/auth/csrf`), `decodeQrph`/`decodeQrphImage` (`@/server/qrph/decode`), `resolveMerchant` (`@/server/qrph/resolve`), `badRequest` (`@/lib/errors`).
 - Produces:
   ```typescript
@@ -2143,7 +2508,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { resetDb, makePayer, makeMerchant } from "../helpers/db";
 
-const sessionUser = { current: null as null | { id: string; username: string; role: "PAYER"; isActive: boolean } };
+const sessionUser = {
+  current: null as null | { id: string; username: string; role: "PAYER"; isActive: boolean },
+};
 vi.mock("@/server/auth/sessions", () => ({
   requireRole: vi.fn(async () => {
     if (!sessionUser.current) throw new (require("@/lib/errors").AppError)("forbidden", "no", 403);
@@ -2152,25 +2519,44 @@ vi.mock("@/server/auth/sessions", () => ({
 }));
 
 const decodeQrph = vi.fn();
-vi.mock("@/server/qrph/decode", () => ({ decodeQrph: (raw: string) => decodeQrph(raw), decodeQrphImage: vi.fn() }));
+vi.mock("@/server/qrph/decode", () => ({
+  decodeQrph: (raw: string) => decodeQrph(raw),
+  decodeQrphImage: vi.fn(),
+}));
 const resolveMerchant = vi.fn();
 vi.mock("@/server/qrph/resolve", () => ({ resolveMerchant: (d: unknown) => resolveMerchant(d) }));
 
 import { POST as decode } from "@/app/api/qrph/decode/route";
 const noParams = { params: Promise.resolve({}) };
-const post = (body: unknown) => new NextRequest("http://localhost/api/qrph/decode", {
-  method: "POST", headers: { origin: "http://localhost", "sec-fetch-site": "same-origin", "content-type": "application/json" },
-  body: JSON.stringify(body),
-});
+const post = (body: unknown) =>
+  new NextRequest("http://localhost/api/qrph/decode", {
+    method: "POST",
+    headers: {
+      origin: "http://localhost",
+      "sec-fetch-site": "same-origin",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 
 describe("POST /api/qrph/decode", () => {
-  beforeEach(async () => { vi.clearAllMocks(); await resetDb(); });
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetDb();
+  });
 
   it("decodes raw and returns the resolved merchant", async () => {
     const { user } = await makePayer();
     const { merchant } = await makeMerchant();
     sessionUser.current = { id: user.id, username: user.username, role: "PAYER", isActive: true };
-    decodeQrph.mockReturnValue({ raw: "X", pointOfInit: "dynamic", currency: "608", country: "PH", crcValid: true, amountPhp: "100" });
+    decodeQrph.mockReturnValue({
+      raw: "X",
+      pointOfInit: "dynamic",
+      currency: "608",
+      country: "PH",
+      crcValid: true,
+      amountPhp: "100",
+    });
     resolveMerchant.mockResolvedValue(merchant);
 
     const res = await decode(post({ raw: "X" }), noParams);
@@ -2183,7 +2569,13 @@ describe("POST /api/qrph/decode", () => {
   it("returns merchant: null when unresolved", async () => {
     const { user } = await makePayer();
     sessionUser.current = { id: user.id, username: user.username, role: "PAYER", isActive: true };
-    decodeQrph.mockReturnValue({ raw: "X", pointOfInit: "static", currency: "608", country: "PH", crcValid: true });
+    decodeQrph.mockReturnValue({
+      raw: "X",
+      pointOfInit: "static",
+      currency: "608",
+      country: "PH",
+      crcValid: true,
+    });
     resolveMerchant.mockResolvedValue(null);
     const res = await decode(post({ raw: "X" }), noParams);
     const body = await res.json();
@@ -2269,6 +2661,7 @@ git commit -m "feat(api): add qrph decode route (raw/image, CRC, merchant resolu
 ## Task 13: Payments API routes (quote / confirm / get / cancel / stream)
 
 **Files:**
+
 - Create: `src/app/api/payments/quote/route.ts` (POST)
 - Create: `src/app/api/payments/[id]/confirm/route.ts` (POST)
 - Create: `src/app/api/payments/[id]/route.ts` (GET)
@@ -2277,6 +2670,7 @@ git commit -m "feat(api): add qrph decode route (raw/image, CRC, merchant resolu
 - Test: `tests/integration/payments.test.ts`
 
 **Interfaces:**
+
 - Consumes: `route`/`json`/`parseBody` (`@/lib/http`), `requireRole`/`requireUser` (`@/server/auth/sessions`), `assertSameOrigin` (`@/server/auth/csrf`), `rateLimit` (`@/server/auth/rate-limit`), `createQuote` (Task 4), `confirmPayment` (Task 5), `applyTransition` (Task 3), `db`, `dec`/`displayPhp` (`@/lib/money`), `notFound`/`forbidden`/`conflict`/`badRequest` (`@/lib/errors`).
 - Produces (SPEC §6):
   ```typescript
@@ -2300,25 +2694,53 @@ import { resetDb, makePayer, makeMerchant } from "../helpers/db";
 import { db } from "@/server/db";
 import { dec } from "@/lib/money";
 
-const sessionUser = { current: null as null | { id: string; username: string; role: "PAYER"; isActive: boolean } };
+const sessionUser = {
+  current: null as null | { id: string; username: string; role: "PAYER"; isActive: boolean },
+};
 vi.mock("@/server/auth/sessions", () => ({
-  requireRole: vi.fn(async () => { if (!sessionUser.current) throw new (require("@/lib/errors").AppError)("forbidden", "no", 403); return sessionUser.current; }),
-  requireUser: vi.fn(async () => { if (!sessionUser.current) throw new (require("@/lib/errors").AppError)("unauthorized", "no", 401); return sessionUser.current; }),
+  requireRole: vi.fn(async () => {
+    if (!sessionUser.current) throw new (require("@/lib/errors").AppError)("forbidden", "no", 403);
+    return sessionUser.current;
+  }),
+  requireUser: vi.fn(async () => {
+    if (!sessionUser.current)
+      throw new (require("@/lib/errors").AppError)("unauthorized", "no", 401);
+    return sessionUser.current;
+  }),
 }));
 vi.mock("@/server/auth/rate-limit", () => ({ rateLimit: vi.fn(async () => {}) }));
-vi.mock("@/server/rails", () => ({ rail: { getQuote: vi.fn(async ({ phpAmount }: { phpAmount: import("@/lib/money").Decimal }) => ({ rate: dec("12"), phpAmount, xlmAmount: phpAmount.div(12), expiresAt: new Date(Date.now() + 90_000) })) } }));
+vi.mock("@/server/rails", () => ({
+  rail: {
+    getQuote: vi.fn(async ({ phpAmount }: { phpAmount: import("@/lib/money").Decimal }) => ({
+      rate: dec("12"),
+      phpAmount,
+      xlmAmount: phpAmount.div(12),
+      expiresAt: new Date(Date.now() + 90_000),
+    })),
+  },
+}));
 const enqueueSettle = vi.fn(async () => {});
-vi.mock("@/server/queue/queues", () => ({ QUEUE_NAMES: { settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" }, enqueueSettle: (id: string) => enqueueSettle(id) }));
+vi.mock("@/server/queue/queues", () => ({
+  QUEUE_NAMES: { settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" },
+  enqueueSettle: (id: string) => enqueueSettle(id),
+}));
 
 import { POST as quote } from "@/app/api/payments/quote/route";
 import { POST as confirm } from "@/app/api/payments/[id]/confirm/route";
 import { GET as getPayment } from "@/app/api/payments/[id]/route";
 import { POST as cancel } from "@/app/api/payments/[id]/cancel/route";
 
-const sameOrigin = { origin: "http://localhost", "sec-fetch-site": "same-origin", "content-type": "application/json" };
+const sameOrigin = {
+  origin: "http://localhost",
+  "sec-fetch-site": "same-origin",
+  "content-type": "application/json",
+};
 
 describe("payments API", () => {
-  beforeEach(async () => { vi.clearAllMocks(); await resetDb(); });
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetDb();
+  });
 
   it("quote → confirm → poll happy path", async () => {
     const { user } = await makePayer({ cachedXlm: "100.0000000" });
@@ -2326,7 +2748,11 @@ describe("payments API", () => {
     sessionUser.current = { id: user.id, username: user.username, role: "PAYER", isActive: true };
 
     const qRes = await quote(
-      new NextRequest("http://localhost/api/payments/quote", { method: "POST", headers: sameOrigin, body: JSON.stringify({ merchantId: merchant.id, amountPhp: "100" }) }),
+      new NextRequest("http://localhost/api/payments/quote", {
+        method: "POST",
+        headers: sameOrigin,
+        body: JSON.stringify({ merchantId: merchant.id, amountPhp: "100" }),
+      }),
       { params: Promise.resolve({}) },
     );
     const q = await qRes.json();
@@ -2334,14 +2760,20 @@ describe("payments API", () => {
     expect(q.amountXlm).toBe("8.3333334");
 
     const cRes = await confirm(
-      new NextRequest(`http://localhost/api/payments/${q.paymentId}/confirm`, { method: "POST", headers: { ...sameOrigin, "idempotency-key": randomUUID() }, body: "{}" }),
+      new NextRequest(`http://localhost/api/payments/${q.paymentId}/confirm`, {
+        method: "POST",
+        headers: { ...sameOrigin, "idempotency-key": randomUUID() },
+        body: "{}",
+      }),
       { params: Promise.resolve({ id: q.paymentId }) },
     );
     expect(cRes.status).toBe(200);
     expect(await cRes.json()).toEqual({ paymentId: q.paymentId, status: "AUTHORIZED" });
     expect(enqueueSettle).toHaveBeenCalledWith(q.paymentId);
 
-    const gRes = await getPayment(new NextRequest(`http://localhost/api/payments/${q.paymentId}`), { params: Promise.resolve({ id: q.paymentId }) });
+    const gRes = await getPayment(new NextRequest(`http://localhost/api/payments/${q.paymentId}`), {
+      params: Promise.resolve({ id: q.paymentId }),
+    });
     const g = await gRes.json();
     expect(g.payment.status).toBe("AUTHORIZED");
     expect(g.events.length).toBeGreaterThanOrEqual(2); // CREATED→QUOTED, QUOTED→AUTHORIZED
@@ -2351,33 +2783,107 @@ describe("payments API", () => {
     const { user } = await makePayer();
     const { merchant } = await makeMerchant();
     sessionUser.current = { id: user.id, username: user.username, role: "PAYER", isActive: true };
-    const p = await db.payment.create({ data: { reference: "TXN-AAAAAAAA", payerId: user.id, merchantId: merchant.id, amountPhp: "100.00", quotedRate: "12.00000000", amountXlm: "8.3333334", networkFeeXlm: "0.0000100", status: "QUOTED", quoteExpiresAt: new Date(Date.now() + 90_000) } });
-    const res = await confirm(new NextRequest(`http://localhost/api/payments/${p.id}/confirm`, { method: "POST", headers: sameOrigin, body: "{}" }), { params: Promise.resolve({ id: p.id }) });
+    const p = await db.payment.create({
+      data: {
+        reference: "TXN-AAAAAAAA",
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: "100.00",
+        quotedRate: "12.00000000",
+        amountXlm: "8.3333334",
+        networkFeeXlm: "0.0000100",
+        status: "QUOTED",
+        quoteExpiresAt: new Date(Date.now() + 90_000),
+      },
+    });
+    const res = await confirm(
+      new NextRequest(`http://localhost/api/payments/${p.id}/confirm`, {
+        method: "POST",
+        headers: sameOrigin,
+        body: "{}",
+      }),
+      { params: Promise.resolve({ id: p.id }) },
+    );
     expect(res.status).toBe(400);
   });
 
   it("GET another user's payment → 403", async () => {
     const { user } = await makePayer();
     const { merchant } = await makeMerchant();
-    const p = await db.payment.create({ data: { reference: "TXN-BBBBBBBB", payerId: user.id, merchantId: merchant.id, amountPhp: "100.00", quotedRate: "12.00000000", amountXlm: "8.3333334", networkFeeXlm: "0.0000100", status: "QUOTED" } });
+    const p = await db.payment.create({
+      data: {
+        reference: "TXN-BBBBBBBB",
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: "100.00",
+        quotedRate: "12.00000000",
+        amountXlm: "8.3333334",
+        networkFeeXlm: "0.0000100",
+        status: "QUOTED",
+      },
+    });
     const { user: stranger } = await makePayer();
-    sessionUser.current = { id: stranger.id, username: stranger.username, role: "PAYER", isActive: true };
-    const res = await getPayment(new NextRequest(`http://localhost/api/payments/${p.id}`), { params: Promise.resolve({ id: p.id }) });
+    sessionUser.current = {
+      id: stranger.id,
+      username: stranger.username,
+      role: "PAYER",
+      isActive: true,
+    };
+    const res = await getPayment(new NextRequest(`http://localhost/api/payments/${p.id}`), {
+      params: Promise.resolve({ id: p.id }),
+    });
     expect(res.status).toBe(403);
   });
 
   it("cancel a QUOTED payment releases nothing and marks FAILED; cannot cancel after STELLAR_SUBMITTED", async () => {
-    const { user, wallet } = await makePayer({ cachedXlm: "100.0000000", reservedXlm: "8.3333434" });
+    const { user, wallet } = await makePayer({
+      cachedXlm: "100.0000000",
+      reservedXlm: "8.3333434",
+    });
     const { merchant } = await makeMerchant();
     sessionUser.current = { id: user.id, username: user.username, role: "PAYER", isActive: true };
-    const authd = await db.payment.create({ data: { reference: "TXN-CCCCCCCC", payerId: user.id, merchantId: merchant.id, amountPhp: "100.00", quotedRate: "12.00000000", amountXlm: "8.3333334", networkFeeXlm: "0.0000100", status: "AUTHORIZED" } });
-    const cRes = await cancel(new NextRequest(`http://localhost/api/payments/${authd.id}/cancel`, { method: "POST", headers: sameOrigin }), { params: Promise.resolve({ id: authd.id }) });
+    const authd = await db.payment.create({
+      data: {
+        reference: "TXN-CCCCCCCC",
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: "100.00",
+        quotedRate: "12.00000000",
+        amountXlm: "8.3333334",
+        networkFeeXlm: "0.0000100",
+        status: "AUTHORIZED",
+      },
+    });
+    const cRes = await cancel(
+      new NextRequest(`http://localhost/api/payments/${authd.id}/cancel`, {
+        method: "POST",
+        headers: sameOrigin,
+      }),
+      { params: Promise.resolve({ id: authd.id }) },
+    );
     expect((await cRes.json()).status).toBe("FAILED");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000"); // reservation released on cancel
 
-    const submitted = await db.payment.create({ data: { reference: "TXN-DDDDDDDD", payerId: user.id, merchantId: merchant.id, amountPhp: "100.00", quotedRate: "12.00000000", amountXlm: "8.3333334", networkFeeXlm: "0.0000100", status: "STELLAR_SUBMITTED" } });
-    const c2 = await cancel(new NextRequest(`http://localhost/api/payments/${submitted.id}/cancel`, { method: "POST", headers: sameOrigin }), { params: Promise.resolve({ id: submitted.id }) });
+    const submitted = await db.payment.create({
+      data: {
+        reference: "TXN-DDDDDDDD",
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: "100.00",
+        quotedRate: "12.00000000",
+        amountXlm: "8.3333334",
+        networkFeeXlm: "0.0000100",
+        status: "STELLAR_SUBMITTED",
+      },
+    });
+    const c2 = await cancel(
+      new NextRequest(`http://localhost/api/payments/${submitted.id}/cancel`, {
+        method: "POST",
+        headers: sameOrigin,
+      }),
+      { params: Promise.resolve({ id: submitted.id }) },
+    );
     expect(c2.status).toBe(409);
   });
 });
@@ -2402,7 +2908,10 @@ import { createQuote } from "@/server/payments/quote";
 
 const bodySchema = z.object({
   merchantId: z.string().min(1),
-  amountPhp: z.union([z.string(), z.number()]).transform((v) => dec(v)).refine((d) => d.greaterThan(0), "amount must be > 0"),
+  amountPhp: z
+    .union([z.string(), z.number()])
+    .transform((v) => dec(v))
+    .refine((d) => d.greaterThan(0), "amount must be > 0"),
 });
 
 export const POST = route(async (req) => {
@@ -2459,23 +2968,37 @@ export const GET = route(async (_req, ctx) => {
   const user = await requireUser();
   const payment = await db.payment.findUnique({
     where: { id: ctx.params.id },
-    include: { events: { orderBy: { createdAt: "asc" } }, merchant: { select: { businessName: true } } },
+    include: {
+      events: { orderBy: { createdAt: "asc" } },
+      merchant: { select: { businessName: true } },
+    },
   });
   if (!payment) throw notFound("payment not found");
   if (payment.payerId !== user.id && user.role !== "ADMIN") throw forbidden("not your payment");
 
   return json({
     payment: {
-      id: payment.id, reference: payment.reference, status: payment.status,
-      amountPhp: payment.amountPhp.toFixed(2), quotedRate: payment.quotedRate.toFixed(8),
-      amountXlm: payment.amountXlm.toFixed(7), networkFeeXlm: payment.networkFeeXlm.toFixed(7),
+      id: payment.id,
+      reference: payment.reference,
+      status: payment.status,
+      amountPhp: payment.amountPhp.toFixed(2),
+      quotedRate: payment.quotedRate.toFixed(8),
+      amountXlm: payment.amountXlm.toFixed(7),
+      networkFeeXlm: payment.networkFeeXlm.toFixed(7),
       netSettledPhp: payment.netSettledPhp?.toFixed(2) ?? null,
-      merchantName: payment.merchant.businessName, stellarTxHash: payment.stellarTxHash,
+      merchantName: payment.merchant.businessName,
+      stellarTxHash: payment.stellarTxHash,
       failureReason: payment.failureReason,
       quoteExpiresAt: payment.quoteExpiresAt?.toISOString() ?? null,
-      settledAt: payment.settledAt?.toISOString() ?? null, createdAt: payment.createdAt.toISOString(),
+      settledAt: payment.settledAt?.toISOString() ?? null,
+      createdAt: payment.createdAt.toISOString(),
     },
-    events: payment.events.map((e) => ({ fromStatus: e.fromStatus, toStatus: e.toStatus, detail: e.detail, createdAt: e.createdAt.toISOString() })),
+    events: payment.events.map((e) => ({
+      fromStatus: e.fromStatus,
+      toStatus: e.toStatus,
+      detail: e.detail,
+      createdAt: e.createdAt.toISOString(),
+    })),
   });
 });
 ```
@@ -2498,20 +3021,32 @@ const CANCELLABLE = new Set(["CREATED", "QUOTED", "AUTHORIZED"]);
 export const POST = route(async (req, ctx) => {
   assertSameOrigin(req);
   const user = await requireRole("PAYER");
-  const payment = await db.payment.findUnique({ where: { id: ctx.params.id }, include: { payer: { include: { wallet: true } } } });
+  const payment = await db.payment.findUnique({
+    where: { id: ctx.params.id },
+    include: { payer: { include: { wallet: true } } },
+  });
   if (!payment) throw notFound("payment not found");
   if (payment.payerId !== user.id) throw forbidden("not your payment");
-  if (!CANCELLABLE.has(payment.status)) throw conflict(`cannot cancel payment in status ${payment.status}`);
+  if (!CANCELLABLE.has(payment.status))
+    throw conflict(`cannot cancel payment in status ${payment.status}`);
 
   const updated = await db.$transaction(async (tx) => {
     if (payment.status === "AUTHORIZED" && payment.payer.wallet) {
       // Release the reservation held at confirm.
       const total = dec(payment.amountXlm.toString()).plus(payment.networkFeeXlm.toString());
-      const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: payment.payer.wallet.id } });
+      const w = await tx.custodialWallet.findUniqueOrThrow({
+        where: { id: payment.payer.wallet.id },
+      });
       const next = dec(w.reservedXlm.toString()).minus(total);
-      await tx.custodialWallet.update({ where: { id: w.id }, data: { reservedXlm: (next.isNegative() ? dec("0") : next).toFixed(7) } });
+      await tx.custodialWallet.update({
+        where: { id: w.id },
+        data: { reservedXlm: (next.isNegative() ? dec("0") : next).toFixed(7) },
+      });
     }
-    await tx.payment.update({ where: { id: payment.id }, data: { failureReason: "cancelled by payer" } });
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: { failureReason: "cancelled by payer" },
+    });
     return applyTransition(tx, payment, "FAILED", { reason: "cancelled by payer" });
   });
   return json({ status: updated.status });
@@ -2527,19 +3062,26 @@ import { db } from "@/server/db";
 import { isTerminal } from "@/server/payments/state-machine";
 
 // SSE: emit the payment status until it reaches a terminal state. Polls the DB every 1.5s.
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+export async function GET(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> },
+): Promise<Response> {
   const { id } = await ctx.params;
   const user = await requireUser();
   const payment = await db.payment.findUnique({ where: { id }, select: { payerId: true } });
   if (!payment || (payment.payerId !== user.id && user.role !== "ADMIN")) {
-    return new Response("event: error\ndata: forbidden\n\n", { status: 403, headers: { "content-type": "text/event-stream" } });
+    return new Response("event: error\ndata: forbidden\n\n", {
+      status: 403,
+      headers: { "content-type": "text/event-stream" },
+    });
   }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       let last = "";
-      for (let i = 0; i < 120; i++) { // ~3 min cap
+      for (let i = 0; i < 120; i++) {
+        // ~3 min cap
         const p = await db.payment.findUnique({ where: { id }, select: { status: true } });
         if (!p) break;
         if (p.status !== last) {
@@ -2553,7 +3095,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     },
   });
   return new Response(stream, {
-    headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive" },
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    },
   });
 }
 ```
@@ -2595,4 +3141,3 @@ Run with fresh eyes against `SPEC.md` §3/§6/§8/§9/§10 and `AGENT.md` §3/§
 **3. Type/signature consistency** — Locked contracts consumed verbatim: `newPaymentReference()`, `enqueueSettle(paymentId)` + `QUEUE_NAMES`, `rail.*`, `walletService.*` (`sendXlm`/`confirmTx`/`listIncomingPayments`/`getBalance`), `dec`/`phpToXlm`/`availableXlm`, `AppError`+constructors, `route`/`json`/`parseBody`/`parseQuery`+`HandlerContext.params`, `requireUser`/`requireRole`, `assertSameOrigin`, `rateLimit`, `audit`, `encryptSecret`/`decryptSecret`, `decodeQrph`/`decodeQrphImage`/`resolveMerchant`. Internal names are stable across tasks: `applyTransition(client,payment,toStatus,detail)`, `nextStep`/`isTerminal`/`XLM_MOVED`/`TERMINAL`/`TRANSITIONS` (Task 3) used identically in Tasks 5/7/13; `createQuote`/`CreateQuoteResult` (Task 4) ↔ Task 13; `confirmPayment`/`ConfirmPaymentResult` (Task 5) ↔ Task 13; `withRetry`/`pollUntil` (Task 6) ↔ Task 7; `syncWalletDeposits` (Task 8) ↔ Task 11; `withIdempotencyKey` (Task 2) ↔ Task 5. New shared exports added by this phase (and not in the overview's locked block) are confined to internal modules: `src/lib/retry.ts` (`withRetry`/`pollUntil`), `state-machine.ts` exports, and `STELLAR_BASE_FEE_XLM` — none rename a locked contract.
 
 **Deviations from SPEC (documented):** (a) Horizon deposit cursor persisted in **Redis** (`horizon:cursor:<walletId>`) rather than a DB column, since SPEC §4 schema has none — no migration needed. (b) PDAX-side reconciliation deferred (locked `PaymentRailProvider` exposes no transaction listing); XLM reconciliation implemented now, PDAX gated behind `TODO(pdax-reconcile)`. (c) Cancellation reuses `FAILED` (`failureReason="cancelled by payer"`) since the enum has no `CANCELLED` state.
-

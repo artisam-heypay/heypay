@@ -30,30 +30,33 @@ Every task's requirements implicitly include this section. Values copied verbati
 
 ## File Structure
 
-| File | Responsibility |
-|---|---|
-| `src/server/crypto/envelope.ts` | AES-256-GCM envelope encrypt/decrypt with a versioned keyring for rotation. |
-| `src/server/stellar/horizon.ts` | Lazy `Horizon.Server` singleton + network passphrase selection from env. |
-| `src/server/stellar/wallet.ts` | `WalletService` factory (generate / getBalance / sendXlm / confirmTx / listIncomingPayments) over an injectable Horizon client. |
-| `src/server/qrph/crc.ts` | CRC-16/CCITT-FALSE checksum. |
-| `src/server/qrph/tlv.ts` | Generic EMVCo TLV parser + nested template parser. |
-| `src/server/qrph/decode.ts` | `decodeQrph` (semantics + CRC/currency validation) + `decodeQrphImage`. |
-| `src/server/qrph/resolve.ts` | `resolveMerchant` — match decoded QRPH to an ACTIVE merchant. |
-| `src/server/storage/s3.ts` | S3/MinIO client, `presignUpload`, `verifyUploadedObject`, `signedGetUrl`, `ensureBucket`. |
-| `tests/server/**` | Vitest unit + gated integration tests mirroring the above. |
+| File                            | Responsibility                                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `src/server/crypto/envelope.ts` | AES-256-GCM envelope encrypt/decrypt with a versioned keyring for rotation.                                                     |
+| `src/server/stellar/horizon.ts` | Lazy `Horizon.Server` singleton + network passphrase selection from env.                                                        |
+| `src/server/stellar/wallet.ts`  | `WalletService` factory (generate / getBalance / sendXlm / confirmTx / listIncomingPayments) over an injectable Horizon client. |
+| `src/server/qrph/crc.ts`        | CRC-16/CCITT-FALSE checksum.                                                                                                    |
+| `src/server/qrph/tlv.ts`        | Generic EMVCo TLV parser + nested template parser.                                                                              |
+| `src/server/qrph/decode.ts`     | `decodeQrph` (semantics + CRC/currency validation) + `decodeQrphImage`.                                                         |
+| `src/server/qrph/resolve.ts`    | `resolveMerchant` — match decoded QRPH to an ACTIVE merchant.                                                                   |
+| `src/server/storage/s3.ts`      | S3/MinIO client, `presignUpload`, `verifyUploadedObject`, `signedGetUrl`, `ensureBucket`.                                       |
+| `tests/server/**`               | Vitest unit + gated integration tests mirroring the above.                                                                      |
 
 ---
 
 ## Task 1: Envelope encryption (AES-256-GCM)
 
 **Files:**
+
 - Create: `src/server/crypto/envelope.ts`
 - Test: `tests/server/crypto/envelope.test.ts`
 - Modify (Step 0, if not already done in Phase 1): `vitest.config.ts`
 
 **Interfaces:**
+
 - Consumes: Node `node:crypto` only. Env: `ENCRYPTION_MASTER_KEY` (format `base64:<32-byte key>`), `ENCRYPTION_KEY_VERSION` (positive int), optional historical keys `ENCRYPTION_MASTER_KEY_V<n>=base64:...` for rotation.
 - Produces (locked contract — `src/server/crypto/envelope.ts`):
+
   ```typescript
   // AES-256-GCM envelope encryption using ENCRYPTION_MASTER_KEY. Returns a self-describing string
   // "v<version>:<base64 iv>:<base64 tag>:<base64 ciphertext>".
@@ -94,11 +97,7 @@ export {};
 // tests/server/crypto/envelope.test.ts
 import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  __resetKeyringForTests,
-  decryptSecret,
-  encryptSecret,
-} from "@/server/crypto/envelope";
+import { __resetKeyringForTests, decryptSecret, encryptSecret } from "@/server/crypto/envelope";
 
 const KEY_B64 = randomBytes(32).toString("base64");
 
@@ -254,12 +253,15 @@ git commit -m "feat(crypto): AES-256-GCM envelope encryption with versioned keyr
 ## Task 2: Horizon singleton
 
 **Files:**
+
 - Create: `src/server/stellar/horizon.ts`
 - Test: `tests/server/stellar/horizon.test.ts`
 
 **Interfaces:**
+
 - Consumes: `@stellar/stellar-sdk` (`Horizon`, `Networks`). Env: `STELLAR_HORIZON_URL`, `STELLAR_NETWORK` (`testnet` | `mainnet`), `STELLAR_NETWORK_PASSPHRASE` (optional explicit override).
 - Produces (`src/server/stellar/horizon.ts`):
+
   ```typescript
   import { Horizon } from "@stellar/stellar-sdk";
   // Lazily-constructed singleton Horizon.Server from STELLAR_HORIZON_URL.
@@ -281,11 +283,7 @@ Note: `stellar-base` (bundled in the SDK) auto-detects `sodium-native` and uses 
 // tests/server/stellar/horizon.test.ts
 import { Horizon, Networks } from "@stellar/stellar-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  __resetHorizonForTests,
-  getHorizon,
-  getNetworkPassphrase,
-} from "@/server/stellar/horizon";
+import { __resetHorizonForTests, getHorizon, getNetworkPassphrase } from "@/server/stellar/horizon";
 
 beforeEach(() => {
   process.env.STELLAR_HORIZON_URL = "https://horizon-testnet.stellar.org";
@@ -375,24 +373,44 @@ git commit -m "feat(stellar): lazy Horizon.Server singleton + network passphrase
 ## Task 3: Stellar wallet service
 
 **Files:**
+
 - Create: `src/server/stellar/wallet.ts`
 - Test: `tests/server/stellar/wallet.test.ts`
 
 **Interfaces:**
+
 - Consumes: `@stellar/stellar-sdk` (`Asset`, `Keypair`, `Memo`, `Operation`, `TransactionBuilder`, `Horizon`, `StrKey`); `getHorizon`, `getNetworkPassphrase` (Task 2); `encryptSecret`, `decryptSecret` (Task 1); `Decimal`, `dec`, `formatXlm` (`@/lib/money`). Env: `ENCRYPTION_KEY_VERSION`.
 - Produces (locked contract — `src/server/stellar/wallet.ts`):
+
   ```typescript
   import { Decimal } from "@/lib/money";
   export interface WalletService {
     generate(): { publicKey: string; encryptedSecret: string; secretKeyVersion: number };
     getBalance(publicKey: string): Promise<Decimal>;
-    sendXlm(input: { encryptedSecret: string; destination: string; amountXlm: Decimal; memo: string }): Promise<{ txHash: string }>;
+    sendXlm(input: {
+      encryptedSecret: string;
+      destination: string;
+      amountXlm: Decimal;
+      memo: string;
+    }): Promise<{ txHash: string }>;
     confirmTx(txHash: string): Promise<boolean>;
-    listIncomingPayments(publicKey: string, cursor?: string): Promise<{ items: IncomingPayment[]; cursor?: string }>;
+    listIncomingPayments(
+      publicKey: string,
+      cursor?: string,
+    ): Promise<{ items: IncomingPayment[]; cursor?: string }>;
   }
-  export type IncomingPayment = { id: string; amountXlm: Decimal; from: string; txHash: string; createdAt: Date };
+  export type IncomingPayment = {
+    id: string;
+    amountXlm: Decimal;
+    from: string;
+    txHash: string;
+    createdAt: Date;
+  };
   // Factory: defaults resolve lazily (only when a method runs) so importing the module never hits the network.
-  export function createWalletService(server?: Horizon.Server, networkPassphrase?: string): WalletService;
+  export function createWalletService(
+    server?: Horizon.Server,
+    networkPassphrase?: string,
+  ): WalletService;
   export const walletService: WalletService;
   ```
 
@@ -521,9 +539,39 @@ describe("WalletService.confirmTx", () => {
 describe("WalletService.listIncomingPayments", () => {
   it("maps native incoming payments and returns the new cursor", async () => {
     const records = [
-      { id: "1", type: "payment", asset_type: "native", to: "GME", from: "GX", amount: "10.0", transaction_hash: "h1", created_at: "2026-06-28T00:00:00Z", paging_token: "c1" },
-      { id: "2", type: "payment", asset_type: "native", to: "GOTHER", from: "GX", amount: "5.0", transaction_hash: "h2", created_at: "2026-06-28T00:01:00Z", paging_token: "c2" },
-      { id: "3", type: "create_account", asset_type: "native", to: "GME", from: "GX", amount: "1.0", transaction_hash: "h3", created_at: "2026-06-28T00:02:00Z", paging_token: "c3" },
+      {
+        id: "1",
+        type: "payment",
+        asset_type: "native",
+        to: "GME",
+        from: "GX",
+        amount: "10.0",
+        transaction_hash: "h1",
+        created_at: "2026-06-28T00:00:00Z",
+        paging_token: "c1",
+      },
+      {
+        id: "2",
+        type: "payment",
+        asset_type: "native",
+        to: "GOTHER",
+        from: "GX",
+        amount: "5.0",
+        transaction_hash: "h2",
+        created_at: "2026-06-28T00:01:00Z",
+        paging_token: "c2",
+      },
+      {
+        id: "3",
+        type: "create_account",
+        asset_type: "native",
+        to: "GME",
+        from: "GX",
+        amount: "1.0",
+        transaction_hash: "h3",
+        created_at: "2026-06-28T00:02:00Z",
+        paging_token: "c3",
+      },
     ];
     const call = vi.fn().mockResolvedValue({ records });
     const builder = { order: vi.fn(), limit: vi.fn(), cursor: vi.fn(), call };
@@ -554,14 +602,7 @@ Expected: FAIL — "Cannot find module '@/server/stellar/wallet'".
 ```typescript
 // src/server/stellar/wallet.ts
 import "server-only";
-import {
-  Asset,
-  Horizon,
-  Keypair,
-  Memo,
-  Operation,
-  TransactionBuilder,
-} from "@stellar/stellar-sdk";
+import { Asset, Horizon, Keypair, Memo, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { Decimal, dec, formatXlm } from "@/lib/money";
 import { decryptSecret, encryptSecret } from "@/server/crypto/envelope";
 import { getHorizon, getNetworkPassphrase } from "./horizon";
@@ -767,12 +808,15 @@ git commit -m "feat(stellar): custodial WalletService (generate/balance/send/con
 ## Task 4: QRPH CRC-16/CCITT-FALSE
 
 **Files:**
+
 - Create: `src/server/qrph/crc.ts`
 - Test: `tests/server/qrph/crc.test.ts`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces (`src/server/qrph/crc.ts`):
+
   ```typescript
   // CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflection, xorout 0x0000).
   // Returns 4 uppercase hex chars, computed over the payload up to and including "6304".
@@ -846,12 +890,15 @@ git commit -m "feat(qrph): CRC-16/CCITT-FALSE checksum"
 ## Task 5: Generic EMVCo TLV parser
 
 **Files:**
+
 - Create: `src/server/qrph/tlv.ts`
 - Test: `tests/server/qrph/tlv.test.ts`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces (`src/server/qrph/tlv.ts`):
+
   ```typescript
   export type TlvNode = { tag: string; length: number; value: string };
   // Parse a flat EMVCo TLV string (2-char tag, 2-digit length, value) into ordered nodes.
@@ -961,24 +1008,27 @@ git commit -m "feat(qrph): generic EMVCo TLV + nested template parser"
 ## Task 6: QRPH decode (semantics + CRC/currency validation + image)
 
 **Files:**
+
 - Create: `src/server/qrph/decode.ts`
 - Test: `tests/server/qrph/decode.test.ts`
 
 **Interfaces:**
+
 - Consumes: `crc16ccitt` (Task 4); `parseTlv`, `parseTemplate`, `toMap` (Task 5); `badRequest` (`@/lib/errors`); `jsqr`; `sharp`; (test only) `qrcode`.
 - Produces (locked contract — `src/server/qrph/decode.ts`):
+
   ```typescript
   export type QrphDecoded = {
     raw: string;
-    payloadFormat: string;             // tag 00
+    payloadFormat: string; // tag 00
     pointOfInit: "static" | "dynamic"; // tag 01: 11=static, 12=dynamic
-    merchantName?: string;             // tag 59
-    merchantCity?: string;             // tag 60
-    merchantId?: string;               // from merchant account info template
+    merchantName?: string; // tag 59
+    merchantCity?: string; // tag 60
+    merchantId?: string; // from merchant account info template
     acquirerId?: string;
-    country: string;                   // tag 58 (default PH)
-    currency: string;                  // tag 53 (608 = PHP)
-    amountPhp?: string;                // tag 54 (present for dynamic QR)
+    country: string; // tag 58 (default PH)
+    currency: string; // tag 53 (608 = PHP)
+    amountPhp?: string; // tag 54 (present for dynamic QR)
     crcValid: boolean;
   };
   // Parse raw EMVCo TLV string and validate CRC-16/CCITT-FALSE. Throws badRequest if structure/CRC/currency invalid.
@@ -1043,7 +1093,11 @@ describe("decodeQrph", () => {
 
 describe("decodeQrphImage", () => {
   it("reads the raw string from a rendered QR image then decodes it", async () => {
-    const png = await QRCode.toBuffer(STATIC, { type: "png", errorCorrectionLevel: "M", width: 512 });
+    const png = await QRCode.toBuffer(STATIC, {
+      type: "png",
+      errorCorrectionLevel: "M",
+      width: 512,
+    });
     const d = await decodeQrphImage(png);
     expect(d.merchantId).toBe("HEYPAY12345");
     expect(d.currency).toBe("608");
@@ -1147,8 +1201,15 @@ export function decodeQrph(raw: string): QrphDecoded {
 }
 
 async function readQrFromImage(image: Buffer): Promise<string | null> {
-  const { data, info } = await sharp(image).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const result = jsQR(new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), info.width, info.height);
+  const { data, info } = await sharp(image)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const result = jsQR(
+    new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength),
+    info.width,
+    info.height,
+  );
   return result?.data ?? null;
 }
 
@@ -1176,12 +1237,15 @@ git commit -m "feat(qrph): EMVCo decode with CRC/currency validation + image dec
 ## Task 7: QRPH merchant resolution
 
 **Files:**
+
 - Create: `src/server/qrph/resolve.ts`
 - Test: `tests/server/qrph/resolve.test.ts`
 
 **Interfaces:**
+
 - Consumes: `prisma` (`@/server/db`); `Merchant`, `MerchantStatus` (`@/generated/prisma`); `QrphDecoded` (Task 6).
 - Produces (locked contract — `src/server/qrph/resolve.ts`):
+
   ```typescript
   import { Merchant } from "@/generated/prisma";
   import type { QrphDecoded } from "./decode";
@@ -1280,16 +1344,23 @@ git commit -m "feat(qrph): resolve decoded QRPH to an ACTIVE merchant"
 ## Task 8: S3/MinIO storage (presign, magic-byte verify, signed GET, bucket bootstrap)
 
 **Files:**
+
 - Create: `src/server/storage/s3.ts`
 - Test: `tests/server/storage/s3.test.ts`
 
 **Interfaces:**
+
 - Consumes: `@aws-sdk/client-s3`, `@aws-sdk/s3-presigned-post`, `@aws-sdk/s3-request-presigner`, `node:crypto` (`randomUUID`); `badRequest` (`@/lib/errors`); (test) `aws-sdk-client-mock`. Env: `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_FORCE_PATH_STYLE`.
 - Produces (locked contract — `src/server/storage/s3.ts`):
+
   ```typescript
   export type PresignResult = { url: string; fields: Record<string, string>; key: string };
   // Presigned POST for an upload of given content type; enforces size limit server-side in the policy.
-  export function presignUpload(input: { prefix: "qrph" | "logo"; contentType: string; maxBytes: number }): Promise<PresignResult>;
+  export function presignUpload(input: {
+    prefix: "qrph" | "logo";
+    contentType: string;
+    maxBytes: number;
+  }): Promise<PresignResult>;
   // Verify an uploaded object's magic bytes + size match an allowed image type; throws badRequest if not.
   export function verifyUploadedObject(key: string): Promise<void>;
   // Return a time-limited signed GET URL for an object key.
@@ -1347,8 +1418,15 @@ afterEach(() => vi.clearAllMocks());
 
 describe("presignUpload", () => {
   it("returns a random key under the prefix and a size-bounded policy", async () => {
-    createPresignedPost.mockResolvedValue({ url: "http://localhost:9000/heypay-uploads", fields: { key: "x" } });
-    const out = await presignUpload({ prefix: "qrph", contentType: "image/png", maxBytes: 1_000_000 });
+    createPresignedPost.mockResolvedValue({
+      url: "http://localhost:9000/heypay-uploads",
+      fields: { key: "x" },
+    });
+    const out = await presignUpload({
+      prefix: "qrph",
+      contentType: "image/png",
+      maxBytes: 1_000_000,
+    });
     expect(out.key).toMatch(/^qrph\/[0-9a-f-]+\.png$/);
     expect(out.url).toContain("heypay-uploads");
     const args = createPresignedPost.mock.calls[0][1];
@@ -1513,7 +1591,8 @@ export async function ensureBucket(): Promise<void> {
     await getS3().send(new HeadBucketCommand({ Bucket: name }));
   } catch (e) {
     const status = (e as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
-    const notFound = status === 404 || status === 301 || (e as { name?: string })?.name === "NotFound";
+    const notFound =
+      status === 404 || status === 301 || (e as { name?: string })?.name === "NotFound";
     if (!notFound) throw e;
     await getS3().send(new CreateBucketCommand({ Bucket: name }));
   }
@@ -1544,17 +1623,20 @@ git commit -m "feat(storage): S3/MinIO presign + magic-byte verify + signed GET 
 ## Self-Review
 
 **AGENT §6 (Security — money + custody) coverage:**
-- *Custodial key protection (envelope encryption, AES-256-GCM, master key + `secretKeyVersion` rotation, decrypt in-memory only):* Task 1 (encrypt/decrypt + versioned keyring + rotation test); Task 3 `sendXlm` decrypts only inside the method scope, never returns/logs the secret, and `generate()` stamps `secretKeyVersion` from env.
-- *Signing isolation (signing lives only in `server/stellar`):* Tasks 2–3 are `server-only`; the secret crosses no module boundary into a request/response path.
-- *File uploads (presigned + content-type + size limit, magic-byte verify, random keys, signed URLs):* Task 8 — `presignUpload` (content-type allowlist + `content-length-range` policy + `randomUUID` keys), `verifyUploadedObject` (HEAD size cap + PNG/JPEG magic bytes), `signedGetUrl`.
-- *QRPH trust (validate CRC-16 + structure, reject foreign currency, resolve to a registered merchant):* Task 4 (CRC), Task 5 (TLV structure), Task 6 (`decodeQrph` rejects bad CRC and currency ≠ 608), Task 7 (resolve to ACTIVE merchant or null).
-- *Treat external responses as untrusted:* Horizon responses validated/typed (Task 3), uploaded objects re-verified (Task 8), QR payloads CRC- and currency-checked (Task 6).
-- *No secrets/PII in logs:* validation failures surface as `badRequest` with no secret material; secrets are local consts.
+
+- _Custodial key protection (envelope encryption, AES-256-GCM, master key + `secretKeyVersion` rotation, decrypt in-memory only):_ Task 1 (encrypt/decrypt + versioned keyring + rotation test); Task 3 `sendXlm` decrypts only inside the method scope, never returns/logs the secret, and `generate()` stamps `secretKeyVersion` from env.
+- _Signing isolation (signing lives only in `server/stellar`):_ Tasks 2–3 are `server-only`; the secret crosses no module boundary into a request/response path.
+- _File uploads (presigned + content-type + size limit, magic-byte verify, random keys, signed URLs):_ Task 8 — `presignUpload` (content-type allowlist + `content-length-range` policy + `randomUUID` keys), `verifyUploadedObject` (HEAD size cap + PNG/JPEG magic bytes), `signedGetUrl`.
+- _QRPH trust (validate CRC-16 + structure, reject foreign currency, resolve to a registered merchant):_ Task 4 (CRC), Task 5 (TLV structure), Task 6 (`decodeQrph` rejects bad CRC and currency ≠ 608), Task 7 (resolve to ACTIVE merchant or null).
+- _Treat external responses as untrusted:_ Horizon responses validated/typed (Task 3), uploaded objects re-verified (Task 8), QR payloads CRC- and currency-checked (Task 6).
+- _No secrets/PII in logs:_ validation failures surface as `badRequest` with no secret material; secrets are local consts.
 
 **AGENT §7 (Stellar specifics) coverage:**
+
 - `Horizon.Server` configured per env (Task 2). Amounts are strings ≤7dp via `formatXlm` (Task 3). Timebounds via `setTimeout(180)` and fee via `fetchBaseFee` (Task 3 `sendXlm`). Success confirmed by polling the tx result, submit ≠ success (Task 3 `confirmTx`). Account-not-funded handled (Task 3 `getBalance` returns 0 on 404). Persisted cursor for the deposit poller, idempotent (Task 3 `listIncomingPayments` returns + accepts a cursor). `sodium-native` installed for fast signing (Task 2 Step 1).
 
 **SPEC §7.1 (Stellar) / §7.3 (QRPH) coverage:**
+
 - §7.1: network env config, custodial keypair gen + envelope-encrypted secret, prefund detection via `payments().forAccount` + cursor, payment build (native op + memo + base fee + timebounds), tx-hash return, poll confirmation — all in Tasks 2–3.
 - §7.3: TLV parse of tags 00/01/26–51/52/53/54/58/59/60/62/63, CRC-16/CCITT-FALSE over payload up to and including `6304`, image decode (sharp+jsqr), merchant resolution by identifier/raw — Tasks 4–7. `pointOfInit` mapped 11→static / 12→dynamic; embedded amount (tag 54) surfaced for dynamic QR.
 

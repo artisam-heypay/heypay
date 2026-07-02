@@ -27,7 +27,7 @@ export function displayPhp(value: Decimal): string {
   const fixed = formatPhp(value);
   const negative = fixed.startsWith("-");
   const unsigned = negative ? fixed.slice(1) : fixed;
-  const [intPart = "0", frac = "00"] = unsigned.split(".");
+  const [intPart = "", frac = ""] = unsigned.split(".");
   const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `${negative ? "-" : ""}₱${grouped}.${frac}`;
 }

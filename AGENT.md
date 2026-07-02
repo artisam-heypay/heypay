@@ -9,6 +9,7 @@
 ---
 
 ## 0. Prime directives
+
 1. **Latest stable dependencies.** Pin to the newest stable releases (see §2).
    Before finalizing `package.json`, run `pnpm outdated` and resolve to current
    stable; never ship known-vulnerable versions (`pnpm audit` must be clean).
@@ -21,24 +22,25 @@
 ---
 
 ## 1. Tech stack (authoritative)
-| Layer | Choice |
-|---|---|
+
+| Layer               | Choice                                                                       |
+| ------------------- | ---------------------------------------------------------------------------- |
 | Framework (FE + BE) | **Next.js (App Router)** — Server Components, Server Actions, Route Handlers |
-| Language | **TypeScript** (`strict: true`) |
-| Runtime | **Node.js 22 LTS** (Next 16 requires Node ≥ 20.9; use 22 LTS) |
-| Package manager | **pnpm** (`packageManager` field pinned; use a lockfile) |
-| ORM | **Prisma 7** (Rust-free client, `prisma.config.ts`, driver adapter) |
-| Database | **PostgreSQL** (Railway in prod; docker locally) |
-| Cache / queue | **Redis** + **BullMQ** (Railway/docker) |
-| Styling | **Tailwind CSS v4** (CSS-first `@theme`; see `BRAND.md`) |
-| Object storage | **S3-compatible** — Railway storage (prod) / **MinIO** (dev) |
-| Auth | **Username + password**, server sessions, **argon2id**, seeded admin |
-| Blockchain | **`@stellar/stellar-sdk` v15.x** (Horizon) |
-| Payment rail | **PDAX REST API** (server-side, HMAC-signed) behind a provider interface |
-| Deployment | **Railway** (`web` + `worker` services) |
-| Validation | **Zod** |
-| Tests | **Vitest** (unit/integration) + **Playwright** (e2e) |
-| Lint/format | **ESLint** (flat config) + **Prettier** + **TypeScript** |
+| Language            | **TypeScript** (`strict: true`)                                              |
+| Runtime             | **Node.js 22 LTS** (Next 16 requires Node ≥ 20.9; use 22 LTS)                |
+| Package manager     | **pnpm** (`packageManager` field pinned; use a lockfile)                     |
+| ORM                 | **Prisma 7** (Rust-free client, `prisma.config.ts`, driver adapter)          |
+| Database            | **PostgreSQL** (Railway in prod; docker locally)                             |
+| Cache / queue       | **Redis** + **BullMQ** (Railway/docker)                                      |
+| Styling             | **Tailwind CSS v4** (CSS-first `@theme`; see `BRAND.md`)                     |
+| Object storage      | **S3-compatible** — Railway storage (prod) / **MinIO** (dev)                 |
+| Auth                | **Username + password**, server sessions, **argon2id**, seeded admin         |
+| Blockchain          | **`@stellar/stellar-sdk` v15.x** (Horizon)                                   |
+| Payment rail        | **PDAX REST API** (server-side, HMAC-signed) behind a provider interface     |
+| Deployment          | **Railway** (`web` + `worker` services)                                      |
+| Validation          | **Zod**                                                                      |
+| Tests               | **Vitest** (unit/integration) + **Playwright** (e2e)                         |
+| Lint/format         | **ESLint** (flat config) + **Prettier** + **TypeScript**                     |
 
 > Do not introduce a separate Express/Nest backend — Next.js Route Handlers +
 > Server Actions are the backend. The only second process is the BullMQ worker.
@@ -46,6 +48,7 @@
 ---
 
 ## 2. Dependency versions (use latest stable at build time)
+
 Resolve these to current stable with `pnpm add <pkg>@latest` and verify on npm.
 As of this writing the current stable lines are:
 
@@ -72,6 +75,7 @@ Run `pnpm audit --prod` and fix before delivery.
 ---
 
 ## 3. Project structure
+
 ```
 heypay/
 ├─ prisma/
@@ -111,6 +115,7 @@ heypay/
 ---
 
 ## 4. Application best practices
+
 - **Boundaries validated with Zod.** Every Route Handler / Server Action parses
   input with a Zod schema; never trust client data. Export inferred types.
 - **Server-only secrets.** Mark secret modules `import "server-only"`. Stellar
@@ -139,6 +144,7 @@ heypay/
 ---
 
 ## 5. Authentication & sessions
+
 - **Username + password only** (per scope). Hash with **argon2id** (sensible
   memory/time cost). Never store or log plaintext passwords.
 - **Server-side sessions**: opaque random token (≥256-bit) set as an
@@ -162,6 +168,7 @@ heypay/
 ---
 
 ## 6. Security best practices (money + custody)
+
 - **Custodial key protection (critical):** generate Stellar keypairs server-side;
   store secrets with **envelope encryption — AES-256-GCM** using a master key from
   the environment/KMS (`ENCRYPTION_MASTER_KEY` + `secretKeyVersion` for rotation).
@@ -208,6 +215,7 @@ heypay/
 ---
 
 ## 7. Stellar specifics
+
 - Use `@stellar/stellar-sdk` `Horizon.Server`; configure network passphrase per
   env. Testnet + **friendbot** funding in dev; mainnet in prod.
 - Amounts are **strings, ≤7 decimals**; convert via `Decimal`. Always set
@@ -219,13 +227,18 @@ heypay/
 ---
 
 ## 8. PDAX provider
+
 - Implement `PaymentRailProvider`:
   ```ts
   interface PaymentRailProvider {
     getQuote(input: { sell: "XLM"; buy: "PHP"; phpAmount: Decimal }): Promise<Quote>;
     sellCryptoForPhp(input: { ref: string; xlmAmount: Decimal }): Promise<TradeResult>;
     getTradeStatus(tradeRef: string): Promise<TradeStatus>;
-    cashOutPhpToBank(input: { ref: string; phpAmount: Decimal; bank: BankPayout }): Promise<PayoutResult>;
+    cashOutPhpToBank(input: {
+      ref: string;
+      phpAmount: Decimal;
+      bank: BankPayout;
+    }): Promise<PayoutResult>;
     getPayoutStatus(payoutRef: string): Promise<PayoutStatus>;
   }
   ```
@@ -239,6 +252,7 @@ heypay/
 ---
 
 ## 9. Local development
+
 **Docker Compose** provides Postgres, Redis, and MinIO:
 
 ```yaml
@@ -267,6 +281,7 @@ volumes: { pgdata: {}, miniodata: {} }
 ```
 
 Bootstrap:
+
 ```bash
 pnpm install
 docker compose up -d
@@ -276,6 +291,7 @@ pnpm prisma db seed                   # seed admin (+ demo if SEED_DEMO=true)
 pnpm dev                              # web (Next.js, Turbopack)
 pnpm worker:dev                       # BullMQ worker (separate process)
 ```
+
 - Default dev config: `PAYMENT_RAIL=mock`, `STELLAR_NETWORK=testnet`. The full
   happy path runs without real money or PDAX prod credentials.
 - Create the MinIO bucket on startup (init script or app bootstrap).
@@ -283,6 +299,7 @@ pnpm worker:dev                       # BullMQ worker (separate process)
 ---
 
 ## 10. `.env.example` (placeholders only — never commit real values)
+
 ```dotenv
 # --- App ---
 NODE_ENV=development
@@ -328,6 +345,7 @@ S3_FORCE_PATH_STYLE=true              # true for MinIO
 ---
 
 ## 11. Deployment (Railway)
+
 - Two services from one repo: **`web`** (`pnpm build` → `pnpm start`) and
   **`worker`** (`pnpm worker:start`). Shared env group.
 - Add **Postgres** and **Redis** plugins → inject `DATABASE_URL`, `REDIS_URL`.
@@ -346,6 +364,7 @@ S3_FORCE_PATH_STYLE=true              # true for MinIO
 ---
 
 ## 12. Quality gates (must pass before "done")
+
 - [ ] `pnpm typecheck` (no `any` at boundaries), `pnpm lint`, `pnpm format:check` clean.
 - [ ] `pnpm audit --prod` clean; all deps on current stable; lockfile committed.
 - [ ] Unit tests: QRPH TLV+CRC parser, quote/fee math, state-machine transitions,
@@ -361,6 +380,7 @@ S3_FORCE_PATH_STYLE=true              # true for MinIO
 ---
 
 ## 13. Conventions
+
 - Commits: Conventional Commits. PRs small and focused.
 - Naming: `camelCase` vars, `PascalCase` types/components, `SCREAMING_SNAKE` env.
 - All amounts in code are `Decimal`; format only at the view layer.

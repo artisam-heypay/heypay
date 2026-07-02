@@ -1,3 +1,4 @@
+// src/app/api/payments/[id]/cancel/route.ts
 import { route, json } from "@/lib/http";
 import { requireRole } from "@/server/auth/sessions";
 import { assertSameOrigin } from "@/server/auth/csrf";
@@ -13,7 +14,7 @@ export const POST = route(async (req, ctx) => {
   assertSameOrigin(req);
   const user = await requireRole("PAYER");
   const payment = await db.payment.findUnique({
-    where: { id: ctx.params.id },
+    where: { id: ctx.params.id! },
     include: { payer: { include: { wallet: true } } },
   });
   if (!payment) throw notFound("payment not found");

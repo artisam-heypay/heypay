@@ -1,5 +1,5 @@
 import { Card, MoneyAmount } from "@/components/ui";
-import { type Decimal, displayPhp, displayXlm } from "@/lib/money";
+import { type Decimal, displayPhp, displayXlm, formatPhp } from "@/lib/money";
 
 export function ConversionBreakdown({
   amountPhp,
@@ -16,20 +16,21 @@ export function ConversionBreakdown({
   return (
     <Card>
       <p className="text-label-md uppercase text-on-surface-variant">You pay</p>
-      <p className="text-headline-lg font-display font-bold">{displayPhp(amountPhp)}</p>
+      <p className="font-display text-headline-lg text-on-surface">{displayPhp(amountPhp)}</p>
+
       <dl className="mt-stack-md divide-y divide-outline-variant">
         <div className="flex items-center justify-between py-stack-sm">
-          <dt className="text-on-surface-variant">Exchange rate</dt>
-          <dd className="text-mono-data">1 XLM = {displayPhp(quotedRate)}</dd>
+          <dt className="text-body-md text-on-surface-variant">Exchange rate</dt>
+          <dd className="font-mono text-mono-data">1 XLM = ₱{formatPhp(quotedRate)}</dd>
         </div>
         <div className="flex items-center justify-between py-stack-sm">
-          <dt className="text-on-surface-variant">Network fee</dt>
-          <dd className="text-mono-data">{displayXlm(networkFeeXlm)}</dd>
+          <dt className="text-body-md text-on-surface-variant">Network fee</dt>
+          <dd className="font-mono text-mono-data">{displayXlm(networkFeeXlm)}</dd>
         </div>
         <div className="flex items-center justify-between py-stack-sm">
-          <dt className="font-bold">Total deduction</dt>
+          <dt className="font-display text-body-md font-bold">Total deduction</dt>
           <dd>
-            <MoneyAmount size="row" xlm={total} php={amountPhp} />
+            <MoneyAmount xlm={total} php={amountPhp} size="row" />
           </dd>
         </div>
       </dl>

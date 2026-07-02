@@ -26,4 +26,4 @@ export async function verifyPassword(hash: string, plain: string): Promise<boole
 // to run a verify() even when the username is unknown, equalizing response timing
 // so attackers cannot enumerate accounts from latency.
 export const DUMMY_PASSWORD_HASH =
-  "$argon2id$v=19$m=19456,t=2,p=1$46NI2NYbed0N8VL7sXYYwQ$4spT21Z1aQhNqgy1OAFFNOn/roCOSaeg7JqNbFNteJU";
+  "$argon2id$v=19$m=19456,t=2,p=1$c29tZS1zdGF0aWMtc2FsdC1ieXRlcw$3b3v2yq9o0Yk0m3hQk0o2k1m0n5q7r8s9t0u1v2w3x4";

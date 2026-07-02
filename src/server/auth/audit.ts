@@ -1,5 +1,5 @@
 import "server-only";
-import type { Prisma } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 
 export async function audit(input: {

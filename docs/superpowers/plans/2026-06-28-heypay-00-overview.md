@@ -139,10 +139,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 export type Handler = (req: NextRequest, ctx: HandlerContext) => Promise<NextResponse>;
-export type HandlerContext = { params: Record<string, string>; userId: string | null; role: Role | null };
+export type HandlerContext = {
+  params: Record<string, string>;
+  userId: string | null;
+  role: Role | null;
+};
 
 // Wraps a handler: catches AppError/ZodError -> ErrorEnvelope + status; logs full detail server-side.
-export function route(handler: Handler): (req: NextRequest, raw: { params: Promise<Record<string,string>> }) => Promise<NextResponse>;
+export function route(
+  handler: Handler,
+): (req: NextRequest, raw: { params: Promise<Record<string, string>> }) => Promise<NextResponse>;
 // JSON success helper.
 export function json<T>(data: T, status?: number): NextResponse;
 // Parse + validate JSON body with a Zod schema; throws badRequest on failure.
@@ -159,12 +165,15 @@ export type SessionUser = { id: string; username: string; role: Role; isActive: 
 
 // Reads & validates the session cookie; returns the user or null. For use in handlers/RSC/actions.
 export function getSessionUser(): Promise<SessionUser | null>;
-// Returns the user or throws unauthorized(). 
+// Returns the user or throws unauthorized().
 export function requireUser(): Promise<SessionUser>;
 // Returns the user or throws forbidden() if role mismatch.
 export function requireRole(role: Role): Promise<SessionUser>;
 // Creates a session row (token hashed) and sets the HttpOnly cookie. Returns raw token (for tests only).
-export function createSession(userId: string, meta: { ip?: string; userAgent?: string }): Promise<void>;
+export function createSession(
+  userId: string,
+  meta: { ip?: string; userAgent?: string },
+): Promise<void>;
 // Revokes current session and clears cookie.
 export function destroySession(): Promise<void>;
 ```
@@ -187,7 +196,13 @@ export function rateLimit(key: string, opts: { limit: number; windowSec: number 
 
 ```typescript
 // Writes an AuditLog row. Never throws into the request path (best-effort).
-export function audit(input: { actorId?: string | null; action: string; target?: string; metadata?: unknown; ip?: string }): Promise<void>;
+export function audit(input: {
+  actorId?: string | null;
+  action: string;
+  target?: string;
+  metadata?: unknown;
+  ip?: string;
+}): Promise<void>;
 ```
 
 ### Crypto (`src/server/crypto/envelope.ts`)
@@ -211,13 +226,27 @@ export interface WalletService {
   getBalance(publicKey: string): Promise<Decimal>;
   // Build/sign/submit a payment of amountXlm from the custodial account to `destination` with `memo`.
   // Sets timebounds + base fee. Returns the tx hash. Decrypts secret only in-memory here.
-  sendXlm(input: { encryptedSecret: string; destination: string; amountXlm: Decimal; memo: string }): Promise<{ txHash: string }>;
+  sendXlm(input: {
+    encryptedSecret: string;
+    destination: string;
+    amountXlm: Decimal;
+    memo: string;
+  }): Promise<{ txHash: string }>;
   // Poll Horizon for tx success; resolves true on success, false on definitive failure.
   confirmTx(txHash: string): Promise<boolean>;
   // List incoming payments after `cursor` for prefund detection. Returns items + new cursor.
-  listIncomingPayments(publicKey: string, cursor?: string): Promise<{ items: IncomingPayment[]; cursor?: string }>;
+  listIncomingPayments(
+    publicKey: string,
+    cursor?: string,
+  ): Promise<{ items: IncomingPayment[]; cursor?: string }>;
 }
-export type IncomingPayment = { id: string; amountXlm: Decimal; from: string; txHash: string; createdAt: Date };
+export type IncomingPayment = {
+  id: string;
+  amountXlm: Decimal;
+  from: string;
+  txHash: string;
+  createdAt: Date;
+};
 export const walletService: WalletService;
 ```
 
@@ -226,15 +255,15 @@ export const walletService: WalletService;
 ```typescript
 export type QrphDecoded = {
   raw: string;
-  payloadFormat: string;        // tag 00
+  payloadFormat: string; // tag 00
   pointOfInit: "static" | "dynamic"; // tag 01: 11=static, 12=dynamic
-  merchantName?: string;        // tag 59
-  merchantCity?: string;        // tag 60
-  merchantId?: string;          // from merchant account info template
+  merchantName?: string; // tag 59
+  merchantCity?: string; // tag 60
+  merchantId?: string; // from merchant account info template
   acquirerId?: string;
-  country: string;              // tag 58 (default PH)
-  currency: string;             // tag 53 (608 = PHP)
-  amountPhp?: string;           // tag 54 (present for dynamic QR)
+  country: string; // tag 58 (default PH)
+  currency: string; // tag 53 (608 = PHP)
+  amountPhp?: string; // tag 54 (present for dynamic QR)
   crcValid: boolean;
 };
 // Parse raw EMVCo TLV string and validate CRC-16/CCITT-FALSE. Throws badRequest if structure/CRC invalid.
@@ -254,7 +283,11 @@ export function resolveMerchant(decoded: QrphDecoded): Promise<Merchant | null>;
 import { Decimal } from "@/lib/money";
 export type Quote = { rate: Decimal; phpAmount: Decimal; xlmAmount: Decimal; expiresAt: Date };
 export type TradeResult = { tradeRef: string };
-export type TradeStatus = { state: "PENDING" | "FILLED" | "FAILED"; feePhp?: Decimal; filledPhp?: Decimal };
+export type TradeStatus = {
+  state: "PENDING" | "FILLED" | "FAILED";
+  feePhp?: Decimal;
+  filledPhp?: Decimal;
+};
 export type BankPayout = { bankCode: string; accountName: string; accountNumber: string };
 export type PayoutResult = { payoutRef: string };
 export type PayoutStatus = { state: "PENDING" | "SETTLED" | "FAILED"; netPhp?: Decimal };
@@ -263,7 +296,11 @@ export interface PaymentRailProvider {
   getQuote(input: { sell: "XLM"; buy: "PHP"; phpAmount: Decimal }): Promise<Quote>;
   sellCryptoForPhp(input: { ref: string; xlmAmount: Decimal }): Promise<TradeResult>;
   getTradeStatus(tradeRef: string): Promise<TradeStatus>;
-  cashOutPhpToBank(input: { ref: string; phpAmount: Decimal; bank: BankPayout }): Promise<PayoutResult>;
+  cashOutPhpToBank(input: {
+    ref: string;
+    phpAmount: Decimal;
+    bank: BankPayout;
+  }): Promise<PayoutResult>;
   getPayoutStatus(payoutRef: string): Promise<PayoutStatus>;
 }
 // src/server/rails/index.ts — selects implementation by PAYMENT_RAIL env (mock | pdax).
@@ -275,7 +312,11 @@ export const rail: PaymentRailProvider;
 ```typescript
 export type PresignResult = { url: string; fields: Record<string, string>; key: string };
 // Presigned POST for an upload of given content type; enforces size limit server-side in the policy.
-export function presignUpload(input: { prefix: "qrph" | "logo"; contentType: string; maxBytes: number }): Promise<PresignResult>;
+export function presignUpload(input: {
+  prefix: "qrph" | "logo";
+  contentType: string;
+  maxBytes: number;
+}): Promise<PresignResult>;
 // Verify an uploaded object's magic bytes + size match an allowed image type; throws badRequest if not.
 export function verifyUploadedObject(key: string): Promise<void>;
 // Return a time-limited signed GET URL for an object key.
@@ -285,7 +326,11 @@ export function signedGetUrl(key: string): Promise<string>;
 ### Queue (`src/server/queue/queues.ts`)
 
 ```typescript
-export const QUEUE_NAMES = { settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" } as const;
+export const QUEUE_NAMES = {
+  settle: "settle",
+  depositPoll: "deposit-poll",
+  reconcile: "reconcile",
+} as const;
 // Enqueue a settlement step. jobId = `${paymentId}:${status}` for idempotency.
 export function enqueueSettle(paymentId: string): Promise<void>;
 ```
@@ -307,6 +352,7 @@ CREATED → QUOTED → AUTHORIZED → STELLAR_SUBMITTED → STELLAR_CONFIRMED
 Any step → FAILED (failureReason)                                   [terminal]
 If XLM left wallet but PHP not settled → REFUND_PENDING → REFUNDED  [terminal]
 ```
+
 Each transition: persisted (`PaymentEvent`), idempotent (worker job keyed `paymentId:status`), retried with exponential backoff + jitter. Worker is resumable per current status.
 
 ---
@@ -315,17 +361,17 @@ Each transition: persisted (`PaymentEvent`), idempotent (worker job keyed `payme
 
 Execute top to bottom. Each phase file is a self-contained plan that produces working, testable software.
 
-| Phase | File | Depends on | Deliverable |
-|---|---|---|---|
-| 1. Foundation & Infra | `2026-06-28-heypay-01-foundation.md` | — | Next.js 16 app boots; Tailwind v4 theme; docker-compose; Prisma schema + migration + seed; `lib/money.ts`, `lib/errors.ts`, `lib/http.ts`, db/redis singletons. Unit tests for money/errors green. |
-| 2. Auth & Sessions | `2026-06-28-heypay-02-auth.md` | 1 | argon2id passwords, server sessions, signup/login/logout/session/password endpoints, `proxy.ts` (authz + security headers + CSP), CSRF, Redis rate limiting, audit log. Integration tests green. |
-| 3. Core Services | `2026-06-28-heypay-03-services.md` | 1 | Envelope crypto, Stellar wallet service (testnet), QRPH TLV+CRC parser + image decode + merchant resolution, S3/MinIO storage (presign + magic-byte verify). Unit tests (CRC vectors, encryption round-trip) green. |
-| 4. Payment Rail | `2026-06-28-heypay-04-rail.md` | 1, 3 | `PaymentRailProvider` interface, `MockProvider` (deterministic + forced-failure switch), `PdaxProvider` (HMAC signing, TOTP for crypto-out). Unit tests green; mock drives full flow. |
-| 5. Payments & Worker | `2026-06-28-heypay-05-payments-worker.md` | 1–4 | Quote/confirm domain + idempotency, payment API handlers, BullMQ queues, worker settlement state machine, deposit poller, reconciliation. Integration + state-machine unit tests green. |
-| 6. Payer UI | `2026-06-28-heypay-06-payer-ui.md` | 1–5 | Dashboard, scan, confirm/pay (processing overlay), prefund, transactions, settings — themed per BRAND. |
-| 7. Merchant UI | `2026-06-28-heypay-07-merchant-ui.md` | 1–5 | Onboarding wizard (live preview), dashboard, transactions (CSV), business QR, settings + merchant API. |
-| 8. Admin UI | `2026-06-28-heypay-08-admin-ui.md` | 1–5 | Overview, users, merchants, payments (timeline + retry/refund), health + admin API. |
-| 9. Testing & Deploy | `2026-06-28-heypay-09-testing-deploy.md` | 1–8 | Playwright e2e happy paths, Dockerfile, railway.json, `.env.example` finalization, quality gates (typecheck/lint/audit), webhook handler, reconciliation cron. |
+| Phase                 | File                                      | Depends on | Deliverable                                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Foundation & Infra | `2026-06-28-heypay-01-foundation.md`      | —          | Next.js 16 app boots; Tailwind v4 theme; docker-compose; Prisma schema + migration + seed; `lib/money.ts`, `lib/errors.ts`, `lib/http.ts`, db/redis singletons. Unit tests for money/errors green.                  |
+| 2. Auth & Sessions    | `2026-06-28-heypay-02-auth.md`            | 1          | argon2id passwords, server sessions, signup/login/logout/session/password endpoints, `proxy.ts` (authz + security headers + CSP), CSRF, Redis rate limiting, audit log. Integration tests green.                    |
+| 3. Core Services      | `2026-06-28-heypay-03-services.md`        | 1          | Envelope crypto, Stellar wallet service (testnet), QRPH TLV+CRC parser + image decode + merchant resolution, S3/MinIO storage (presign + magic-byte verify). Unit tests (CRC vectors, encryption round-trip) green. |
+| 4. Payment Rail       | `2026-06-28-heypay-04-rail.md`            | 1, 3       | `PaymentRailProvider` interface, `MockProvider` (deterministic + forced-failure switch), `PdaxProvider` (HMAC signing, TOTP for crypto-out). Unit tests green; mock drives full flow.                               |
+| 5. Payments & Worker  | `2026-06-28-heypay-05-payments-worker.md` | 1–4        | Quote/confirm domain + idempotency, payment API handlers, BullMQ queues, worker settlement state machine, deposit poller, reconciliation. Integration + state-machine unit tests green.                             |
+| 6. Payer UI           | `2026-06-28-heypay-06-payer-ui.md`        | 1–5        | Dashboard, scan, confirm/pay (processing overlay), prefund, transactions, settings — themed per BRAND.                                                                                                              |
+| 7. Merchant UI        | `2026-06-28-heypay-07-merchant-ui.md`     | 1–5        | Onboarding wizard (live preview), dashboard, transactions (CSV), business QR, settings + merchant API.                                                                                                              |
+| 8. Admin UI           | `2026-06-28-heypay-08-admin-ui.md`        | 1–5        | Overview, users, merchants, payments (timeline + retry/refund), health + admin API.                                                                                                                                 |
+| 9. Testing & Deploy   | `2026-06-28-heypay-09-testing-deploy.md`  | 1–8        | Playwright e2e happy paths, Dockerfile, railway.json, `.env.example` finalization, quality gates (typecheck/lint/audit), webhook handler, reconciliation cron.                                                      |
 
 ---
 

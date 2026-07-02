@@ -1,37 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-
-// `vi.mock` is hoisted above imports, so the mock's `create` spy is created via
-// `vi.hoisted` (also hoisted) rather than a plain top-level const.
-const { create } = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock("@/server/db", () => ({ db: { auditLog: { create } } }));
-
+import { db } from "@/server/db";
 import { audit } from "@/server/auth/audit";
+import { resetDb } from "../../helpers/db";
 
 describe("audit", () => {
-  beforeEach(() => create.mockReset());
+  beforeEach(async () => {
+    await resetDb();
+    vi.restoreAllMocks();
+  });
 
   it("records the action with actor, target, and ip", async () => {
-    create.mockResolvedValue({});
-    await audit({ actorId: "user_1", action: "auth.login", target: "user_1", ip: "1.2.3.4" });
-    expect(create).toHaveBeenCalledWith({
-      data: {
-        actorId: "user_1",
-        action: "auth.login",
-        target: "user_1",
-        metadata: undefined,
-        ip: "1.2.3.4",
-      },
+    const user = await db.user.create({
+      data: { username: "audit-user", passwordHash: "x", role: "PAYER" },
     });
+    await audit({ actorId: user.id, action: "auth.login", target: user.id, ip: "1.2.3.4" });
+    const row = await db.auditLog.findFirst({ where: { action: "auth.login" } });
+    expect(row).toMatchObject({ actorId: user.id, target: user.id, ip: "1.2.3.4" });
   });
 
   it("swallows database errors and never throws", async () => {
-    create.mockRejectedValueOnce(new Error("db down"));
-    let threw = false;
-    try {
-      await audit({ action: "auth.login.failed" });
-    } catch {
-      threw = true;
-    }
-    expect(threw).toBe(false);
+    vi.spyOn(db.auditLog, "create").mockRejectedValue(new Error("db down"));
+    await expect(audit({ action: "auth.login.failed" })).resolves.toBeUndefined();
   });
 });

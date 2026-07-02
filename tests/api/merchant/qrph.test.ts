@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { resetDb, prisma } from "../../helpers/db";
-import { seedMerchantUser } from "../../helpers/merchant";
+import { mockSession, seedMerchantUser } from "../../helpers/merchant";
 
 // CRC-valid fixture string (matches Phase 3 parser fixtures)
 const RAW =
@@ -25,74 +25,48 @@ vi.mock("@/server/qrph/decode", () => ({
 }));
 vi.mock("@/server/storage/s3", () => ({ verifyUploadedObject: vi.fn(async () => {}) }));
 
-const { sessionUser } = vi.hoisted(() => ({
-  sessionUser: {
-    current: null as null | { id: string; username: string; role: "MERCHANT"; isActive: boolean },
-  },
-}));
-
-vi.mock("@/server/auth/sessions", async () => {
-  const { forbidden, unauthorized } = await import("@/lib/errors");
-  return {
-    requireRole: vi.fn(async () => {
-      if (!sessionUser.current) throw forbidden();
-      return sessionUser.current;
-    }),
-    requireUser: vi.fn(async () => {
-      if (!sessionUser.current) throw unauthorized();
-      return sessionUser.current;
-    }),
-  };
-});
-
+const USER = { id: "", username: "biz", role: "MERCHANT" as const, isActive: true };
+mockSession(USER);
 const req = (body: unknown) =>
   new NextRequest("http://localhost:3000/api/merchant/qrph", {
     method: "POST",
-    headers: {
-      origin: "http://localhost:3000",
-      "sec-fetch-site": "same-origin",
-      "content-type": "application/json",
-    },
+    headers: { origin: "http://localhost:3000", "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 const ctx = { params: Promise.resolve({}) };
-const setUser = (id: string) =>
-  (sessionUser.current = { id, username: "biz", role: "MERCHANT", isActive: true });
 
-describe("merchant qrph API", () => {
-  beforeEach(async () => {
-    await resetDb();
-  });
+beforeEach(async () => {
+  await resetDb();
+});
 
-  it("persists decoded QRPH fields and verifies the uploaded image", async () => {
-    const { verifyUploadedObject } = await import("@/server/storage/s3");
-    const { merchant, user } = await seedMerchantUser({ qrphRaw: "" });
-    setUser(user.id);
-    const { POST } = await import("@/app/api/merchant/qrph/route");
-    const res = await POST(req({ raw: RAW, imageKey: "qrph/abc.png" }), ctx);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.merchant.qrphMerchantName).toBe("HEYPAY CAFE");
-    expect(body.merchant.qrphImageKey).toBe("qrph/abc.png");
-    expect(verifyUploadedObject).toHaveBeenCalledWith("qrph/abc.png");
-    const row = await prisma.merchant.findUnique({ where: { id: merchant.id } });
-    expect(row!.qrphMerchantId).toBe("MERCHID01");
-  });
+it("persists decoded QRPH fields and verifies the uploaded image", async () => {
+  const { verifyUploadedObject } = await import("@/server/storage/s3");
+  const { merchant, user } = await seedMerchantUser({ qrphRaw: "" });
+  USER.id = user.id;
+  const { POST } = await import("@/app/api/merchant/qrph/route");
+  const res = await POST(req({ raw: RAW, imageKey: "qrph/abc.png" }), ctx);
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.merchant.qrphMerchantName).toBe("HEYPAY CAFE");
+  expect(body.merchant.qrphImageKey).toBe("qrph/abc.png");
+  expect(verifyUploadedObject).toHaveBeenCalledWith("qrph/abc.png");
+  const row = await prisma.merchant.findUnique({ where: { id: merchant.id } });
+  expect(row!.qrphMerchantId).toBe("MERCHID01");
+});
 
-  it("rejects a QRPH already owned by another merchant (409)", async () => {
-    await seedMerchantUser({ qrphRaw: RAW, qrphMerchantId: "MERCHID01" });
-    const { user } = await seedMerchantUser({ qrphRaw: "" });
-    setUser(user.id);
-    const { POST } = await import("@/app/api/merchant/qrph/route");
-    const res = await POST(req({ raw: RAW }), ctx);
-    expect(res.status).toBe(409);
-  });
+it("rejects a QRPH already owned by another merchant (409)", async () => {
+  await seedMerchantUser({ qrphRaw: RAW, qrphMerchantId: "MERCHID01" }); // someone else owns it
+  const { user } = await seedMerchantUser({ qrphRaw: "" });
+  USER.id = user.id;
+  const { POST } = await import("@/app/api/merchant/qrph/route");
+  const res = await POST(req({ raw: RAW }), ctx);
+  expect(res.status).toBe(409);
+});
 
-  it("rejects a CRC-invalid string (400)", async () => {
-    const { user } = await seedMerchantUser({ qrphRaw: "" });
-    setUser(user.id);
-    const { POST } = await import("@/app/api/merchant/qrph/route");
-    const res = await POST(req({ raw: RAW.slice(0, -4) + "0000" }), ctx);
-    expect(res.status).toBe(400);
-  });
+it("rejects a CRC-invalid string (400)", async () => {
+  const { user } = await seedMerchantUser({ qrphRaw: "" });
+  USER.id = user.id;
+  const { POST } = await import("@/app/api/merchant/qrph/route");
+  const res = await POST(req({ raw: RAW.slice(0, -4) + "0000" }), ctx);
+  expect(res.status).toBe(400);
 });
