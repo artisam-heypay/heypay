@@ -14,6 +14,7 @@ HeyPay's core mechanic — pay any QRPH code with your XLM balance — without
 relying on a wallet or coin cliché.
 
 **General style (applies to all three variants):**
+
 - Symbol only — **no text, no wordmark, no letterforms**.
 - Single, self-contained glyph that reads clearly at 24px (favicon/app-icon
   scale) and at billboard scale alike.
@@ -144,7 +145,7 @@ glyph.
   fill color and background change between them. Do not let the shape
   drift between prompts/generations; use the colored version's output as a
   shape reference when generating the two silhouette variants.
-- Reserve orange (`#ff9800`) as a *minor* accent only in the colored
+- Reserve orange (`#ff9800`) as a _minor_ accent only in the colored
   variant — the silhouette variants are strictly single-color per
   `BRAND.md` §8 (status must never rely on color alone, and monochrome
   marks must remain legible without it).
