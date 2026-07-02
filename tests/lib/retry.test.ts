@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   withRetry,
   withTimeout,
+  pollUntil,
   TimeoutError,
   CircuitBreaker,
   CircuitOpenError,
@@ -85,9 +86,31 @@ describe("withTimeout", () => {
   });
 });
 
+describe("pollUntil", () => {
+  it("resolves when the predicate is satisfied", async () => {
+    let n = 0;
+    const v = await pollUntil(
+      async () => ++n,
+      (x) => x >= 3,
+      { attempts: 5, intervalMs: 1 },
+    );
+    expect(v).toBe(3);
+  });
+
+  it("throws (with label) when not done within attempts", async () => {
+    await expect(
+      pollUntil(
+        async () => 0,
+        (x) => x === 1,
+        { attempts: 3, intervalMs: 1, label: "trade" },
+      ),
+    ).rejects.toThrow(/trade/);
+  });
+});
+
 describe("CircuitBreaker", () => {
   it("opens after the failure threshold then rejects fast", async () => {
-    const now = 0; // never advanced in this test — the breaker stays open within resetMs
+    const now = 0;
     const cb = new CircuitBreaker({ failureThreshold: 2, resetMs: 1000, nowImpl: () => now });
     const boom = () => Promise.reject(new Error("down"));
     await expect(cb.exec(boom)).rejects.toThrow("down");

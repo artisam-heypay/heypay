@@ -1,34 +1,63 @@
-import "server-only";
-import { notFound } from "next/navigation";
-import { Role } from "@/generated/prisma";
+import { notFound, forbidden } from "@/lib/errors";
 import { requireRole } from "@/server/auth/sessions";
-import { getConfirmContext } from "@/server/payer/data";
+import { Role } from "@/generated/prisma/client";
+import { db } from "@/server/db";
+import { rail } from "@/server/rails";
+import { dec } from "@/lib/money";
+import { getWalletSummary } from "@/server/payer/data";
 import { ConfirmPayment } from "@/components/payer/ConfirmPayment";
 
-export default async function ConfirmPage({ params }: { params: Promise<{ paymentId: string }> }) {
+export default async function ConfirmPaymentPage({
+  params,
+}: {
+  params: Promise<{ paymentId: string }>;
+}) {
   const { paymentId } = await params;
   const user = await requireRole(Role.PAYER);
-  const ctx = await getConfirmContext(paymentId, user.id);
-  if (!ctx) notFound();
+
+  const payment = await db.payment.findUnique({
+    where: { id: paymentId },
+    include: { merchant: { select: { businessName: true, qrphMerchantCity: true } } },
+  });
+  if (!payment) throw notFound("payment not found");
+  if (payment.payerId !== user.id) throw forbidden("not your payment");
+
+  const wallet = await getWalletSummary(user.id);
+  const availableXlm = wallet?.availableXlm ?? dec("0");
+
+  let approxPhp = dec("0");
+  try {
+    const quote = await rail.getQuote({ sell: "XLM", buy: "PHP", phpAmount: dec("1") });
+    approxPhp = availableXlm.times(quote.rate);
+  } catch {
+    // rate unavailable
+  }
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-stack-lg">
+    <div className="mx-auto flex max-w-lg flex-col gap-stack-lg">
       <div>
-        <h1 className="text-headline-lg font-display font-bold">Confirm Payment</h1>
-        <p className="text-headline-md font-display text-primary">{ctx.merchant.businessName}</p>
-        {ctx.merchant.city ? (
-          <p className="text-body-sm text-on-surface-variant">{ctx.merchant.city}</p>
-        ) : null}
+        <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">
+          Confirm Payment
+        </h1>
+        <p className="mt-stack-sm font-display text-headline-md">{payment.merchant.businessName}</p>
+        {payment.merchant.qrphMerchantCity && (
+          <p className="text-body-sm text-on-surface-variant">
+            {payment.merchant.qrphMerchantCity}
+          </p>
+        )}
       </div>
+
       <ConfirmPayment
-        paymentId={ctx.payment.id}
-        amountPhp={ctx.payment.amountPhp}
-        quotedRate={ctx.payment.quotedRate}
-        amountXlm={ctx.payment.amountXlm}
-        networkFeeXlm={ctx.payment.networkFeeXlm}
-        quoteExpiresAt={ctx.payment.quoteExpiresAt}
-        merchantName={ctx.merchant.businessName}
-        wallet={ctx.wallet}
+        paymentId={payment.id}
+        amountPhp={payment.amountPhp.toFixed(2)}
+        quotedRate={payment.quotedRate.toFixed(8)}
+        amountXlm={payment.amountXlm.toFixed(7)}
+        networkFeeXlm={payment.networkFeeXlm.toFixed(7)}
+        quoteExpiresAt={payment.quoteExpiresAt?.toISOString() ?? null}
+        merchantName={payment.merchant.businessName}
+        walletPublicKey={wallet?.publicKey ?? ""}
+        availableXlm={availableXlm.toFixed(7)}
+        approxPhp={approxPhp.toFixed(2)}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { resetDb, makePayer, makeMerchant } from "../../../tests/helpers/db";
 import { db } from "@/server/db";
-import { PaymentStatus } from "@/generated/prisma";
+import { PaymentStatus } from "@/generated/prisma/client";
 import { newPaymentReference } from "./reference";
 import {
   TRANSITIONS,
@@ -36,13 +36,11 @@ describe("state machine (pure)", () => {
   });
 
   it("permits the refund branch only once XLM has moved", () => {
-    // XLM moved → refund allowed
     expect(XLM_MOVED.has("STELLAR_CONFIRMED")).toBe(true);
     expect(canTransition("STELLAR_CONFIRMED", "REFUND_PENDING")).toBe(true);
     expect(canTransition("PDAX_TRADED", "REFUND_PENDING")).toBe(true);
     expect(canTransition("PAYOUT_SUBMITTED", "REFUND_PENDING")).toBe(true);
     expect(canTransition("REFUND_PENDING", "REFUNDED")).toBe(true);
-    // Before XLM moves, failures go to FAILED, not REFUND_PENDING.
     expect(canTransition("AUTHORIZED", "REFUND_PENDING")).toBe(false);
     expect(canTransition("AUTHORIZED", "FAILED")).toBe(true);
   });

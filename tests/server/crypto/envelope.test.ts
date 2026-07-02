@@ -30,7 +30,7 @@ describe("envelope encryption", () => {
     const enc = encryptSecret("secret");
     const [v, iv, tag, ct] = enc.split(":") as [string, string, string, string];
     const badTag = Buffer.from(tag, "base64");
-    badTag[0] = (badTag[0] ?? 0) ^ 0xff;
+    badTag[0]! ^= 0xff;
     const tampered = [v, iv, badTag.toString("base64"), ct].join(":");
     expect(() => decryptSecret(tampered)).toThrow();
   });

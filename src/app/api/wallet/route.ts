@@ -1,3 +1,4 @@
+// src/app/api/wallet/route.ts
 import { route, json } from "@/lib/http";
 import { requireUser } from "@/server/auth/sessions";
 import { db } from "@/server/db";

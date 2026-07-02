@@ -1,4 +1,4 @@
-import type { PaymentStatus } from "@/generated/prisma";
+import type { PaymentStatus } from "@/generated/prisma/client";
 
 export type StatusTone = "settled" | "pending" | "failed" | "neutral";
 
@@ -17,13 +17,13 @@ const LABELS: Record<PaymentStatus, string> = {
   REFUNDED: "Refunded",
 };
 
-export function statusLabel(s: PaymentStatus): string {
-  return LABELS[s];
+export function statusLabel(s: PaymentStatus | string): string {
+  return LABELS[s as PaymentStatus] ?? String(s);
 }
 
-export function statusTone(s: PaymentStatus): StatusTone {
-  if (s === "SETTLED") return "settled";
-  if (s === "FAILED" || s === "REFUND_PENDING" || s === "REFUNDED") return "failed";
+export function statusTone(s: PaymentStatus | string): StatusTone {
+  if (s === "SETTLED" || s === "REFUNDED") return "settled";
+  if (s === "FAILED" || s === "REFUND_PENDING") return "failed";
   if (s === "CREATED" || s === "QUOTED") return "neutral";
   return "pending";
 }

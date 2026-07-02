@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { resetDb } from "../../helpers/db";
-import { seedMerchantUser } from "../../helpers/merchant";
+import { mockSession, seedMerchantUser } from "../../helpers/merchant";
 
 vi.mock("@/server/qrph/decode", () => ({
   decodeQrph: (raw: string) => ({
@@ -14,68 +14,46 @@ vi.mock("@/server/qrph/decode", () => ({
   }),
 }));
 
-const { sessionUser } = vi.hoisted(() => ({
-  sessionUser: {
-    current: null as null | { id: string; username: string; role: "MERCHANT"; isActive: boolean },
-  },
-}));
-
-vi.mock("@/server/auth/sessions", async () => {
-  const { forbidden, unauthorized } = await import("@/lib/errors");
-  return {
-    requireRole: vi.fn(async () => {
-      if (!sessionUser.current) throw forbidden();
-      return sessionUser.current;
-    }),
-    requireUser: vi.fn(async () => {
-      if (!sessionUser.current) throw unauthorized();
-      return sessionUser.current;
-    }),
-  };
-});
-
+const USER = { id: "", username: "biz", role: "MERCHANT" as const, isActive: true };
+mockSession(USER);
 const req = () =>
   new NextRequest("http://localhost:3000/api/merchant/go-live", {
     method: "POST",
-    headers: { origin: "http://localhost:3000", "sec-fetch-site": "same-origin" },
+    headers: { origin: "http://localhost:3000" },
   });
 const ctx = { params: Promise.resolve({}) };
-const setUser = (id: string) =>
-  (sessionUser.current = { id, username: "biz", role: "MERCHANT", isActive: true });
 
-describe("merchant go-live API", () => {
-  beforeEach(async () => {
-    await resetDb();
-    delete process.env.MERCHANT_REVIEW_GATE;
-  });
+beforeEach(async () => {
+  await resetDb();
+  delete process.env.MERCHANT_REVIEW_GATE;
+});
 
-  it("activates a fully-configured merchant", async () => {
-    const { user } = await seedMerchantUser({ status: "DRAFT" });
-    setUser(user.id);
-    const { POST } = await import("@/app/api/merchant/go-live/route");
-    const res = await POST(req(), ctx);
-    expect(res.status).toBe(200);
-    expect((await res.json()).merchant.status).toBe("ACTIVE");
-  });
+it("activates a fully-configured merchant", async () => {
+  const { user } = await seedMerchantUser({ status: "DRAFT" });
+  USER.id = user.id;
+  const { POST } = await import("@/app/api/merchant/go-live/route");
+  const res = await POST(req(), ctx);
+  expect(res.status).toBe(200);
+  expect((await res.json()).merchant.status).toBe("ACTIVE");
+});
 
-  it("blocks go-live with 400 when settlement is missing", async () => {
-    const { user } = await seedMerchantUser({
-      status: "DRAFT",
-      settlementBankCode: "",
-      accountNumberLast4: "",
-    });
-    setUser(user.id);
-    const { POST } = await import("@/app/api/merchant/go-live/route");
-    const res = await POST(req(), ctx);
-    expect(res.status).toBe(400);
+it("blocks go-live with 400 when settlement is missing", async () => {
+  const { user } = await seedMerchantUser({
+    status: "DRAFT",
+    settlementBankCode: "",
+    accountNumberLast4: "",
   });
+  USER.id = user.id;
+  const { POST } = await import("@/app/api/merchant/go-live/route");
+  const res = await POST(req(), ctx);
+  expect(res.status).toBe(400);
+});
 
-  it("routes to PENDING_REVIEW behind the feature flag", async () => {
-    process.env.MERCHANT_REVIEW_GATE = "1";
-    const { user } = await seedMerchantUser({ status: "DRAFT" });
-    setUser(user.id);
-    const { POST } = await import("@/app/api/merchant/go-live/route");
-    const res = await POST(req(), ctx);
-    expect((await res.json()).merchant.status).toBe("PENDING_REVIEW");
-  });
+it("routes to PENDING_REVIEW behind the feature flag", async () => {
+  process.env.MERCHANT_REVIEW_GATE = "1";
+  const { user } = await seedMerchantUser({ status: "DRAFT" });
+  USER.id = user.id;
+  const { POST } = await import("@/app/api/merchant/go-live/route");
+  const res = await POST(req(), ctx);
+  expect((await res.json()).merchant.status).toBe("PENDING_REVIEW");
 });

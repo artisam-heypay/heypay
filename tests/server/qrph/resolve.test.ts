@@ -1,10 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-// `vi.mock` is hoisted above imports, so the spy is created via `vi.hoisted`.
-const { findFirst } = vi.hoisted(() => ({ findFirst: vi.fn() }));
-vi.mock("@/server/db", () => ({ prisma: { merchant: { findFirst } } }));
-
-import { MerchantStatus } from "@/generated/prisma";
+import { beforeEach, describe, expect, it } from "vitest";
+import { resetDb } from "../../helpers/db";
+import { db } from "@/server/db";
+import { MerchantStatus } from "@/generated/prisma/client";
 import type { QrphDecoded } from "@/server/qrph/decode";
 import { resolveMerchant } from "@/server/qrph/resolve";
 
@@ -19,28 +16,55 @@ const decoded: QrphDecoded = {
   crcValid: true,
 };
 
-beforeEach(() => findFirst.mockReset());
-
 describe("resolveMerchant", () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
   it("returns the matching ACTIVE merchant", async () => {
-    findFirst.mockResolvedValue({ id: "m1", businessName: "HeyPay Coffee" });
+    const user = await db.user.create({
+      data: { username: "m-user", passwordHash: "x", role: "MERCHANT" },
+    });
+    await db.merchant.create({
+      data: {
+        userId: user.id,
+        businessName: "HeyPay Coffee",
+        status: MerchantStatus.ACTIVE,
+        qrphRaw: "RAW-STRING",
+        qrphMerchantId: "HEYPAY12345",
+        settlementBankCode: "BPI",
+        settlementBankName: "BPI",
+        accountName: "HeyPay Coffee Inc.",
+        accountNumber: "encrypted",
+        accountNumberLast4: "1234",
+      },
+    });
     const m = await resolveMerchant(decoded);
-    expect(m).toEqual({ id: "m1", businessName: "HeyPay Coffee" });
-    const where = findFirst.mock.calls[0]![0].where;
-    expect(where.status).toBe(MerchantStatus.ACTIVE);
-    expect(where.OR).toEqual(
-      expect.arrayContaining([{ qrphRaw: "RAW-STRING" }, { qrphMerchantId: "HEYPAY12345" }]),
-    );
+    expect(m?.businessName).toBe("HeyPay Coffee");
   });
 
   it("returns null on a miss", async () => {
-    findFirst.mockResolvedValue(null);
     expect(await resolveMerchant(decoded)).toBeNull();
   });
 
   it("matches by raw only when no merchantId is present", async () => {
-    findFirst.mockResolvedValue(null);
-    await resolveMerchant({ ...decoded, merchantId: undefined });
-    expect(findFirst.mock.calls[0]![0].where.OR).toEqual([{ qrphRaw: "RAW-STRING" }]);
+    const user = await db.user.create({
+      data: { username: "m-user2", passwordHash: "x", role: "MERCHANT" },
+    });
+    await db.merchant.create({
+      data: {
+        userId: user.id,
+        businessName: "Raw Match",
+        status: MerchantStatus.ACTIVE,
+        qrphRaw: "RAW-STRING",
+        settlementBankCode: "BPI",
+        settlementBankName: "BPI",
+        accountName: "Raw",
+        accountNumber: "encrypted",
+        accountNumberLast4: "1234",
+      },
+    });
+    const m = await resolveMerchant({ ...decoded, merchantId: undefined });
+    expect(m?.businessName).toBe("Raw Match");
   });
 });

@@ -1,3 +1,4 @@
+// src/app/api/qrph/decode/route.ts
 import { z } from "zod";
 import { route, json } from "@/lib/http";
 import { requireRole } from "@/server/auth/sessions";

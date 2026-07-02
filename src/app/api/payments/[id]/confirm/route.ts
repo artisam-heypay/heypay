@@ -1,3 +1,4 @@
+// src/app/api/payments/[id]/confirm/route.ts
 import { route, json } from "@/lib/http";
 import { requireRole } from "@/server/auth/sessions";
 import { assertSameOrigin } from "@/server/auth/csrf";

@@ -127,7 +127,7 @@ describe("PdaxProvider method mapping", () => {
 describe("PdaxProvider resilience + validation", () => {
   it("retries on a 5xx then succeeds", async () => {
     const fetchImpl = vi
-      .fn<typeof fetch>()
+      .fn()
       .mockResolvedValueOnce(jsonResponse({ error: "down" }, 503))
       .mockResolvedValueOnce(jsonResponse({ reference: "TR-RETRY" }));
     const p = createPdaxProvider({ ...baseCfg, fetchImpl });

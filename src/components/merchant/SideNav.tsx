@@ -1,64 +1,59 @@
-"use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { clsx } from "clsx";
-import { Icon } from "@/components/ui";
-import { MERCHANT_NAV_ITEMS } from "./nav-items";
 
-const isActive = (pathname: string, href: string) =>
-  pathname === href || pathname.startsWith(`${href}/`);
+export const MERCHANT_NAV = [
+  { href: "/merchant/dashboard", label: "Dashboard", icon: "dashboard" },
+  { href: "/merchant/transactions", label: "Transactions", icon: "history" },
+  { href: "/merchant/qr", label: "My QR", icon: "qr_code_2" },
+  { href: "/merchant/settings", label: "Settings", icon: "settings" },
+] as const;
 
-export function SideNav({ businessName }: { businessName: string }) {
-  const pathname = usePathname();
+export function SideNav({ businessName, pathname }: { businessName: string; pathname: string }) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-surface-container-low p-stack-lg lg:flex">
-      <div className="flex items-center gap-stack-sm">
-        <Icon name="account_balance_wallet" filled className="text-3xl text-primary" />
-        <span className="font-display text-headline-md font-bold text-primary">HeyPay</span>
+    <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-outline-variant bg-surface-container-low p-stack-lg lg:flex">
+      <div className="mb-stack-lg flex items-center gap-stack-sm">
+        <span className="material-symbols-outlined icon-filled text-primary">
+          account_balance_wallet
+        </span>
+        <span className="text-headline-md font-bold text-primary">HeyPay</span>
       </div>
-
-      <div className="mt-stack-lg rounded-lg bg-surface-container p-stack-md">
+      <div className="mb-stack-lg rounded-lg bg-surface-container p-stack-md">
         <p className="text-label-md uppercase text-on-surface-variant">Business</p>
         <p className="truncate text-body-md font-medium text-on-surface">{businessName}</p>
       </div>
-
-      <nav aria-label="Merchant" className="mt-stack-lg flex flex-col gap-stack-sm">
-        {MERCHANT_NAV_ITEMS.map((item) => {
-          const active = isActive(pathname, item.href);
+      <nav className="flex flex-1 flex-col gap-stack-sm" aria-label="Merchant">
+        {MERCHANT_NAV.map((item) => {
+          const active = pathname === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
               aria-current={active ? "page" : undefined}
-              className={clsx(
-                "flex min-h-11 items-center gap-stack-sm rounded-lg px-4 focus:outline-none focus:ring-4 focus:ring-primary/10",
+              className={`flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-stack-sm text-body-md transition-colors ${
                 active
-                  ? "bg-primary-container font-bold text-on-primary-container"
-                  : "text-on-surface-variant hover:bg-surface-container-high",
-              )}
+                  ? "bg-primary-container font-semibold text-on-primary-container"
+                  : "text-on-surface-variant hover:bg-surface-container-high"
+              }`}
             >
-              <Icon name={item.icon} filled={active} />
+              <span className={`material-symbols-outlined ${active ? "icon-filled" : ""}`}>
+                {item.icon}
+              </span>
               {item.label}
             </Link>
           );
         })}
       </nav>
-
-      <div className="mt-auto flex flex-col gap-stack-sm">
-        <a
-          href="/support"
-          className="flex min-h-11 items-center gap-stack-sm rounded-lg px-4 text-on-surface-variant hover:bg-surface-container-high"
+      <div className="mt-stack-lg flex flex-col gap-stack-sm border-t border-outline-variant pt-stack-md">
+        <Link
+          href="/merchant/settings"
+          className="flex min-h-11 items-center gap-stack-md px-stack-md py-stack-sm text-body-md text-on-surface-variant hover:bg-surface-container-high"
         >
-          <Icon name="support_agent" />
-          Support
-        </a>
-        <a
-          href="/logout"
-          className="flex min-h-11 items-center gap-stack-sm rounded-lg px-4 text-error hover:bg-error/5"
-        >
-          <Icon name="logout" />
-          Log out
-        </a>
+          <span className="material-symbols-outlined">support_agent</span>Support
+        </Link>
+        <form action="/api/auth/logout" method="post">
+          <button className="flex min-h-11 w-full items-center gap-stack-md px-stack-md py-stack-sm text-body-md text-error hover:bg-surface-container-high">
+            <span className="material-symbols-outlined">logout</span>Log out
+          </button>
+        </form>
       </div>
     </aside>
   );

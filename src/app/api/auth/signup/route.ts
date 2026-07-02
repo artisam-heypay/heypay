@@ -24,7 +24,8 @@ export type SignupInput = z.infer<typeof signupSchema>;
 export const POST = route(async (req) => {
   assertSameOrigin(req);
   const ip = clientIp(req);
-  await rateLimit(`signup:ip:${ip}`, { limit: 5, windowSec: 3600 });
+  const signupLimit = Number(process.env.SIGNUP_RATE_LIMIT ?? "5");
+  await rateLimit(`signup:ip:${ip}`, { limit: signupLimit, windowSec: 3600 });
 
   const { username, password, role } = await parseBody(req, signupSchema);
 

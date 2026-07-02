@@ -53,24 +53,16 @@ export function encryptSecret(plaintext: string): string {
 
 export function decryptSecret(payload: string): string {
   const parts = payload.split(":");
-  const [versionTag, ivB64, tagB64, ctB64] = parts;
-  if (
-    parts.length !== 4 ||
-    versionTag === undefined ||
-    ivB64 === undefined ||
-    tagB64 === undefined ||
-    ctB64 === undefined ||
-    !/^v\d+$/.test(versionTag)
-  ) {
+  if (parts.length !== 4 || !/^v\d+$/.test(parts[0]!)) {
     throw new Error("Invalid ciphertext format");
   }
-  const version = Number(versionTag.slice(1));
+  const version = Number(parts[0]!.slice(1));
   const { keys } = loadKeyring();
   const key = keys.get(version);
   if (!key) throw new Error(`No key available for version ${version}`);
-  const iv = Buffer.from(ivB64, "base64");
-  const tag = Buffer.from(tagB64, "base64");
-  const ciphertext = Buffer.from(ctB64, "base64");
+  const iv = Buffer.from(parts[1]!, "base64");
+  const tag = Buffer.from(parts[2]!, "base64");
+  const ciphertext = Buffer.from(parts[3]!, "base64");
   const decipher = createDecipheriv(ALGO, key, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");

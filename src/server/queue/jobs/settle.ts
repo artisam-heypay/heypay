@@ -1,9 +1,10 @@
+// src/server/queue/jobs/settle.ts
 import "server-only";
-import { PaymentStatus } from "@/generated/prisma";
+import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
-import { dec, type Decimal } from "@/lib/money";
+import { dec } from "@/lib/money";
 import { withRetry, pollUntil } from "@/lib/retry";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { audit } from "@/server/auth/audit";
@@ -76,13 +77,15 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
   // Idempotency: if a tx was already submitted, just advance.
   let txHash = p.stellarTxHash;
   if (!txHash) {
-    const res = await withRetry(() =>
-      walletService.sendXlm({
-        encryptedSecret: wallet.encryptedSecret,
-        destination: process.env.PDAX_XLM_DEPOSIT_ADDRESS!,
-        amountXlm: total,
-        memo: p.reference,
-      }),
+    const res = await withRetry(
+      () =>
+        walletService.sendXlm({
+          encryptedSecret: wallet.encryptedSecret,
+          destination: process.env.PDAX_XLM_DEPOSIT_ADDRESS!,
+          amountXlm: total,
+          memo: p.reference,
+        }),
+      { label: "sendXlm" },
     );
     txHash = res.txHash;
     await db.payment.update({ where: { id: p.id }, data: { stellarTxHash: txHash } });
@@ -94,7 +97,9 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
 async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
   const total = dec(p.amountXlm.toString()).plus(p.networkFeeXlm.toString());
-  const ok = await withRetry(() => walletService.confirmTx(p.stellarTxHash!));
+  const ok = await withRetry(() => walletService.confirmTx(p.stellarTxHash!), {
+    label: "confirmTx",
+  });
 
   if (!ok) {
     // Tx definitively failed → XLM never moved → release reservation, FAILED (no refund needed).
@@ -146,8 +151,9 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
 async function stepRequestTrade(p: PaymentWithRels): Promise<void> {
   let tradeRef = p.pdaxTradeRef;
   if (!tradeRef) {
-    const res = await withRetry(() =>
-      rail.sellCryptoForPhp({ ref: p.reference, xlmAmount: dec(p.amountXlm.toString()) }),
+    const res = await withRetry(
+      () => rail.sellCryptoForPhp({ ref: p.reference, xlmAmount: dec(p.amountXlm.toString()) }),
+      { label: "sellCryptoForPhp" },
     );
     tradeRef = res.tradeRef;
     await db.payment.update({ where: { id: p.id }, data: { pdaxTradeRef: tradeRef } });
@@ -173,16 +179,18 @@ async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
   let payoutRef = p.pdaxCashoutRef;
   if (!payoutRef) {
     const accountNumber = decryptSecret(p.merchant.accountNumber);
-    const res = await withRetry(() =>
-      rail.cashOutPhpToBank({
-        ref: p.reference,
-        phpAmount: dec(p.amountPhp.toString()),
-        bank: {
-          bankCode: p.merchant.settlementBankCode,
-          accountName: p.merchant.accountName,
-          accountNumber,
-        },
-      }),
+    const res = await withRetry(
+      () =>
+        rail.cashOutPhpToBank({
+          ref: p.reference,
+          phpAmount: dec(p.amountPhp.toString()),
+          bank: {
+            bankCode: p.merchant.settlementBankCode,
+            accountName: p.merchant.accountName,
+            accountNumber,
+          },
+        }),
+      { label: "cashOutPhpToBank" },
     );
     payoutRef = res.payoutRef;
     await db.payment.update({ where: { id: p.id }, data: { pdaxCashoutRef: payoutRef } });
@@ -277,7 +285,11 @@ async function handleFailure(p: PaymentWithRels, err: unknown): Promise<void> {
   });
 }
 
-async function releaseReservation(tx: TxClient, walletId: string, total: Decimal): Promise<void> {
+async function releaseReservation(
+  tx: TxClient,
+  walletId: string,
+  total: import("@/lib/money").Decimal,
+): Promise<void> {
   const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: walletId } });
   const next = dec(w.reservedXlm.toString()).minus(total);
   await tx.custodialWallet.update({
