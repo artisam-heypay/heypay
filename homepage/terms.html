@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Terms of Use &mdash; HeyPay</title>
+  <meta name="description" content="The terms that govern your use of HeyPay, the service that lets you pay QRPH merchants from your Stellar balance." />
+  <meta name="theme-color" content="#fcf9f8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lexend:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <style>
+  :root {
+    --primary: #00bcd4; --on-primary: #fff; --primary-container: #b2ebf2; --on-primary-container: #002024;
+    --secondary: #ff9800; --on-secondary: #fff; --secondary-container: #ffe0b2; --on-secondary-container: #e65100;
+    --background: #fcf9f8; --on-background: #1d1b1a; --surface: #fcf9f8; --on-surface: #1d1b1a;
+    --surface-variant: #eee8e5; --on-surface-variant: #4e4643;
+    --surface-container-lowest: #fff; --surface-container-low: #f6f3f2; --surface-container: #f0edea;
+    --surface-container-high: #ebe7e4; --surface-container-highest: #e5e1de;
+    --outline: #807673; --outline-variant: #d2c5c1; --error: #ba1a1a; --on-error: #fff;
+    --font-display: "Lexend", system-ui, sans-serif; --font-body: "Inter", system-ui, sans-serif; --font-mono: "Inter", ui-monospace, monospace;
+    --r-xl: 16px; --r-full: 9999px; --pad: 20px; --maxw: 1200px;
+  }
+  @media (min-width: 1024px) { :root { --pad: 40px; } }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: var(--font-body); color: var(--on-surface); background: var(--background); line-height: 1.65; -webkit-font-smoothing: antialiased; }
+  img { max-width: 100%; display: block; }
+  a { color: var(--primary); }
+  h1, h2, h3 { font-family: var(--font-display); line-height: 1.2; color: var(--on-surface); }
+  p, li { color: var(--on-surface); }
+  .material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; direction: ltr; font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding-inline: var(--pad); }
+  .legal { max-width: 820px; margin: 0 auto; }
+  .eyebrow { font-family: var(--font-display); font-size: 12px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--primary); display: inline-flex; align-items: center; gap: 8px; }
+  .eyebrow::before { content: ""; width: 18px; height: 2px; background: var(--primary); border-radius: 2px; }
+
+  .nav { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--background) 78%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 70%, transparent); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-block: 14px; }
+  .brand { display: inline-flex; align-items: center; gap: 12px; color: var(--on-surface); text-decoration: none; }
+  .brand img { width: 36px; height: 36px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,188,212,.08); }
+  .brand .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 20px; color: var(--on-surface); }
+  .brand .wordmark .dot { color: var(--primary); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: var(--r-full); padding: 11px 22px; font-family: var(--font-display); font-weight: 600; font-size: 15px; min-height: 44px; text-decoration: none; transition: transform .15s ease, filter .15s ease; }
+  .btn:hover { text-decoration: none; transform: translateY(-2px); }
+  .btn-primary { background: var(--primary); color: var(--on-primary); box-shadow: 0 10px 30px rgba(0,188,212,.22); }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn .material-symbols-outlined { font-size: 19px; }
+  .breadcrumb { font-size: 13px; color: var(--on-surface-variant); padding-block: 28px 0; }
+  .breadcrumb a { color: var(--on-surface-variant); }
+  .breadcrumb span { color: var(--outline); margin: 0 8px; }
+
+  .legal-hero { padding-block: clamp(28px, 4vw, 48px) clamp(20px, 3vw, 28px); border-bottom: 1px solid var(--outline-variant); background: linear-gradient(180deg, var(--background), var(--surface-container-low)); }
+  .legal-hero h1 { font-size: clamp(32px, 5vw, 44px); font-weight: 700; letter-spacing: -.02em; margin-top: 14px; }
+  .legal-hero .meta { margin-top: 14px; color: var(--on-surface-variant); font-size: 14px; display: flex; flex-wrap: wrap; gap: 18px; }
+  .legal-hero .meta span { display: inline-flex; align-items: center; gap: 7px; }
+  .legal-hero .meta .material-symbols-outlined { font-size: 17px; color: var(--primary); }
+  .legal-intro { background: var(--surface-container-lowest); border: 1px solid var(--outline-variant); border-left: 4px solid var(--primary); border-radius: var(--r-xl); padding: 22px 24px; margin-top: 28px; }
+  .legal-intro p { color: var(--on-surface-variant); margin: 0; }
+
+  .legal-body { padding-block: clamp(36px, 5vw, 56px); }
+  .legal-body section { margin-top: 38px; }
+  .legal-body section:first-child { margin-top: 0; }
+  .legal-body h2 { font-size: 22px; font-weight: 600; display: flex; align-items: baseline; gap: 12px; }
+  .legal-body h2 .n { font-family: var(--font-mono); font-size: 14px; color: var(--primary); font-weight: 600; letter-spacing: .03em; }
+  .legal-body p { margin-top: 14px; color: var(--on-surface-variant); }
+  .legal-body ul, .legal-body ol { margin: 14px 0 0; padding-left: 22px; }
+  .legal-body li { margin-top: 9px; color: var(--on-surface-variant); }
+  .legal-body strong { color: var(--on-surface); font-weight: 600; }
+  .legal-body .contact-box { background: var(--surface-container-low); border-radius: var(--r-xl); padding: 22px 24px; margin-top: 14px; }
+  .legal-body .contact-box a { font-family: var(--font-mono); font-weight: 500; }
+  .callout { background: color-mix(in srgb, var(--secondary) 10%, var(--surface-container-lowest)); border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent); border-radius: var(--r-xl); padding: 18px 22px; margin-top: 18px; display: flex; gap: 14px; align-items: flex-start; }
+  .callout .material-symbols-outlined { color: var(--on-secondary-container); font-size: 24px; }
+  .callout p { margin: 0; color: var(--on-surface-variant); font-size: 14.5px; }
+
+  .footer { background: var(--on-surface); color: color-mix(in srgb, var(--background) 80%, white); padding-block: 40px 28px; }
+  .footer-inner { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; }
+  .footer .brand .wordmark { color: var(--background); }
+  .footer-links { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; }
+  .footer-links a { color: color-mix(in srgb, var(--background) 72%, white); }
+  .footer-links a:hover { color: var(--background); }
+  .footer-copy { font-size: 13px; color: color-mix(in srgb, var(--background) 58%, white); font-family: var(--font-mono); }
+
+  :focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset: 3px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="./index.html" aria-label="HeyPay home">
+      <img src="./logo.jpg" alt="HeyPay logo" />
+      <span class="wordmark">Hey<span class="dot">Pay</span></span>
+    </a>
+    <a class="btn btn-primary" href="https://app.heypayfi.xyz" target="_blank" rel="noopener">
+      Open app <span class="material-symbols-outlined">arrow_forward</span>
+    </a>
+  </div>
+</header>
+
+<main class="wrap">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="./index.html">Home</a><span>&rsaquo;</span>Terms of Use
+  </nav>
+
+  <section class="legal-hero">
+    <span class="eyebrow">Legal</span>
+    <h1>Terms of Use</h1>
+    <div class="meta">
+      <span><span class="material-symbols-outlined">event</span>Last updated: July 2, 2026</span>
+      <span><span class="material-symbols-outlined">business</span>HeyPay &mdash; a product by Artisam Labs</span>
+    </div>
+    <div class="legal-intro">
+      <p>These Terms of Use govern your access to and use of the HeyPay website, app, and browser extension. By accessing or using HeyPay, you agree to be bound by these terms. If you do not agree, please do not use the service.</p>
+    </div>
+  </section>
+
+  <article class="legal legal-body">
+
+    <section>
+      <h2><span class="n">1</span>Acceptance of Terms</h2>
+      <p>By accessing the HeyPay website, app at app.heypayfi.xyz, or browser extension, you agree to these Terms of Use and our Privacy Policy. If you do not agree with any part of these terms, you should not use HeyPay.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">2</span>Use of the Service</h2>
+      <p>You agree to use HeyPay lawfully and only for its intended purpose &mdash; paying QRPH merchants from your Stellar balance, or receiving QRPH payments as a merchant. You must not:</p>
+      <ul>
+        <li>Infringe on the rights of any third party.</li>
+        <li>Transmit spam, malware, or harmful content.</li>
+        <li>Attempt unauthorized access to our systems, accounts, or another user's wallet.</li>
+        <li>Misrepresent your identity or your affiliation with any person or business.</li>
+        <li>Scrape, index, or extract data from the service without our written consent.</li>
+        <li>Use HeyPay to facilitate money laundering, terrorism financing, or any unlawful transaction.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2><span class="n">3</span>The Service</h2>
+      <p>HeyPay provides a custodial bridge between your Stellar (XLM) balance and QRPH merchant payments. You may prefund a custodial Stellar wallet, scan or upload a QRPH code, receive a live XLM&rarr;PHP quote, and confirm a payment. HeyPay then moves XLM on the Stellar network, sells it for PHP via our payment-rail partner, and pays out PHP to the merchant's registered bank account. We reserve the right to modify, suspend, or discontinue any feature of the service at any time.</p>
+      <div class="callout">
+        <span class="material-symbols-outlined">warning</span>
+        <p><strong>Status:</strong> HeyPay is currently in active development as a demo/MVP. Some flows operate in a mock mode without real money movement. Real-money settlement depends on the configured payment rail and is not guaranteed in all regions.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="n">4</span>Your Wallet and Your Responsibility</h2>
+      <p>Your HeyPay account is associated with a custodial Stellar wallet we hold on your behalf. You are responsible for keeping your account credentials secure and for all activity that occurs under your account. Because on-chain Stellar transactions are irreversible, you are responsible for confirming the correct merchant and amount before approving a payment. We are not liable for payments you authorize in error.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">5</span>Intellectual Property</h2>
+      <p>All content on HeyPay &mdash; including text, graphics, the HeyPay logo, software, and the design of the app &mdash; belongs to Artisam Labs or its licensors. You may use the service for personal, non-commercial purposes. Reproduction, modification, distribution, or derivative works require our prior written consent.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">6</span>User Submissions</h2>
+      <p>When you submit information to HeyPay &mdash; such as a QRPH code, a business name, or a bank account number &mdash; you confirm that you own or are authorized to provide that information and that it does not violate any third-party rights. You grant us a limited license to use that information solely to operate the service for you.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">7</span>Blockchain and Crypto Disclaimer</h2>
+      <p>Blockchain-based activities carry inherent risks, including network congestion, market volatility, regulatory uncertainty, and the irreversibility of on-chain transactions. The value of XLM relative to PHP fluctuates; the live rate shown at confirmation is locked only for the duration of its time-to-live (TTL). HeyPay is a payment tool, not investment advice, and we do not guarantee any exchange rate, profit, or outcome. Never spend more than you can afford to lose.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">8</span>Third-Party Services</h2>
+      <p>HeyPay relies on third-party infrastructure, including the Stellar network, our payment-rail partner (PDAX), banks, and hosting providers. We are not responsible for the availability, accuracy, or practices of these third parties, nor for any external sites linked from our service.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">9</span>Limitation of Liability</h2>
+      <p>To the maximum extent permitted by law, HeyPay and Artisam Labs are not liable for any indirect, incidental, special, or consequential damages arising from your use of the service, including any loss of funds due to blockchain volatility, third-party failures, or transactions you authorized. Our total liability for any claim is limited to the amounts you paid through HeyPay in connection with that claim.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">10</span>Indemnification</h2>
+      <p>You agree to indemnify and hold HeyPay and Artisam Labs harmless from any claims, damages, or expenses arising from your use of the service, your violation of these terms, or your infringement of any third-party rights.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">11</span>Governing Law</h2>
+      <p>These Terms of Use are governed by the laws of the Republic of the Philippines, without regard to conflict-of-law principles. Any dispute shall be subject to the exclusive jurisdiction of the competent courts in the Philippines.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">12</span>Changes to These Terms</h2>
+      <p>We may update these Terms of Use at any time. When we do, we will revise the "Last updated" date at the top of this page. Continued use of HeyPay after changes are posted constitutes acceptance of the revised terms.</p>
+    </section>
+
+    <section>
+      <h2><span class="n">13</span>Contact Us</h2>
+      <p>If you have questions about these Terms of Use, please contact us.</p>
+      <div class="contact-box">
+        <p><strong>Email:</strong> <a href="mailto:heypay@artisam.xyz">heypay@artisam.xyz</a></p>
+        <p style="margin-top:8px"><strong>Website:</strong> <a href="https://app.heypayfi.xyz" target="_blank" rel="noopener">app.heypayfi.xyz</a></p>
+        <p style="margin-top:8px"><strong>Operator:</strong> Artisam Labs &mdash; <a href="https://artisam.xyz" target="_blank" rel="noopener">artisam.xyz</a></p>
+      </div>
+    </section>
+
+  </article>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <a class="brand" href="./index.html" aria-label="HeyPay home">
+      <img src="./logo.jpg" alt="HeyPay logo" />
+      <span class="wordmark">Hey<span style="color:var(--primary)">Pay</span></span>
+    </a>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="./index.html">Home</a>
+      <a href="https://app.heypayfi.xyz" target="_blank" rel="noopener">Open app</a>
+      <a href="./privacy.html">Privacy Policy</a>
+      <a href="./terms.html">Terms of Use</a>
+      <a href="mailto:heypay@artisam.xyz">Contact</a>
+    </nav>
+    <span class="footer-copy">HeyPay v0.1.0 &bull; Built on Stellar</span>
+  </div>
+</footer>
+
+</body>
+</html>
