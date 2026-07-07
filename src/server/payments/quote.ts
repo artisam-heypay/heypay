@@ -5,12 +5,18 @@ import { db } from "@/server/db";
 import { rail } from "@/server/rails";
 import { withRetry } from "@/lib/retry";
 import { conflict, notFound } from "@/lib/errors";
+import { assertAssetEnabled, type PaymentAsset } from "@/lib/assets";
 import { newPaymentReference } from "./reference";
 
 // One Stellar payment operation costs the base fee of 100 stroops = 0.0000100 XLM.
 export const STELLAR_BASE_FEE_XLM: Decimal = dec("0.0000100");
 
-export type CreateQuoteInput = { payerId: string; merchantId: string; amountPhp: Decimal };
+export type CreateQuoteInput = {
+  payerId: string;
+  merchantId: string;
+  amountPhp: Decimal;
+  asset?: PaymentAsset;
+};
 export type CreateQuoteResult = {
   paymentId: string;
   reference: string;
@@ -22,6 +28,9 @@ export type CreateQuoteResult = {
 };
 
 export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteResult> {
+  const asset: PaymentAsset = input.asset ?? "XLM";
+  assertAssetEnabled(asset); // v1: XLM only; USDC/USDT gated behind PAYMENT_ASSETS
+
   const merchant = await db.merchant.findUnique({ where: { id: input.merchantId } });
   if (!merchant || merchant.status !== "ACTIVE")
     throw notFound("merchant not available for payment");
@@ -58,7 +67,7 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
         reference: newPaymentReference(),
         payerId: input.payerId,
         merchantId: input.merchantId,
-        asset: "XLM",
+        asset,
         amountPhp: input.amountPhp.toFixed(2),
         quotedRate: rate.toFixed(8),
         amountXlm: amountXlm.toFixed(7),
