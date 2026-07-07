@@ -28,6 +28,21 @@
           "restartPolicyType": "ALWAYS"
         }
       }
+    },
+    "staging": {
+      "web": {
+        "deploy": {
+          "startCommand": "pnpm start",
+          "healthcheckPath": "/api/health"
+        }
+      },
+      "worker": {
+        "deploy": {
+          "startCommand": "pnpm worker:start",
+          "healthcheckPath": null,
+          "restartPolicyType": "ALWAYS"
+        }
+      }
     }
   }
 }
