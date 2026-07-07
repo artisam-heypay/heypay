@@ -8,8 +8,7 @@ WORKDIR /app
 # ---- Dependencies (cached on lockfile) ----
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # ---- Build: generate Prisma client + build Next ----
 FROM base AS build
