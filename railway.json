@@ -30,13 +30,7 @@
       }
     },
     "staging": {
-      "web": {
-        "deploy": {
-          "startCommand": "pnpm start",
-          "healthcheckPath": "/api/health"
-        }
-      },
-      "worker": {
+      "Worker": {
         "deploy": {
           "startCommand": "pnpm worker:start",
           "healthcheckPath": null,
