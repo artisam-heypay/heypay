@@ -43,5 +43,8 @@ COPY --from=build /app/src/generated ./src/generated
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
-# Web service default; the worker service overrides this with: pnpm worker:start
-CMD ["pnpm", "start"]
+# Run the next binary directly. Invoking `pnpm` here makes corepack try to
+# download pnpm into the non-root user's HOME at runtime (EACCES) and crashes boot.
+# Web service default; the worker service overrides CMD with:
+#   node --conditions=react-server --import tsx src/worker/index.ts
+CMD ["node_modules/.bin/next", "start"]
