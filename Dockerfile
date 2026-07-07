@@ -34,8 +34,11 @@ ENV COREPACK_HOME=/opt/corepack
 RUN corepack prepare pnpm@10.12.1 --activate \
  && chown -R nextjs:nodejs /opt/corepack
 
-# Full app deps (worker uses tsx + Prisma client at runtime)
-COPY --from=deps /app/node_modules ./node_modules
+# Full app deps (worker uses tsx + Prisma client at runtime).
+# --chown so the non-root nextjs user can write into node_modules at runtime.
+# Prisma 7's `migrate deploy` release command needs write access to its engines
+# dir (@prisma/engines); root-owned copies crash the release step with EACCES.
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
