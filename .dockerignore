@@ -11,7 +11,8 @@ pnpm-debug.log*
 coverage
 playwright-report
 test-results
-tests/e2e
+tests
+playwright.config.ts
 Dockerfile
 .dockerignore
 docker-compose*.yml
