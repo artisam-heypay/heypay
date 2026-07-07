@@ -6,8 +6,6 @@
   },
   "deploy": {
     "releaseCommand": "pnpm prisma migrate deploy",
-    "startCommand": "pnpm start",
-    "healthcheckPath": "/api/health",
     "healthcheckTimeout": 120,
     "numReplicas": 1,
     "restartPolicyType": "ON_FAILURE",
@@ -22,15 +20,6 @@
         }
       },
       "worker": {
-        "deploy": {
-          "startCommand": "pnpm worker:start",
-          "healthcheckPath": null,
-          "restartPolicyType": "ALWAYS"
-        }
-      }
-    },
-    "staging": {
-      "Worker": {
         "deploy": {
           "startCommand": "pnpm worker:start",
           "healthcheckPath": null,
