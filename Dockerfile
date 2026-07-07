@@ -46,6 +46,10 @@ COPY --from=build /app/.npmrc ./.npmrc
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./prisma.config.ts
 COPY --from=build /app/next.config.ts ./next.config.ts
+# tsx resolves the "@/*" -> "./src/*" path alias from tsconfig.json at runtime;
+# without it the worker (node --import tsx src/worker/index.ts) crashes with
+# ERR_MODULE_NOT_FOUND: Cannot find package '@/server'.
+COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/src ./src
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/src/generated ./src/generated
