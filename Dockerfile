@@ -27,6 +27,13 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 RUN groupadd --system --gid 1001 nodejs \
  && useradd --system --uid 1001 --gid nodejs nextjs
 
+# Pre-fetch pnpm into a shared, group-owned corepack home. Otherwise the non-root
+# runtime user tries to download pnpm at boot into an unwritable HOME and crashes
+# with EACCES. Covers pre-deploy `pnpm prisma migrate deploy` and the worker.
+ENV COREPACK_HOME=/opt/corepack
+RUN corepack prepare pnpm@10.12.1 --activate \
+ && chown -R nextjs:nodejs /opt/corepack
+
 # Full app deps (worker uses tsx + Prisma client at runtime)
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
