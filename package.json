@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "next dev",
+    "dev:https": "node scripts/dev-https.mjs",
     "build": "next build",
     "start": "next start",
     "worker:dev": "node --conditions=react-server --import tsx --watch src/worker/index.ts",

@@ -8,6 +8,7 @@ import { dec } from "@/lib/money";
 import { withRetry, pollUntil } from "@/lib/retry";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { audit } from "@/server/auth/audit";
+import { captureException } from "@/server/observability/error-tracking";
 import { enqueueSettle } from "@/server/queue/queues";
 import {
   applyTransition,
@@ -260,6 +261,16 @@ async function handleFailure(p: PaymentWithRels, err: unknown): Promise<void> {
   const reason = err instanceof Error ? err.message : String(err);
   const current = await db.payment.findUniqueOrThrow({ where: { id: p.id } });
   if (isTerminal(current.status)) return;
+
+  // Settlement failures are handled here (not rethrown), so report them explicitly.
+  // A failure after XLM moved routes to refund — flag it as money-at-risk.
+  captureException(err, {
+    source: "settle",
+    paymentId: p.id,
+    reference: p.reference,
+    status: current.status,
+    moneyAtRisk: XLM_MOVED.has(current.status),
+  });
 
   if (XLM_MOVED.has(current.status)) {
     // XLM already left the wallet → refund branch.
