@@ -207,12 +207,19 @@ async function stepPollPayout(p: PaymentWithRels): Promise<void> {
     PAYOUT_POLL,
   );
   if (status.state !== "SETTLED") throw new Error(`PDAX payout ${p.pdaxCashoutRef} failed`);
+  // Fold the cash-out fee into pdaxFeePhp (which already holds the trade fee) so
+  // the payment records total PDAX fees, not just the trade leg.
+  const totalFeePhp = dec(p.pdaxFeePhp.toString()).plus(status.feePhp?.toString() ?? "0");
   const netPhp = status.netPhp
     ? dec(status.netPhp.toString())
-    : dec(p.amountPhp.toString()).minus(p.pdaxFeePhp.toString());
+    : dec(p.amountPhp.toString()).minus(totalFeePhp);
   await db.payment.update({
     where: { id: p.id },
-    data: { netSettledPhp: netPhp.toFixed(2), settledAt: new Date() },
+    data: {
+      netSettledPhp: netPhp.toFixed(2),
+      pdaxFeePhp: totalFeePhp.toFixed(2),
+      settledAt: new Date(),
+    },
   });
   await applyTransition(db, p, PaymentStatus.SETTLED, { netSettledPhp: netPhp.toFixed(2) });
 }

@@ -10,7 +10,11 @@ export type TradeStatus = {
 };
 export type BankPayout = { bankCode: string; accountName: string; accountNumber: string };
 export type PayoutResult = { payoutRef: string };
-export type PayoutStatus = { state: "PENDING" | "SETTLED" | "FAILED"; netPhp?: Decimal };
+export type PayoutStatus = {
+  state: "PENDING" | "SETTLED" | "FAILED";
+  netPhp?: Decimal;
+  feePhp?: Decimal;
+};
 
 export interface PaymentRailProvider {
   getQuote(input: { sell: "XLM"; buy: "PHP"; phpAmount: Decimal }): Promise<Quote>;

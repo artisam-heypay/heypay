@@ -8,6 +8,7 @@ export const SUPPORTED_BANKS: readonly SupportedBank[] = [
   { code: "LANDBANK", name: "Land Bank of the Philippines" },
   { code: "PNB", name: "Philippine National Bank" },
   { code: "SECURITYBANK", name: "Security Bank" },
+  { code: "CTBC", name: "CTBC Bank Philippines" },
   { code: "RCBC", name: "Rizal Commercial Banking Corp." },
   { code: "GCASH", name: "GCash" },
   { code: "MAYA", name: "Maya" },
