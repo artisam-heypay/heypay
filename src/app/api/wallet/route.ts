@@ -3,7 +3,7 @@ import { route, json } from "@/lib/http";
 import { requireUser } from "@/server/auth/sessions";
 import { db } from "@/server/db";
 import { dec, availableXlm, displayPhp } from "@/lib/money";
-import { rail } from "@/server/rails";
+import { getXlmPhpRate } from "@/server/payments/rate";
 import { notFound } from "@/lib/errors";
 
 export const GET = route(async () => {
@@ -15,13 +15,8 @@ export const GET = route(async () => {
   const reserved = dec(wallet.reservedXlm.toString());
   const available = availableXlm(balance, reserved);
 
-  let approxPhp = "0.00";
-  try {
-    const quote = await rail.getQuote({ sell: "XLM", buy: "PHP", phpAmount: dec("1") });
-    approxPhp = displayPhp(available.times(quote.rate));
-  } catch {
-    // Rate unavailable → omit approximation rather than failing the balance read.
-  }
+  const rate = await getXlmPhpRate();
+  const approxPhp = rate ? displayPhp(available.times(rate)) : "0.00";
 
   return json({
     publicKey: wallet.stellarPublicKey,
