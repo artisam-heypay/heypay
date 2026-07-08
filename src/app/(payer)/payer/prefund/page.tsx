@@ -4,7 +4,7 @@ import { Role } from "@/generated/prisma/client";
 import { dec } from "@/lib/money";
 import { MoneyAmount } from "@/components/ui";
 import { getWalletSummary } from "@/server/payer/data";
-import { rail } from "@/server/rails";
+import { getXlmPhpRate } from "@/server/payments/rate";
 import { DepositCard } from "@/components/payer/DepositCard";
 import { PendingDepositWatcher } from "@/components/payer/PendingDepositWatcher";
 
@@ -13,13 +13,8 @@ export default async function PayerPrefundPage() {
   const wallet = await getWalletSummary(user.id);
   const balance = wallet?.balanceXlm ?? dec("0");
 
-  let approxPhp = dec("0");
-  try {
-    const quote = await rail.getQuote({ sell: "XLM", buy: "PHP", phpAmount: dec("1") });
-    approxPhp = balance.times(quote.rate);
-  } catch {
-    // rate unavailable
-  }
+  const rate = await getXlmPhpRate();
+  const approxPhp = rate ? balance.times(rate) : dec("0");
 
   const qrSvg = wallet ? await QRCode.toString(wallet.publicKey, { type: "svg", margin: 1 }) : "";
 

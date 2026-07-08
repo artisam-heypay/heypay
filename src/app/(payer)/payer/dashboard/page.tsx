@@ -1,9 +1,9 @@
 import QRCode from "qrcode";
 import { requireRole } from "@/server/auth/sessions";
 import { Role } from "@/generated/prisma/client";
-import { rail } from "@/server/rails";
 import { dec } from "@/lib/money";
 import { getWalletSummary, getRecentPayments } from "@/server/payer/data";
+import { getXlmPhpRate } from "@/server/payments/rate";
 import { HeroBalanceCard } from "@/components/payer/HeroBalanceCard";
 import { ScanQrphCard } from "@/components/payer/ScanQrphCard";
 import { RecentPaymentsList } from "@/components/payer/RecentPaymentsList";
@@ -18,13 +18,8 @@ export default async function PayerDashboardPage() {
   ]);
 
   const availableXlm = wallet?.availableXlm ?? dec("0");
-  let approxPhp = dec("0");
-  try {
-    const quote = await rail.getQuote({ sell: "XLM", buy: "PHP", phpAmount: dec("1") });
-    approxPhp = availableXlm.times(quote.rate);
-  } catch {
-    // rate unavailable — show ₱0.00 reference rather than failing the dashboard
-  }
+  const rate = await getXlmPhpRate();
+  const approxPhp = rate ? availableXlm.times(rate) : dec("0");
 
   const qrSvg = wallet ? await QRCode.toString(wallet.publicKey, { type: "svg", margin: 1 }) : "";
 

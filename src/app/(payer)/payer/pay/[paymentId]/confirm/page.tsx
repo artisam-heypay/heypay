@@ -2,9 +2,9 @@ import { notFound, forbidden } from "@/lib/errors";
 import { requireRole } from "@/server/auth/sessions";
 import { Role } from "@/generated/prisma/client";
 import { db } from "@/server/db";
-import { rail } from "@/server/rails";
 import { dec } from "@/lib/money";
 import { getWalletSummary } from "@/server/payer/data";
+import { getXlmPhpRate } from "@/server/payments/rate";
 import { ConfirmPayment } from "@/components/payer/ConfirmPayment";
 
 export default async function ConfirmPaymentPage({
@@ -25,13 +25,8 @@ export default async function ConfirmPaymentPage({
   const wallet = await getWalletSummary(user.id);
   const availableXlm = wallet?.availableXlm ?? dec("0");
 
-  let approxPhp = dec("0");
-  try {
-    const quote = await rail.getQuote({ sell: "XLM", buy: "PHP", phpAmount: dec("1") });
-    approxPhp = availableXlm.times(quote.rate);
-  } catch {
-    // rate unavailable
-  }
+  const rate = await getXlmPhpRate();
+  const approxPhp = rate ? availableXlm.times(rate) : dec("0");
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-stack-lg">
