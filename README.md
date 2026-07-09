@@ -8,11 +8,11 @@ For the Stellar ecosystem, HeyPay is a concrete instance of "everyday spending u
 
 ## Status / License
 
-| | |
-|---|---|
-| Version | `0.1.0` (`package.json`) |
-| Status | **Feature-complete against `SPEC.md`.** Auth, payer (prefund/scan/pay/history/settings), merchant (onboarding/dashboard/transactions/QR/settings), and admin (users/merchants/payments/health) surfaces are all implemented, backed by 56 unit/integration test files and a 4-spec Playwright e2e suite wired into CI, with a Railway deployment config (`railway.json` + `Dockerfile`). No Soroban/on-chain contract layer exists — see [Smart Contracts](#smart-contracts) and [Ecosystem Roadmap](#ecosystem-roadmap--research). |
-| License | Not specified — no `LICENSE` file in the repo |
+|         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Version | `0.1.0` (`package.json`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Status  | **Feature-complete against `SPEC.md`.** Auth, payer (prefund/scan/pay/history/settings), merchant (onboarding/dashboard/transactions/QR/settings), and admin (users/merchants/payments/health) surfaces are all implemented, backed by 56 unit/integration test files and a 4-spec Playwright e2e suite wired into CI, with a Railway deployment config (`railway.json` + `Dockerfile`). No Soroban/on-chain contract layer exists — see [Smart Contracts](#smart-contracts) and [Ecosystem Roadmap](#ecosystem-roadmap--research). |
+| License | Not specified — no `LICENSE` file in the repo                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## Problem
 
@@ -33,11 +33,13 @@ Per `SPEC.md`, HeyPay's v1 scope is a **web-only production-shaped MVP**: custod
 Grounded in `src/`, all implemented and matching `SPEC.md`:
 
 **Auth & accounts**
+
 - Username/password signup and login with argon2id hashing, timing-safe dummy-hash comparison, IP + username rate limiting and lockout, and server-side sessions (`src/app/api/auth/*`, `src/server/auth/*`).
 - CSRF protection via same-origin checks on all mutating routes (`src/server/auth/csrf.ts`) and role-based route access enforced in `src/proxy.ts` (Next.js middleware).
 - Audit logging of security-relevant actions (`src/server/auth/audit.ts`).
 
 **Payer**
+
 - Custodial Stellar wallet per payer, generated and envelope-encrypted at signup (`src/server/stellar/wallet.ts`, `src/server/crypto/envelope.ts` — AES-256-GCM).
 - Prefund flow: deposit address + QR, background deposit detection (`src/app/(payer)/payer/prefund`, `src/server/queue/jobs/deposit-poller.ts`).
 - QRPH scanning via camera (`getUserMedia` + `jsQR`) or image upload, decoded server-side with a real EMVCo TLV parser and CRC-16 validation (`src/server/qrph/{tlv,crc,decode,resolve}.ts`).
@@ -47,6 +49,7 @@ Grounded in `src/`, all implemented and matching `SPEC.md`:
 - Dashboard with live-polled balance, recent payments, and a network-status indicator (`src/app/(payer)/payer/dashboard`).
 
 **Merchant**
+
 - 4-step onboarding wizard (business identity → settlement bank → QRPH link → review/go-live) with a live payer-facing preview pane (`src/app/(merchant)/merchant/onboarding`, `src/components/merchant/onboarding/*`).
 - Bank-account validation against a supported-bank list, with the account number envelope-encrypted at rest and only a masked last-4 exposed (`src/server/merchant/banks.ts`, `src/app/api/merchant/settlement`).
 - QRPH upload/link with CRC validation and cross-merchant uniqueness enforcement (`src/app/api/merchant/qrph`).
@@ -55,12 +58,14 @@ Grounded in `src/`, all implemented and matching `SPEC.md`:
 - Business QR page (SVG + shareable payment link), a filterable/paginated transactions page, and a settings page (business/logo/bank/QRPH/password edit) (`src/app/(merchant)/merchant/{qr,transactions,settings}`).
 
 **Admin**
+
 - User management: list/search, activate/deactivate (`src/app/(admin)/admin/users`, `src/server/admin/users.ts`).
 - Merchant review: search/filter, status transitions (`DRAFT`/`PENDING_REVIEW`/`ACTIVE`/`SUSPENDED`) (`src/app/(admin)/admin/merchants`, `src/server/admin/merchants.ts`).
 - Payments: full listing with per-payment event timeline, plus manual **retry** (re-enqueues the settle job, gated to retryable statuses) and **refund** (moves a payment to `REFUND_PENDING`, gated to refundable statuses) — both audit-logged (`src/app/(admin)/admin/payments`, `src/server/admin/payments.ts`).
 - System health dashboard: live checks against Stellar Horizon, PDAX (or "mock rail"), Redis, and BullMQ queue depth (waiting/active/delayed/failed) (`src/app/(admin)/admin/health`, `src/server/admin/health.ts`).
 
 **Platform / infra**
+
 - `PaymentRailProvider` abstraction with a deterministic `MockProvider` and a `PdaxProvider` for real PDAX integration (HMAC request signing + TOTP, retry/backoff), switched via `PAYMENT_RAIL` (`src/server/rails/{provider,mock,pdax,index}.ts`).
 - BullMQ-driven worker process running the settlement state machine, deposit poller, and a balance-reconciliation job (`src/worker/index.ts`, `src/server/queue/*`).
 - File uploads via true S3 presigned-POST (content-type allowlist, size cap, post-upload magic-byte + size re-validation) for QRPH images and merchant logos (`src/app/api/uploads/presign`, `src/server/storage/s3.ts`).
@@ -69,10 +74,12 @@ Grounded in `src/`, all implemented and matching `SPEC.md`:
 - Security headers applied to every response (`src/lib/security-headers.ts`, wired through `proxy.ts`).
 
 **Testing & deployment**
+
 - 56 unit/integration/component test files (Vitest + Testing Library) plus a 4-spec Playwright e2e suite (`tests/e2e/{payer-happy-path,merchant-go-live,merchant-qr,admin-retry-refund}.spec.ts`) covering signup → prefund → scan → pay → settle, merchant onboarding → go-live, the business QR page, and admin retry/refund — all wired into `.github/workflows/ci.yml`.
 - Railway deployment config: `railway.json` (Dockerfile builder, `pnpm prisma migrate deploy` release command, separate `web`/`worker` service definitions with healthchecks) and a 3-stage `Dockerfile` supporting both `pnpm start` and `pnpm worker:start` from one image.
 
 Modeled but intentionally **not active** per `SPEC.md`'s explicit scope:
+
 - USDT/USDC payment assets — present in the Prisma `PaymentAsset` enum, but no code path exercises anything but `XLM`.
 
 ## Architecture
@@ -275,12 +282,14 @@ HeyPay currently touches Stellar only through a custodial wallet and classic Hor
 ## Tech Stack
 
 **Frontend**
+
 - Next.js `^16.2.9` (App Router, RSC + Client Components), React `^19.2.7`
 - Tailwind CSS `^4.3.1` (`@tailwindcss/postcss`)
 - `clsx` for conditional class composition
 - `jsqr` for client-side QR decoding (camera/upload)
 
 **Backend / API**
+
 - Next.js Route Handlers (`src/app/api/**`) + Server Actions
 - Zod `^4.4.3` for input validation
 - `decimal.js` for precise monetary math (no floats)
@@ -289,30 +298,37 @@ HeyPay currently touches Stellar only through a custodial wallet and classic Hor
 - `qrcode` for server-side QR SVG rendering
 
 **Database / queue**
+
 - PostgreSQL via Prisma `^7.8.0` (`@prisma/client`, `@prisma/adapter-pg`, `pg`)
 - Redis via `ioredis`, backing **BullMQ** `^5.79.2` job queues (settlement, deposit polling, reconciliation)
 
 **Blockchain**
+
 - `@stellar/stellar-sdk` `^16.0.1` against Horizon (testnet in dev, per `.env.example`)
 
 **Payment rail integration**
+
 - Custom `PaymentRailProvider` abstraction with `MockProvider` (deterministic, local dev) and `PdaxProvider` (real PDAX REST API, HMAC-signed) plus a signature-verified PDAX webhook receiver
 
 **Object storage**
+
 - AWS SDK v3 (`@aws-sdk/client-s3`, `s3-presigned-post`, `s3-request-presigner`) against MinIO (dev) or an S3-compatible bucket (prod)
 - `sharp` for image processing
 
 **Infra / local dev**
+
 - Docker Compose (`docker-compose.yml`, `docker-compose.test.yml`): Postgres 17, Redis 7, MinIO
 - `pnpm` `10.33.0` workspace, Node `>=22`
 
 **Testing / quality**
+
 - Vitest `^4.1.9` + Testing Library (`@testing-library/react`, `@testing-library/dom`) + `jsdom` — 56 unit/integration/component test files
 - Playwright — 4-spec e2e suite (`tests/e2e/`)
 - ESLint `^10.6.0` + `typescript-eslint`, Prettier `^3.9.1`
 - TypeScript `^6.0.3`
 
 **CI / Deployment**
+
 - GitHub Actions (`.github/workflows/ci.yml`): install → Prisma generate/migrate → typecheck → lint → format check → `pnpm audit --prod` → unit/integration tests (Vitest) → build → Playwright install + e2e → report upload.
 - Railway (`railway.json` + `Dockerfile`): Dockerfile-based build, `pnpm prisma migrate deploy` on release, separate `web` (`pnpm start`, `/api/health` healthcheck) and `worker` (`pnpm worker:start`, always-restart) services from one image.
 
@@ -321,6 +337,7 @@ HeyPay currently touches Stellar only through a custodial wallet and classic Hor
 Required tooling: **Node ≥22**, **pnpm 10.33.0** (`packageManager` field — use `corepack enable` or install directly), and **Docker** (for local Postgres/Redis/MinIO).
 
 1. **Clone and install dependencies**
+
    ```bash
    git clone <repo-url>
    cd heypay
@@ -328,48 +345,56 @@ Required tooling: **Node ≥22**, **pnpm 10.33.0** (`packageManager` field — u
    ```
 
 2. **Start local infrastructure** (Postgres, Redis, MinIO)
+
    ```bash
    docker compose up -d
    ```
 
 3. **Configure environment variables**
+
    ```bash
    cp .env.example .env
    ```
+
    Then edit `.env`. Variable groups and whether they're required:
 
-   | Variable | Required? | Notes |
-   |---|---|---|
-   | `DATABASE_URL`, `SHADOW_DATABASE_URL` | **Required** | Must point at the Postgres started above (or your own instance). |
-   | `REDIS_URL` | **Required** | BullMQ + rate limiting/session cache. |
-   | `SESSION_SECRET`, `ENCRYPTION_MASTER_KEY`, `ENCRYPTION_KEY_VERSION` | **Required** | Session signing + AES-256-GCM envelope encryption for wallet secrets and bank account numbers. Never commit real values. |
-   | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | **Required** for seeding | Consumed by `prisma/seed.ts` to create the seeded admin user (idempotent upsert). |
-   | `SEED_DEMO` | Optional | `true` also seeds a demo payer (testnet-funded wallet) and demo merchant so the flows work immediately. |
-   | `STELLAR_NETWORK`, `STELLAR_HORIZON_URL`, `STELLAR_NETWORK_PASSPHRASE` | **Required** | Defaults in `.env.example` point at Stellar **testnet**. |
-   | `PAYMENT_RAIL` | **Required** | `mock` (default, deterministic local rail) or `pdax` (real PDAX API). |
-   | `PDAX_BASE_URL`, `PDAX_ACCESS_KEY`, `PDAX_SECRET`, `PDAX_TOTP_SECRET`, `PDAX_XLM_DEPOSIT_ADDRESS` | Optional unless `PAYMENT_RAIL=pdax` | Only needed to exercise the real PDAX integration. |
-   | `PDAX_WEBHOOK_SECRET` | Optional unless using PDAX webhooks | HMAC key used to verify `POST /api/webhooks/pdax` callbacks. |
-   | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_FORCE_PATH_STYLE` | **Required** | Defaults target the local MinIO container. |
-   | `APP_URL` | **Required** | Used for same-origin/CSRF checks and absolute links. |
+   | Variable                                                                                          | Required?                           | Notes                                                                                                                    |
+   | ------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+   | `DATABASE_URL`, `SHADOW_DATABASE_URL`                                                             | **Required**                        | Must point at the Postgres started above (or your own instance).                                                         |
+   | `REDIS_URL`                                                                                       | **Required**                        | BullMQ + rate limiting/session cache.                                                                                    |
+   | `SESSION_SECRET`, `ENCRYPTION_MASTER_KEY`, `ENCRYPTION_KEY_VERSION`                               | **Required**                        | Session signing + AES-256-GCM envelope encryption for wallet secrets and bank account numbers. Never commit real values. |
+   | `ADMIN_USERNAME`, `ADMIN_PASSWORD`                                                                | **Required** for seeding            | Consumed by `prisma/seed.ts` to create the seeded admin user (idempotent upsert).                                        |
+   | `SEED_DEMO`                                                                                       | Optional                            | `true` also seeds a demo payer (testnet-funded wallet) and demo merchant so the flows work immediately.                  |
+   | `STELLAR_NETWORK`, `STELLAR_HORIZON_URL`, `STELLAR_NETWORK_PASSPHRASE`                            | **Required**                        | Defaults in `.env.example` point at Stellar **testnet**.                                                                 |
+   | `PAYMENT_RAIL`                                                                                    | **Required**                        | `mock` (default, deterministic local rail) or `pdax` (real PDAX API).                                                    |
+   | `PDAX_BASE_URL`, `PDAX_ACCESS_KEY`, `PDAX_SECRET`, `PDAX_TOTP_SECRET`, `PDAX_XLM_DEPOSIT_ADDRESS` | Optional unless `PAYMENT_RAIL=pdax` | Only needed to exercise the real PDAX integration.                                                                       |
+   | `PDAX_WEBHOOK_SECRET`                                                                             | Optional unless using PDAX webhooks | HMAC key used to verify `POST /api/webhooks/pdax` callbacks.                                                             |
+   | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_FORCE_PATH_STYLE`  | **Required**                        | Defaults target the local MinIO container.                                                                               |
+   | `APP_URL`                                                                                         | **Required**                        | Used for same-origin/CSRF checks and absolute links.                                                                     |
 
 4. **Run database migrations and seed data**
+
    ```bash
    pnpm prisma migrate deploy
    pnpm prisma db seed
    ```
 
 5. **Start the web app**
+
    ```bash
    pnpm dev
    ```
+
    App runs at `http://localhost:3000` (or `APP_URL`).
 
 6. **Start the background worker** (separate terminal — required for prefund detection and payment settlement to progress)
+
    ```bash
    pnpm worker:dev
    ```
 
 7. **Optional: run the quality gate locally**
+
    ```bash
    pnpm typecheck
    pnpm lint
@@ -403,8 +428,8 @@ CI (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull requests, g
 
 ## Team
 
-| Name | Role | Contact |
-|---|---|---|
+| Name                  | Role                  | Contact                  |
+| --------------------- | --------------------- | ------------------------ |
 | `[PLACEHOLDER: name]` | `[PLACEHOLDER: role]` | `[PLACEHOLDER: contact]` |
 | `[PLACEHOLDER: name]` | `[PLACEHOLDER: role]` | `[PLACEHOLDER: contact]` |
 
