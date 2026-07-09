@@ -84,7 +84,7 @@ Under the hood it's a web app the payer talks to, plus a separate background wor
 
 ---
 
-## Slide 6: Where We Are Today *(new in v3)*
+## Slide 6: Where We Are Today _(new in v3)_
 
 - **Feature-complete** against our full spec: payer, merchant, and admin surfaces all shipped.
 - **Admin console live** — user/merchant management, payment retry & refund, system health.
@@ -112,19 +112,19 @@ Who actually needs this? Two groups: crypto holders who want to spend their bala
 
 ---
 
-## Slide 8: Our Impact on the Stellar Ecosystem *(new in v3)*
+## Slide 8: Our Impact on the Stellar Ecosystem _(new in v3)_
 
 - **Everyday-spend utility for XLM** — the missing last mile that turns a held Stellar balance into a real-world payment, not just a speculative asset.
 - **Compounds an active corridor** — the Philippines is already a proven Stellar remittance corridor (Coins.ph since 2016, Cebuana Lhuillier, MoneyGram, Tempo × Arf); HeyPay extends that rail from inbound remittance to everyday outbound spend.
 - **A template, not a one-off** — "custodial wallet + local QR rail + local off-ramp" is a pattern any Stellar team can replicate for any country with a national QR standard.
-- **Real transaction volume for Stellar** — every HeyPay payment is a genuine Horizon-settled transaction, adding to Stellar's real-world *payment* volume (not trading/speculative volume).
+- **Real transaction volume for Stellar** — every HeyPay payment is a genuine Horizon-settled transaction, adding to Stellar's real-world _payment_ volume (not trading/speculative volume).
 
 **Speaker notes:**
 Beyond HeyPay as a single app, here's why this matters for Stellar. XLM's biggest real-world traction today is inbound remittance — Coins.ph has run a live Stellar integration since 2016, and partners like Cebuana Lhuillier, MoneyGram, and the Tempo/Arf corridor all use Stellar to move money INTO the Philippines. HeyPay closes the other half of that loop: once money has landed on Stellar, we let people actually SPEND it locally, at merchants who've changed nothing about how they operate. That's the "everyday spend utility" Stellar has been missing — turning a held balance into a real transaction, not just a remittance waypoint. And because our architecture — custodial wallet, local QR standard, local off-ramp partner — isn't Philippines-specific in concept, it's a pattern any team could replicate wherever a national QR standard exists. Every payment we settle is also a genuine, real-economy Horizon transaction, which is exactly the kind of volume that strengthens Stellar's case as payments infrastructure rather than a trading venue.
 
 ---
 
-## Slide 9: Plugging Into Stellar's Native Rails *(new in v3)*
+## Slide 9: Plugging Into Stellar's Native Rails _(new in v3)_
 
 **Ecosystem integration roadmap** — from a single-rail MVP to real Stellar infrastructure.
 
@@ -140,20 +140,23 @@ We know exactly how we get from a single-rail MVP to real Stellar infrastructure
 
 ---
 
-## Slide 10: Go-To-Market — Philippines → APAC → Global *(new in v3)*
+## Slide 10: Go-To-Market — Philippines → APAC → Global _(new in v3)_
 
 **Philippines (now):**
+
 - Launch on QRPH, HeyPay's proven home rail.
 - Grow via the existing OFW remittance corridor — let overseas senders fund a payer's HeyPay wallet directly, not just people who already hold XLM.
 - Engage BSP-aligned compliance (VASP/KYC) early.
 - Partner-led growth via our exchange partner's own Stellar ecosystem activity (hackathons, prior remittance partnerships).
 
 **APAC (next 12–18 months):**
+
 - Replicate the model wherever a national QR standard + a licensed local anchor both exist (e.g. PromptPay/Thailand, VietQR/Vietnam, DuitNow/Malaysia).
 - Same architecture — swap the QR standard and the local off-ramp partner.
 - Pursue SDF's APAC-focused grant and hackathon programs for co-marketing and funding.
 
 **Global (18 months+):**
+
 - Once the SEP-6/24/31 anchor abstraction is proven in 2+ markets, HeyPay becomes a reusable "Stellar-to-local-QR" bridge pattern rather than a single app.
 - License or white-label the pattern, or plug into any market with EMVCo-style merchant-presented QR and a Stellar anchor.
 
@@ -191,7 +194,7 @@ We're [team name] — [brief intro per member]. Thanks to the organizers for the
 
 # Recording script
 
-*Read this straight through for a ~4–5 minute recording. Pauses are marked with `[pause]`.*
+_Read this straight through for a ~4–5 minute recording. Pauses are marked with `[pause]`._
 
 **[Slide 1 — Title]**
 Hey, everyone. We're [team name], and this is HeyPay. Our pitch in one line: let anyone holding Stellar-network crypto pay at any QRPH merchant in the Philippines — and let those merchants receive pesos with zero new integration. QRPH is already everywhere in the country. We just connect it to a balance people already hold on Stellar. I'll walk you through the problem, a live demo, how it works, our impact on the Stellar ecosystem, our integration roadmap, and our go-to-market. [pause]
@@ -249,7 +252,7 @@ Each payer gets a custodial Stellar wallet whose secret key is envelope-encrypte
 That exact case is handled. Settlement is a persisted, idempotent, resumable state machine (`CREATED → … → SETTLED / FAILED / REFUNDED`). If a step fails after the XLM has left the payer's wallet, the payment branches to a refund path and the payer is made whole. Every state transition is recorded as an event, and an admin can manually retry or refund from the console.
 
 **Q4. How do you handle XLM price volatility during a payment?**
-Within a single payment, we lock the XLM→PHP rate for a short window (a rate snapshot) and reserve the exact XLM before settling, so the payer knows precisely what they'll pay. The larger volatility window — between *prefunding* and *spending* — is real, and our answer is on the roadmap: add USDC on Stellar as a second custodial asset, which removes crypto-price risk and leaves only the much smaller USD/PHP FX exposure.
+Within a single payment, we lock the XLM→PHP rate for a short window (a rate snapshot) and reserve the exact XLM before settling, so the payer knows precisely what they'll pay. The larger volatility window — between _prefunding_ and _spending_ — is real, and our answer is on the roadmap: add USDC on Stellar as a second custodial asset, which removes crypto-price risk and leaves only the much smaller USD/PHP FX exposure.
 
 **Q5. Why is settlement asynchronous / background rather than instant?**
 The slow parts — submitting the Stellar transaction, waiting for confirmation, the exchange trade, and the bank payout — can take seconds to minutes and can fail transiently. A background worker with retries and idempotency means the payer's UI never blocks and the system is resilient to restarts. The payer just watches a live status overlay.
@@ -266,13 +269,13 @@ Next.js (App Router) for web + API, a separate BullMQ worker for settlement, Pos
 Today, our on-chain footprint is a classic Horizon payment per transaction — real Stellar settlement, but we don't yet use anchors, the DEX, or Soroban. We're honest about that. Our roadmap is specifically about deepening it: SEP-6/24/31 anchors, USDC, on-chain path payments, and a Soroban escrow contract. The single centralized-exchange dependency is the top risk we're designing away from.
 
 **Q9. What's your actual impact on the Stellar ecosystem?**
-Two things. First, we add *real-economy payment volume* — every HeyPay payment is a genuine Horizon-settled transaction, the kind of volume that supports Stellar's payments thesis rather than trading volume. Second, we deliver the "last mile" Stellar has struggled to demonstrate at consumer scale: turning a held XLM balance into an everyday purchase. The Philippines is already one of Stellar's most active remittance corridors — we extend that from inbound remittance to local spend.
+Two things. First, we add _real-economy payment volume_ — every HeyPay payment is a genuine Horizon-settled transaction, the kind of volume that supports Stellar's payments thesis rather than trading volume. Second, we deliver the "last mile" Stellar has struggled to demonstrate at consumer scale: turning a held XLM balance into an everyday purchase. The Philippines is already one of Stellar's most active remittance corridors — we extend that from inbound remittance to local spend.
 
 **Q10. Which SEPs will you implement, and in what order?**
 Cheap wins first: SEP-1 (`stellar.toml` — makes us discoverable/trusted), SEP-10 (web auth to talk to anchors), and SEP-12 (KYC to a portable standard schema). Then the real unlock: SEP-6/24 to treat multiple licensed anchors as interchangeable on/off-ramps, SEP-38 for standardized quotes so we can rate-shop, and SEP-31 for the anchor-to-anchor merchant payout leg. This is what lets us stop depending on one exchange.
 
 **Q11. Why not use the Stellar DEX / path payments instead of a centralized exchange?**
-We plan to explore exactly that. An on-chain `path_payment` (e.g. XLM→USDC) settles in ~5 seconds for sub-cent fees against aggregated DEX + AMM liquidity, reducing counterparty reliance. The honest caveat: we haven't confirmed deep on-chain liquidity for a *PHP-pegged* Stellar asset, so near-term the DEX is most useful for the XLM→USDC leg, with a licensed anchor handling the final USDC→PHP off-ramp. That's a sequencing decision, not a blocker.
+We plan to explore exactly that. An on-chain `path_payment` (e.g. XLM→USDC) settles in ~5 seconds for sub-cent fees against aggregated DEX + AMM liquidity, reducing counterparty reliance. The honest caveat: we haven't confirmed deep on-chain liquidity for a _PHP-pegged_ Stellar asset, so near-term the DEX is most useful for the XLM→USDC leg, with a licensed anchor handling the final USDC→PHP off-ramp. That's a sequencing decision, not a blocker.
 
 **Q12. Soroban — do you use smart contracts, and why not yet?**
 Not yet — there are no contracts in the repo today, and we won't add them for their own sake. The clear use case is an escrow/settlement contract that holds a payer's funds on-chain until the merchant payout is confirmed, which would move refund logic from our servers onto the chain and reduce trust in us. There are strong open-source Soroban escrow patterns (e.g. SwiftRemit, Trustless Work) to start from, plus SDF's audit programs to de-risk it.
@@ -289,13 +292,13 @@ Today the margin is implicit — whatever spread the exchange conversion allows 
 It's thin, which is why volume and rail efficiency matter. Two levers improve it: (1) integrating anchors and the Stellar DEX to reduce or bypass a single exchange's spread, and (2) volume — remittance-funded spend is repeat, habitual behavior. We're realistic that this is a scale business, not a high-margin-per-transaction one.
 
 **Q16. How big is the market, really?**
-The wedge is the Philippine QRPH + remittance intersection: $38B+ in annual remittances and near-ubiquitous QRPH acceptance. Critically, our biggest market-expansion move (letting overseas senders fund a payer's wallet directly) makes the addressable user base *remittance senders and receivers*, not just the smaller set of people who already hold crypto. A caveat we volunteer: of the trillions in headline stablecoin volume, only ~1% is real payments — we're deliberately in that smaller, harder, real-payments segment.
+The wedge is the Philippine QRPH + remittance intersection: $38B+ in annual remittances and near-ubiquitous QRPH acceptance. Critically, our biggest market-expansion move (letting overseas senders fund a payer's wallet directly) makes the addressable user base _remittance senders and receivers_, not just the smaller set of people who already hold crypto. A caveat we volunteer: of the trillions in headline stablecoin volume, only ~1% is real payments — we're deliberately in that smaller, harder, real-payments segment.
 
 **Q17. Who are your competitors?**
-Directly: the manual off-ramp path (exchange → bank → pay) we replace. Adjacent patterns validate us — Solana Pay and Binance Pay both do "scan QR, pay in crypto, merchant gets settled," and Solana Pay defaults to USDC settlement precisely to dodge the volatility problem we're also solving. On rails, Ripple/XRP and Tron are strong in Philippine remittance corridors, and Celo/MiniPay targets the same emerging-market financial-inclusion positioning. Our edge is being native to the *existing* national QR rail rather than asking merchants to adopt anything.
+Directly: the manual off-ramp path (exchange → bank → pay) we replace. Adjacent patterns validate us — Solana Pay and Binance Pay both do "scan QR, pay in crypto, merchant gets settled," and Solana Pay defaults to USDC settlement precisely to dodge the volatility problem we're also solving. On rails, Ripple/XRP and Tron are strong in Philippine remittance corridors, and Celo/MiniPay targets the same emerging-market financial-inclusion positioning. Our edge is being native to the _existing_ national QR rail rather than asking merchants to adopt anything.
 
 **Q18. Why hasn't a big player (GCash, Maya, Coins.ph) just done this?**
-They could add pieces of it, but their incentives and rails differ — they're wallets/exchanges, not a neutral bridge that plugs crypto balances into merchants' *existing* QRPH without merchant integration. Coins.ph is actually a potential partner/anchor for us, not just a competitor. Our bet is on being the thin interoperability layer, and on moving faster on the Stellar-native integration than an incumbent would prioritize.
+They could add pieces of it, but their incentives and rails differ — they're wallets/exchanges, not a neutral bridge that plugs crypto balances into merchants' _existing_ QRPH without merchant integration. Coins.ph is actually a potential partner/anchor for us, not just a competitor. Our bet is on being the thin interoperability layer, and on moving faster on the Stellar-native integration than an incumbent would prioritize.
 
 ### Go-to-market & traction
 

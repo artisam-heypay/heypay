@@ -111,7 +111,9 @@ export function Scanner() {
 
   async function startCamera() {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      setStatus("Camera needs a secure (HTTPS) connection. Open the secure URL or upload the QR image.");
+      setStatus(
+        "Camera needs a secure (HTTPS) connection. Open the secure URL or upload the QR image.",
+      );
       return;
     }
     try {
