@@ -140,8 +140,7 @@ function resolveConfig(overrides: Partial<PdaxInstiConfig>): PdaxInstiConfig {
       "https://uat.services.sandbox.pdax.ph/api/pdax-api",
     username: overrides.username ?? process.env.PDAX_INSTI_USERNAME ?? "",
     password: overrides.password ?? process.env.PDAX_INSTI_PASSWORD ?? "",
-    settleOnSubmit:
-      overrides.settleOnSubmit ?? process.env.PDAX_INSTI_SETTLE_ON_SUBMIT === "true",
+    settleOnSubmit: overrides.settleOnSubmit ?? process.env.PDAX_INSTI_SETTLE_ON_SUBMIT === "true",
     payoutGraceMs:
       overrides.payoutGraceMs ??
       (process.env.PDAX_INSTI_PAYOUT_GRACE_MS !== undefined

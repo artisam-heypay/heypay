@@ -57,9 +57,9 @@ writeFileSync(IP_MARKER, ip);
 
 console.log(`dev-https: serving on https://${ip}:${PORT}  (open this on your phone)`);
 
-const child = spawn(
-  "npx",
-  ["next", "dev", "--experimental-https", "-H", ip, "-p", PORT],
-  { stdio: "inherit", shell: true, env: { ...process.env, TRUST_STORES: "system" } },
-);
+const child = spawn("npx", ["next", "dev", "--experimental-https", "-H", ip, "-p", PORT], {
+  stdio: "inherit",
+  shell: true,
+  env: { ...process.env, TRUST_STORES: "system" },
+});
 child.on("exit", (code) => process.exit(code ?? 0));
