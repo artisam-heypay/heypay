@@ -25,4 +25,22 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Node.js scripts run outside Next — give them the Node runtime globals.
+    files: ["scripts/**/*.{js,mjs,cjs}", "*.{js,mjs,cjs}"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        Buffer: "readonly",
+        URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
+      },
+    },
+  },
 );
