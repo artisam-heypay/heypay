@@ -32,10 +32,15 @@ type HorizonBalance = { asset_type: string; balance: string };
 type HorizonPaymentRecord = {
   id: string;
   type: string;
-  asset_type: string;
-  to: string;
-  from: string;
-  amount: string;
+  asset_type?: string;
+  to?: string;
+  from?: string;
+  amount?: string;
+  // create_account operations (a brand-new account's very first deposit) carry
+  // these instead of to/from/amount/asset_type — always native XLM.
+  account?: string;
+  funder?: string;
+  starting_balance?: string;
   transaction_hash: string;
   created_at: string;
   paging_token: string;
@@ -126,19 +131,39 @@ export function createWalletService(
     async listIncomingPayments(publicKey, cursor) {
       let builder = srv().payments().forAccount(publicKey).order("asc").limit(PAGE_LIMIT);
       if (cursor) builder = builder.cursor(cursor);
-      const page = await builder.call();
+      let page;
+      try {
+        page = await builder.call();
+      } catch (e) {
+        // Account not created/funded yet → no incoming payments to report (not an error).
+        if (isNotFound(e)) return { items: [], cursor };
+        throw e;
+      }
       const records = page.records as unknown as HorizonPaymentRecord[];
       const items: IncomingPayment[] = [];
       let newCursor = cursor;
       for (const rec of records) {
         newCursor = rec.paging_token;
+        // A wallet's very first-ever deposit funds a not-yet-existing account, which
+        // Stellar records as create_account (not payment) — must be treated as incoming too.
+        if (rec.type === "create_account") {
+          if (rec.account !== publicKey) continue;
+          items.push({
+            id: rec.id,
+            amountXlm: dec(rec.starting_balance!),
+            from: rec.funder!,
+            txHash: rec.transaction_hash,
+            createdAt: new Date(rec.created_at),
+          });
+          continue;
+        }
         if (rec.type !== "payment") continue;
         if (rec.asset_type !== "native") continue;
         if (rec.to !== publicKey) continue;
         items.push({
           id: rec.id,
-          amountXlm: dec(rec.amount),
-          from: rec.from,
+          amountXlm: dec(rec.amount!),
+          from: rec.from!,
           txHash: rec.transaction_hash,
           createdAt: new Date(rec.created_at),
         });

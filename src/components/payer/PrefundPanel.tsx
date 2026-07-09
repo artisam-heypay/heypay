@@ -6,43 +6,47 @@ import { Card, Icon } from "@/components/ui";
 export function PrefundPanel({ publicKey, qrSvg }: { publicKey: string; qrSvg: string }) {
   const [copied, setCopied] = useState(false);
 
-  const copy = async () => {
+  async function copy() {
     try {
       await navigator.clipboard.writeText(publicKey);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // clipboard unavailable → no-op
+      // clipboard unavailable — address is still visible/selectable
     }
-  };
+  }
 
   return (
     <Card>
-      <div className="flex items-center justify-between">
-        <h2 className="text-headline-md font-display">Prefund</h2>
-        <Link href="/payer/prefund" className="text-body-sm text-primary">
-          Details
-        </Link>
-      </div>
+      <h2 className="font-display text-headline-md">Prefund</h2>
       <div
-        className="mx-auto mt-stack-md h-40 w-40 [&>svg]:h-full [&>svg]:w-full"
-        aria-label="Deposit QR code"
+        className="mt-stack-md rounded-xl border border-outline-variant p-stack-md [&_svg]:h-full [&_svg]:w-full"
+        // qrSvg is generated server-side by the qrcode library (trusted), not user input.
         dangerouslySetInnerHTML={{ __html: qrSvg }}
       />
       <div className="mt-stack-md flex items-center gap-stack-sm">
-        <code className="truncate text-mono-data text-body-sm">{publicKey}</code>
+        <code className="min-w-0 flex-1 truncate font-mono text-mono-data">{publicKey}</code>
         <button
           type="button"
           onClick={copy}
           aria-label="Copy deposit address"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
         >
           <Icon name="content_copy" />
         </button>
       </div>
-      <p aria-live="polite" className="mt-stack-sm text-body-sm text-on-surface-variant">
-        {copied ? "Copied!" : "Stellar network · no memo required"}
+      <p aria-live="polite" className="mt-1 h-4 text-body-sm text-primary">
+        {copied ? "Copied!" : ""}
       </p>
+      <p className="mt-stack-sm text-body-sm text-on-surface-variant">
+        Stellar network · no memo required
+      </p>
+      <Link
+        href="/payer/prefund"
+        className="mt-stack-md inline-block rounded-lg text-body-sm text-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+      >
+        Open full prefund →
+      </Link>
     </Card>
   );
 }

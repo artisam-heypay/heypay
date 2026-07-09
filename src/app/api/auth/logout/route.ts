@@ -9,8 +9,7 @@ export const POST = route(async (req) => {
   assertSameOrigin(req);
   const user = await getSessionUser();
   await destroySession();
-  if (user) {
+  if (user)
     await audit({ actorId: user.id, action: "auth.logout", target: user.id, ip: clientIp(req) });
-  }
   return new NextResponse(null, { status: 204 });
 });

@@ -87,11 +87,15 @@ describe("WalletService.sendXlm", () => {
     });
     expect(res.txHash).toBe("deadbeef");
     expect(submit).toHaveBeenCalledTimes(1);
-    const tx = submit.mock.calls[0]![0];
+    const tx = submit.mock.calls[0]![0]! as {
+      memo: { value: { toString: () => string } };
+      operations: { type: string; amount: string; asset: { isNative: () => boolean } }[];
+      timeBounds: { maxTime: string };
+    };
     expect(tx.memo.value.toString()).toBe("TXN-ABC123");
-    expect(tx.operations[0].type).toBe("payment");
-    expect(tx.operations[0].amount).toBe("12.5000000"); // 7dp formatXlm
-    expect(tx.operations[0].asset.isNative()).toBe(true);
+    expect(tx.operations[0]!.type).toBe("payment");
+    expect(tx.operations[0]!.amount).toBe("12.5000000"); // 7dp formatXlm
+    expect(tx.operations[0]!.asset.isNative()).toBe(true);
     expect(tx.timeBounds.maxTime).not.toBe("0"); // setTimeout applied
   });
 });
@@ -142,12 +146,12 @@ describe("WalletService.listIncomingPayments", () => {
         paging_token: "c2",
       },
       {
+        // create_account carries account/funder/starting_balance, never to/from/amount.
         id: "3",
         type: "create_account",
-        asset_type: "native",
-        to: "GME",
-        from: "GX",
-        amount: "1.0",
+        account: "GME",
+        funder: "GX",
+        starting_balance: "1.0",
         transaction_hash: "h3",
         created_at: "2026-06-28T00:02:00Z",
         paging_token: "c3",
@@ -163,9 +167,13 @@ describe("WalletService.listIncomingPayments", () => {
     });
     const svc = createWalletService(server, PASSPHRASE);
     const out = await svc.listIncomingPayments("GME", "c0");
-    expect(out.items).toHaveLength(1); // only native payment TO GME
+    // payment TO GME, and the create_account that first funded GME; GOTHER's excluded.
+    expect(out.items).toHaveLength(2);
     expect(out.items[0]!.txHash).toBe("h1");
     expect(out.items[0]!.amountXlm.equals(new Decimal("10.0"))).toBe(true);
+    expect(out.items[1]!.txHash).toBe("h3");
+    expect(out.items[1]!.amountXlm.equals(new Decimal("1.0"))).toBe(true);
+    expect(out.items[1]!.from).toBe("GX");
     expect(out.cursor).toBe("c3"); // advances past every scanned record
     expect(builder.cursor).toHaveBeenCalledWith("c0");
   });

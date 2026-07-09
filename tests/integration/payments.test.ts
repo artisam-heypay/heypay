@@ -3,41 +3,41 @@ import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { resetDb, makePayer, makeMerchant } from "../helpers/db";
 import { db } from "@/server/db";
+import { dec } from "@/lib/money";
 
-const { sessionUser, enqueueSettle } = vi.hoisted(() => ({
+const { sessionUser } = vi.hoisted(() => ({
   sessionUser: {
     current: null as null | { id: string; username: string; role: "PAYER"; isActive: boolean },
   },
-  enqueueSettle: vi.fn(),
 }));
-
-vi.mock("@/server/auth/sessions", async () => {
-  const { forbidden, unauthorized } = await import("@/lib/errors");
-  return {
-    requireRole: vi.fn(async () => {
-      if (!sessionUser.current) throw forbidden();
-      return sessionUser.current;
-    }),
-    requireUser: vi.fn(async () => {
-      if (!sessionUser.current) throw unauthorized();
-      return sessionUser.current;
-    }),
-  };
-});
+vi.mock("@/server/auth/sessions", () => ({
+  requireRole: vi.fn(async () => {
+    if (!sessionUser.current) {
+      const { AppError } = await import("@/lib/errors");
+      throw new AppError("FORBIDDEN", "no", 403);
+    }
+    return sessionUser.current;
+  }),
+  requireUser: vi.fn(async () => {
+    if (!sessionUser.current) {
+      const { AppError } = await import("@/lib/errors");
+      throw new AppError("UNAUTHORIZED", "no", 401);
+    }
+    return sessionUser.current;
+  }),
+}));
 vi.mock("@/server/auth/rate-limit", () => ({ rateLimit: vi.fn(async () => {}) }));
-vi.mock("@/server/rails", async () => {
-  const { dec } = await import("@/lib/money");
-  return {
-    rail: {
-      getQuote: vi.fn(async ({ phpAmount }: { phpAmount: import("@/lib/money").Decimal }) => ({
-        rate: dec("12"),
-        phpAmount,
-        xlmAmount: phpAmount.div(12),
-        expiresAt: new Date(Date.now() + 90_000),
-      })),
-    },
-  };
-});
+vi.mock("@/server/rails", () => ({
+  rail: {
+    getQuote: vi.fn(async ({ phpAmount }: { phpAmount: import("@/lib/money").Decimal }) => ({
+      rate: dec("12"),
+      phpAmount,
+      xlmAmount: phpAmount.div(12),
+      expiresAt: new Date(Date.now() + 90_000),
+    })),
+  },
+}));
+const { enqueueSettle } = vi.hoisted(() => ({ enqueueSettle: vi.fn(async (_id: string) => {}) }));
 vi.mock("@/server/queue/queues", () => ({
   QUEUE_NAMES: { settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" },
   enqueueSettle: (id: string) => enqueueSettle(id),
@@ -58,7 +58,6 @@ describe("payments API", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     sessionUser.current = null;
-    enqueueSettle.mockResolvedValue(undefined);
     await resetDb();
   });
 

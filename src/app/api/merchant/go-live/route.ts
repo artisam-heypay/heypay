@@ -22,7 +22,7 @@ export const POST = route(async (req) => {
   if (!setup.hasQrph) throw badRequest("A linked QRPH is required");
 
   // Re-validate the stored QRPH CRC at go-live (defense in depth).
-  let crcValid: boolean;
+  let crcValid = false;
   try {
     crcValid = decodeQrph(existing.qrphRaw).crcValid;
   } catch {

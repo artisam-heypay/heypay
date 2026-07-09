@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { decodeQrph, decodeQrphImage } from "@/server/qrph/decode";
 
@@ -56,13 +57,11 @@ describe("decodeQrphImage", () => {
   }, 15_000);
 
   it("throws when the image contains no QR code", async () => {
-    const blank = await QRCode.toBuffer("ignored", { type: "png" });
-    // Replace with a non-QR PNG: a 1x1 transparent pixel buffer is not scannable.
-    const tiny = Buffer.from(
-      "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000154a24f1c0000000049454e44ae426082",
-      "hex",
-    );
+    const tiny = await sharp({
+      create: { width: 1, height: 1, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .png()
+      .toBuffer();
     await expect(decodeQrphImage(tiny)).rejects.toThrow(/qr/i);
-    void blank;
   }, 15_000);
 });

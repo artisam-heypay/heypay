@@ -36,6 +36,7 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
   const [qrphRaw, setQrphRaw] = useState(initial?.qrphRaw ?? "");
   const [qrName, setQrName] = useState(initial?.qrphMerchantName ?? "");
   const [qrCity, setQrCity] = useState(initial?.qrphMerchantCity ?? "");
+  const [rawInput, setRawInput] = useState("");
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
@@ -83,9 +84,15 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
 
   const submitStep3 = () =>
     run(async () => {
-      if (!qrphRaw) {
-        throw new Error("Please link a QRPH image before continuing");
+      let raw = qrphRaw;
+      if (!raw && rawInput) {
+        const data = await callApi("/api/merchant/qrph", "POST", { raw: rawInput });
+        raw = rawInput;
+        setQrphRaw(raw);
+        setQrName(data.merchant.qrphMerchantName ?? "");
+        setQrCity(data.merchant.qrphMerchantCity ?? "");
       }
+      if (!raw) throw new Error("Please upload a QRPH image or paste your QRPH text");
       setStep(4);
     });
 
@@ -139,18 +146,20 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
                 {SUPPORTED_BANKS.map((b) => (
                   <label
                     key={b.code}
-                    className="flex min-h-11 cursor-pointer items-center gap-stack-md rounded-lg border-2 border-outline-variant p-stack-md has-[:checked]:border-primary has-[:checked]:bg-primary-container/30"
+                    className="relative flex min-h-11 cursor-pointer items-center gap-stack-md rounded-lg border-2 border-outline-variant p-stack-md has-[:checked]:border-primary has-[:checked]:bg-primary-container/30"
                   >
                     <input
                       type="radio"
                       name="bank"
                       value={b.code}
-                      className="sr-only"
+                      className="absolute inset-0 z-10 cursor-pointer opacity-0"
                       checked={bankCode === b.code}
                       onChange={() => setBankCode(b.code)}
                     />
                     <span className="material-symbols-outlined text-primary">account_balance</span>
-                    <span className="text-body-sm font-medium">{b.name}</span>
+                    <span className="text-body-sm font-medium">
+                      {b.code} &middot; {b.name}
+                    </span>
                   </label>
                 ))}
               </fieldset>
@@ -194,9 +203,15 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
                   }}
                 />
                 {busy && (
-                  <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary motion-safe:animate-[scan_2s_linear_infinite]" />
+                  <span className="animate-scan pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" />
                 )}
               </label>
+              <FloatingInput
+                id="qrphRawPaste"
+                label="Or paste raw QRPH text"
+                value={rawInput}
+                onChange={(e) => setRawInput(e.target.value)}
+              />
               {qrphRaw && (
                 <p className="rounded-lg bg-primary/10 px-stack-md py-stack-sm text-body-sm text-primary">
                   Detected: {qrName || "merchant"} {qrCity ? `· ${qrCity}` : ""}

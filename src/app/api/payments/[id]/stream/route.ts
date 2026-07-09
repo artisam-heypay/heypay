@@ -1,3 +1,4 @@
+// src/app/api/payments/[id]/stream/route.ts
 import { requireUser } from "@/server/auth/sessions";
 import { db } from "@/server/db";
 import { isTerminal } from "@/server/payments/state-machine";
@@ -32,6 +33,7 @@ export async function GET(
         if (isTerminal(p.status)) break;
         await new Promise((r) => setTimeout(r, 1_500));
       }
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
       controller.close();
     },
   });

@@ -74,21 +74,16 @@ export function decodeQrph(raw: string): QrphDecoded {
 }
 
 async function readQrFromImage(image: Buffer): Promise<string | null> {
-  try {
-    const { data, info } = await sharp(image)
-      .ensureAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    const result = jsQR(
-      new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength),
-      info.width,
-      info.height,
-    );
-    return result?.data ?? null;
-  } catch {
-    // Unreadable/corrupt image (e.g. libpng decode error) → treat as "no QR found".
-    return null;
-  }
+  const { data, info } = await sharp(image)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const result = jsQR(
+    new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength),
+    info.width,
+    info.height,
+  );
+  return result?.data ?? null;
 }
 
 export async function decodeQrphImage(image: Buffer): Promise<QrphDecoded> {

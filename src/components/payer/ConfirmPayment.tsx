@@ -1,13 +1,15 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui";
-import { dec } from "@/lib/money";
-import type { PaymentStatus } from "@/generated/prisma";
+import { dec, displayPhp } from "@/lib/money";
+import { Icon } from "@/components/ui";
 import { ConversionBreakdown } from "./ConversionBreakdown";
 import { WalletSourceRow } from "./WalletSourceRow";
 import { ProcessingOverlay } from "./ProcessingOverlay";
+import type { PaymentStatus } from "@/generated/prisma/client";
 
-type Props = {
+const TERMINAL = new Set(["SETTLED", "FAILED", "REFUNDED"]);
+
+export function ConfirmPayment(props: {
   paymentId: string;
   amountPhp: string;
   quotedRate: string;
@@ -15,58 +17,44 @@ type Props = {
   networkFeeXlm: string;
   quoteExpiresAt: string | null;
   merchantName: string;
-  wallet: { publicKey: string; availableXlm: string; approxPhp: string } | null;
-};
-
-const TERMINAL = new Set<PaymentStatus>(["SETTLED", "FAILED", "REFUNDED"]);
-
-export function ConfirmPayment(props: Props) {
+  walletPublicKey: string;
+  availableXlm: string;
+  approxPhp: string;
+}) {
   const amountPhp = dec(props.amountPhp);
-  const quotedRate = dec(props.quotedRate);
   const amountXlm = dec(props.amountXlm);
   const networkFeeXlm = dec(props.networkFeeXlm);
-  const total = amountXlm.plus(networkFeeXlm);
-  const availableXlm = props.wallet ? dec(props.wallet.availableXlm) : dec("0");
-  const insufficient = availableXlm.lessThan(total);
+  const requiredXlm = amountXlm.plus(networkFeeXlm);
+  const availableXlm = dec(props.availableXlm);
 
-  const [now, setNow] = useState(() => Date.now());
+  const [processing, setProcessing] = useState(false);
+  const [status, setStatus] = useState<PaymentStatus>("AUTHORIZED");
+  const [failureReason, setFailureReason] = useState<string | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollBusyRef = useRef(false);
+
+  const expired = secondsLeft !== null && secondsLeft <= 0;
+  const insufficient = availableXlm.lessThan(requiredXlm);
+
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    if (!props.quoteExpiresAt) return;
+    const target = new Date(props.quoteExpiresAt).getTime();
+    const tick = () => setSecondsLeft(Math.max(0, Math.floor((target - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
-  const expiresMs = props.quoteExpiresAt ? new Date(props.quoteExpiresAt).getTime() : 0;
-  const expired = expiresMs > 0 && expiresMs < now;
-  const secsLeft = expiresMs ? Math.max(0, Math.floor((expiresMs - now) / 1000)) : null;
+  }, [props.quoteExpiresAt]);
 
-  const [processing, setProcessing] = useState<PaymentStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (pollRef.current) clearTimeout(pollRef.current);
-    },
-    [],
-  );
-
-  function poll() {
-    const tick = async () => {
-      try {
-        const res = await fetch(`/api/payments/${props.paymentId}`);
-        if (res.ok) {
-          const { payment } = (await res.json()) as { payment: { status: PaymentStatus } };
-          setProcessing(payment.status);
-          if (TERMINAL.has(payment.status)) return;
-        }
-      } catch {
-        // transient → keep polling
-      }
-      pollRef.current = setTimeout(tick, 2000);
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollBusyRef.current = false;
     };
-    pollRef.current = setTimeout(tick, 2000);
-  }
+  }, []);
 
   async function confirm() {
-    setError(null);
+    setProcessing(true);
     try {
       const res = await fetch(`/api/payments/${props.paymentId}/confirm`, {
         method: "POST",
@@ -74,83 +62,109 @@ export function ConfirmPayment(props: Props) {
         body: "{}",
       });
       if (!res.ok) {
-        const e = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-        throw new Error(e?.error?.message ?? "Could not confirm payment.");
+        setStatus("FAILED");
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setFailureReason(body?.error?.message ?? "Could not authorize the payment.");
+        return;
       }
-      const body = (await res.json()) as { status: PaymentStatus };
-      setProcessing(body.status);
+      const { status: s } = (await res.json()) as { status: PaymentStatus };
+      setStatus(s);
       poll();
-    } catch (err) {
-      setError((err as Error).message);
+    } catch {
+      setStatus("FAILED");
+      setFailureReason("Network error.");
     }
   }
 
+  function poll() {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(async () => {
+      if (pollBusyRef.current) return;
+      pollBusyRef.current = true;
+      try {
+        const res = await fetch(`/api/payments/${props.paymentId}`);
+        if (!res.ok) return;
+        const { payment } = (await res.json()) as {
+          payment: { status: PaymentStatus; failureReason?: string | null };
+        };
+        setStatus(payment.status);
+        if (payment.failureReason) setFailureReason(payment.failureReason);
+        if (TERMINAL.has(payment.status) && pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      } catch {
+        // transient — keep polling
+      } finally {
+        pollBusyRef.current = false;
+      }
+    }, 2000);
+  }
+
   async function cancel() {
-    try {
-      await fetch(`/api/payments/${props.paymentId}/cancel`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-      });
-    } catch {
-      // ignore — navigate away regardless
-    }
+    await fetch(`/api/payments/${props.paymentId}/cancel`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    }).catch(() => {});
     window.location.href = "/payer/dashboard";
   }
 
   return (
-    <div className="flex flex-col gap-stack-lg">
-      <ConversionBreakdown
-        amountPhp={amountPhp}
-        quotedRate={quotedRate}
-        amountXlm={amountXlm}
-        networkFeeXlm={networkFeeXlm}
-      />
-      {props.wallet ? (
-        <WalletSourceRow
-          publicKey={props.wallet.publicKey}
-          availableXlm={availableXlm}
-          availablePhp={dec(props.wallet.approxPhp)}
-          totalXlm={total}
+    <>
+      <div className="flex flex-col gap-stack-lg">
+        <ConversionBreakdown
+          amountPhp={amountPhp}
+          quotedRate={dec(props.quotedRate)}
+          amountXlm={amountXlm}
+          networkFeeXlm={networkFeeXlm}
         />
-      ) : null}
+        <WalletSourceRow
+          publicKey={props.walletPublicKey}
+          availableXlm={availableXlm}
+          approxPhp={dec(props.approxPhp)}
+          requiredXlm={requiredXlm}
+        />
 
-      {secsLeft !== null && !expired ? (
-        <p className="text-center text-body-sm text-on-surface-variant">
-          Quote locks for {secsLeft}s
-        </p>
-      ) : null}
-      {expired ? (
-        <p role="alert" className="text-center text-body-sm text-error">
-          Quote expired — rescan to get a fresh rate.
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-center text-body-sm text-error">
-          {error}
-        </p>
-      ) : null}
+        {expired && (
+          <p role="alert" className="text-body-md text-error">
+            Quote expired — rescan to get a fresh rate.
+          </p>
+        )}
+        {secondsLeft !== null && secondsLeft > 0 && (
+          <p className="text-body-sm text-on-surface-variant">Rate locked for {secondsLeft}s</p>
+        )}
 
-      <div className="flex flex-col gap-stack-sm">
-        <Button
-          variant="primary-pill"
-          trailingIcon="lock"
-          disabled={expired || insufficient}
-          onClick={() => void confirm()}
-        >
-          Confirm &amp; Pay
-        </Button>
-        <Button variant="outline-pill" onClick={() => void cancel()}>
-          Cancel
-        </Button>
+        <div className="flex flex-wrap gap-stack-md">
+          <button
+            type="button"
+            onClick={confirm}
+            disabled={expired || insufficient || processing}
+            aria-busy={processing || undefined}
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
+          >
+            Confirm
+            <Icon name="lock" />
+          </button>
+          <button
+            type="button"
+            onClick={cancel}
+            className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-4 font-display font-bold text-primary hover:bg-primary/5 focus:outline-none focus:ring-4 focus:ring-primary/10"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
 
-      {processing ? (
+      {processing && (
         <ProcessingOverlay
-          status={processing}
-          php={amountPhp.toFixed(2)}
+          status={status}
           merchantName={props.merchantName}
+          amountPhpDisplay={displayPhp(amountPhp)}
+          failureReason={failureReason}
         />
-      ) : null}
-    </div>
+      )}
+    </>
   );
 }

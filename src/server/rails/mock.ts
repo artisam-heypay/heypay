@@ -1,3 +1,4 @@
+// src/server/rails/mock.ts
 import "server-only";
 import { Decimal, dec, phpToXlm } from "@/lib/money";
 import type {
@@ -15,6 +16,14 @@ const QUOTE_TTL_MS = 90_000;
 const sleep = (ms: number): Promise<void> =>
   ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve();
 const isForcedFailure = (ref: string): boolean => ref.includes("FAIL");
+
+// Optional deterministic failure trigger for e2e/demo: a magic PHP amount forces the
+// settlement to fail (and thus exercise the refund branch). Unset in prod.
+const failPhpAmount = process.env.MOCK_FAIL_PHP_AMOUNT
+  ? dec(process.env.MOCK_FAIL_PHP_AMOUNT)
+  : null;
+const isFailAmount = (phpAmount: Decimal): boolean =>
+  failPhpAmount !== null && phpAmount.equals(failPhpAmount);
 
 type TradeRecord = { ref: string; xlmAmount: Decimal; polls: number };
 type PayoutRecord = { ref: string; phpAmount: Decimal; polls: number };
@@ -77,7 +86,7 @@ export function createMockProvider(
       await sleep(delayMs);
       const rec = payouts.get(payoutRef);
       if (!rec) return { state: "FAILED" };
-      if (isForcedFailure(rec.ref)) return { state: "FAILED" };
+      if (isForcedFailure(rec.ref) || isFailAmount(rec.phpAmount)) return { state: "FAILED" };
       rec.polls += 1;
       if (rec.polls < 2) return { state: "PENDING" };
       return { state: "SETTLED", netPhp: rec.phpAmount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP) };

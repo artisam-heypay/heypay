@@ -11,15 +11,20 @@ next-env.d.ts
 .env.local
 .env*.local
 
-# build / runtime
-.turbo
-dist
-*.log
-coverage
-*.tsbuildinfo
-
 # prisma generated client
 src/generated
 
+# build / runtime
+dist
+*.log
+coverage
+tsconfig.tsbuildinfo
+
 # os
 .DS_Store
+
+# playwright
+test-results
+playwright-report
+
+certificates

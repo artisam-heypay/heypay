@@ -3,8 +3,6 @@ import { cookieJar } from "../../helpers/mock-cookies";
 import { resetDb } from "../../helpers/db";
 import { NextRequest } from "next/server";
 
-// The mock factory is hoisted above imports, so it constructs the fake itself;
-// we then retrieve that same instance via the mocked import.
 vi.mock("@/server/redis", async () => {
   const { makeFakeRedis } = await import("../../helpers/fake-redis");
   return { redis: makeFakeRedis() };
@@ -17,10 +15,10 @@ vi.mock("@/server/stellar/wallet", () => ({
 
 import { redis } from "@/server/redis";
 import { db } from "@/server/db";
-
-const fake = redis as unknown as { _reset: () => void };
 import { SESSION_COOKIE } from "@/server/auth/sessions";
 import { POST } from "@/app/api/auth/signup/route";
+
+const fake = redis as unknown as { _reset: () => void };
 
 const ctx = { params: Promise.resolve({}) };
 const mk = (body: unknown) =>

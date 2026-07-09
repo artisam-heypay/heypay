@@ -3,26 +3,17 @@ import { resetDb, makePayer, makeMerchant } from "../../../tests/helpers/db";
 import { db } from "@/server/db";
 import { newPaymentReference } from "@/server/payments/reference";
 
-// `vi.mock` is hoisted above imports, so the `add` spy is created via `vi.hoisted`.
-// Mocks use classes (not arrow `vi.fn` impls) because queues.ts constructs them with `new`.
 const { add } = vi.hoisted(() => ({
-  add: vi.fn<(name: string, data: unknown, opts: { jobId: string }) => Promise<void>>(),
+  add: vi.fn(async (_name?: string, _data?: unknown, _opts?: { jobId?: string }) => {}),
 }));
 vi.mock("bullmq", () => ({
-  Queue: class {
-    name: string;
-    add = add;
-    close = vi.fn(async () => {});
-    constructor(name: string) {
-      this.name = name;
-    }
-  },
-  Worker: class {},
+  Queue: vi
+    .fn()
+    .mockImplementation((name: string) => ({ name, add, close: vi.fn(async () => {}) })),
+  Worker: vi.fn(),
 }));
 vi.mock("ioredis", () => ({
-  default: class {
-    quit = vi.fn(async () => {});
-  },
+  default: vi.fn().mockImplementation(() => ({ quit: vi.fn(async () => {}) })),
 }));
 
 import { QUEUE_NAMES, enqueueSettle } from "./queues";
@@ -41,7 +32,7 @@ describe("queues", () => {
     });
   });
 
-  it("enqueueSettle uses jobId `${paymentId}:${status}` for idempotency", async () => {
+  it("enqueueSettle uses jobId `${paymentId}-${status}` for idempotency", async () => {
     const { user } = await makePayer();
     const { merchant } = await makeMerchant();
     const p = await db.payment.create({
@@ -58,7 +49,7 @@ describe("queues", () => {
     });
     await enqueueSettle(p.id);
     expect(add).toHaveBeenCalledTimes(1);
-    const optsArg = add.mock.calls[0]![2];
-    expect(optsArg.jobId).toBe(`${p.id}:AUTHORIZED`);
+    const [, , optsArg] = add.mock.calls[0]!;
+    expect(optsArg?.jobId).toBe(`${p.id}-AUTHORIZED`);
   });
 });

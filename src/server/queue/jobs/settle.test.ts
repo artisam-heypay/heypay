@@ -4,30 +4,20 @@ import { db } from "@/server/db";
 import { dec } from "@/lib/money";
 import { newPaymentReference } from "@/server/payments/reference";
 
-// All spies are created via `vi.hoisted` so the hoisted `vi.mock` factories can reference them.
-const {
-  sendXlm,
-  confirmTx,
-  sellCryptoForPhp,
-  getTradeStatus,
-  cashOutPhpToBank,
-  getPayoutStatus,
-  enqueueSettle,
-} = vi.hoisted(() => ({
-  sendXlm: vi.fn(),
-  confirmTx: vi.fn(),
-  sellCryptoForPhp: vi.fn(),
-  getTradeStatus: vi.fn(),
-  cashOutPhpToBank: vi.fn(),
-  getPayoutStatus: vi.fn(),
-  enqueueSettle: vi.fn<(id: string) => Promise<void>>(),
-}));
-
+// ---- mock externals ----
+const { sendXlm, confirmTx } = vi.hoisted(() => ({ sendXlm: vi.fn(), confirmTx: vi.fn() }));
 vi.mock("@/server/stellar/wallet", () => ({
   walletService: {
     sendXlm: (i: unknown) => sendXlm(i),
     confirmTx: (h: string) => confirmTx(h),
   },
+}));
+
+const { sellCryptoForPhp, getTradeStatus, cashOutPhpToBank, getPayoutStatus } = vi.hoisted(() => ({
+  sellCryptoForPhp: vi.fn(),
+  getTradeStatus: vi.fn(),
+  cashOutPhpToBank: vi.fn(),
+  getPayoutStatus: vi.fn(),
 }));
 vi.mock("@/server/rails", () => ({
   rail: {
@@ -37,9 +27,11 @@ vi.mock("@/server/rails", () => ({
     getPayoutStatus: (r: string) => getPayoutStatus(r),
   },
 }));
+
+// enqueueSettle is a no-op in tests; we drive steps manually.
 vi.mock("@/server/queue/queues", () => ({
   QUEUE_NAMES: { settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" },
-  enqueueSettle: (id: string) => enqueueSettle(id),
+  enqueueSettle: vi.fn(async () => {}),
 }));
 
 process.env.PDAX_XLM_DEPOSIT_ADDRESS = "GHEYPAYDEPOSITADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
@@ -99,10 +91,7 @@ describe("processSettleJob", () => {
     expect(final.netSettledPhp?.toFixed(2)).toBe("98.00");
     expect(final.settledAt).not.toBeNull();
     // bank account decrypted to plaintext for the rail call
-    expect(
-      (cashOutPhpToBank.mock.calls[0]![0] as { bank: { accountNumber: string } }).bank
-        .accountNumber,
-    ).toBe("9988776655");
+    expect(cashOutPhpToBank.mock.calls[0]![0].bank.accountNumber).toBe("9988776655");
 
     const debits = await db.walletTransaction.findMany({
       where: { walletId: wallet.id, type: "PAYMENT_DEBIT" },
@@ -114,7 +103,7 @@ describe("processSettleJob", () => {
     expect(w.cachedXlmBalance.toFixed(7)).toBe("91.6666566"); // 100 - 8.3333434
   });
 
-  it("forced Stellar-confirm failure → FAILED, reservation released, no debit", async () => {
+  it("forced Stellar-confirm failure → FAILED, reservation released, no debit (no double-debit)", async () => {
     sendXlm.mockResolvedValue({ txHash: "STELLARHASH2" });
     confirmTx.mockResolvedValue(false); // tx never landed → funds never left
 
