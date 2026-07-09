@@ -623,58 +623,6 @@
         color: var(--primary);
       }
 
-      /* ---------------- image placeholder ---------------- */
-      .imgph {
-        position: relative;
-        width: 100%;
-        border-radius: var(--r-xl);
-        overflow: hidden;
-        background: linear-gradient(
-          135deg,
-          color-mix(in srgb, var(--primary) 14%, var(--surface-container)) 0%,
-          var(--surface-container) 55%,
-          color-mix(in srgb, var(--secondary) 12%, var(--surface-container)) 100%
-        );
-        border: 1px solid var(--outline-variant);
-        box-shadow: var(--shadow-card);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 220px;
-      }
-      .imgph::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.25'/%3E%3C/svg%3E");
-        mix-blend-mode: multiply;
-        opacity: 0.4;
-      }
-      .imgph-label {
-        position: relative;
-        z-index: 1;
-        text-align: center;
-        padding: 24px;
-        max-width: 460px;
-      }
-      .imgph-label .material-symbols-outlined {
-        font-size: 30px;
-        color: var(--primary);
-      }
-      .imgph-label .t {
-        font-family: var(--font-display);
-        font-weight: 600;
-        font-size: 14px;
-        color: var(--on-surface);
-        margin-top: 8px;
-      }
-      .imgph-label .s {
-        font-size: 12px;
-        color: var(--on-surface-variant);
-        margin-top: 4px;
-        line-height: 1.5;
-      }
-
       /* ---------------- features ---------------- */
       .bento {
         display: grid;
@@ -792,6 +740,128 @@
       }
       .how-art {
         margin-top: 56px;
+      }
+
+      /* ---------------- how-it-works carousel ---------------- */
+      .carousel {
+        position: relative;
+      }
+      .carousel-viewport {
+        overflow: hidden;
+        border-radius: var(--r-xl);
+      }
+      .carousel-track {
+        display: flex;
+        transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+        will-change: transform;
+      }
+      .carousel-slide {
+        flex: 0 0 100%;
+        min-width: 0;
+      }
+      .slide-inner {
+        display: grid;
+        gap: clamp(24px, 4vw, 48px);
+        align-items: center;
+        background: var(--surface-container-lowest);
+        border: 1px solid var(--outline-variant);
+        border-radius: var(--r-xl);
+        box-shadow: var(--shadow-card);
+        padding: clamp(24px, 4vw, 44px);
+      }
+      @media (min-width: 760px) {
+        .slide-inner {
+          grid-template-columns: 288px 1fr;
+        }
+      }
+      .slide-shot {
+        justify-self: center;
+        width: 100%;
+        max-width: 268px;
+        border-radius: 26px;
+        overflow: hidden;
+        border: 7px solid var(--on-surface);
+        box-shadow: 0 20px 50px rgba(0, 188, 212, 0.18);
+        background: var(--on-surface);
+      }
+      .slide-shot img {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .slide-copy .n {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--primary);
+        letter-spacing: 0.05em;
+      }
+      .slide-copy h3 {
+        font-size: clamp(22px, 3vw, 28px);
+        font-weight: 600;
+        margin-top: 10px;
+      }
+      .slide-copy p {
+        color: var(--on-surface-variant);
+        margin-top: 12px;
+        font-size: clamp(15px, 1.6vw, 17px);
+        line-height: 1.6;
+        max-width: 44ch;
+      }
+      .carousel-controls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        margin-top: 28px;
+      }
+      .carousel-btn {
+        width: 48px;
+        height: 48px;
+        border-radius: var(--r-full);
+        background: var(--surface-container-lowest);
+        border: 1px solid var(--outline-variant);
+        box-shadow: var(--shadow-card);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--on-surface);
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease,
+          color 0.15s ease,
+          border-color 0.15s ease;
+      }
+      .carousel-btn:hover {
+        color: var(--primary);
+        border-color: var(--primary);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-card-hover);
+      }
+      .carousel-btn:active {
+        transform: scale(0.94);
+      }
+      .carousel-dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .carousel-dot {
+        width: 10px;
+        height: 10px;
+        padding: 0;
+        border-radius: var(--r-full);
+        background: var(--outline-variant);
+        transition:
+          background 0.2s ease,
+          width 0.2s ease;
+      }
+      .carousel-dot:hover {
+        background: var(--outline);
+      }
+      .carousel-dot[aria-current="true"] {
+        width: 28px;
+        background: var(--primary);
       }
 
       /* ---------------- merchant band ---------------- */
@@ -1445,23 +1515,129 @@
           </div>
 
           <div class="how-art reveal">
-            <!--
-        IMAGE GENERATION PROMPT (how-it-works flow image):
-        A wide three-step horizontal flow illustration on a warm near-white (#fcf9f8)
-        background. Step 1: a hand scanning a QRPH merchant code with a smartphone, a
-        cyan #00bcd4 scan-line glow. Step 2: a floating confirmation card showing a
-        live XLM&rarr;PHP rate with a small pulsing orange #ff9800 "PENDING" badge.
-        Step 3: a settled receipt with a cyan check mark and a PHP amount flowing into a
-        merchant bank-account icon. The three steps are connected by a thin dashed cyan
-        line with small node dots. Flat vector, Material 3 tonal palette, soft cyan-tinted
-        shadows, calm confident fintech mood. No readable text — abstract glyphs and
-        blocks only. 16:7 panoramic.
-      -->
-            <div class="imgph" style="aspect-ratio: 16/7; min-height: 280px">
-              <div class="imgph-label">
-                <span class="material-symbols-outlined">timeline</span>
-                <div class="t">Scan &rarr; Confirm &rarr; Settle flow</div>
-                <div class="s">Placeholder &mdash; see image generation prompt in source.</div>
+            <div
+              class="carousel"
+              id="stepCarousel"
+              role="group"
+              aria-roledescription="carousel"
+              aria-label="How HeyPay works, step by step"
+            >
+              <div class="carousel-viewport">
+                <div class="carousel-track" id="carouselTrack">
+                  <div
+                    class="carousel-slide"
+                    role="group"
+                    aria-roledescription="slide"
+                    aria-label="1 of 4"
+                  >
+                    <div class="slide-inner">
+                      <div class="slide-shot">
+                        <img
+                          src="step1.jpg"
+                          alt="HeyPay scan screen pointed at a merchant's QRPH code, with Use camera and Upload image buttons."
+                          loading="lazy"
+                        />
+                      </div>
+                      <div class="slide-copy">
+                        <div class="n mono">01 &mdash; Scan</div>
+                        <h3>Scan to pay</h3>
+                        <p>
+                          Point your camera at any QRPH code &mdash; or upload a screenshot. HeyPay
+                          resolves the merchant and locks a live XLM&rarr;PHP rate before you
+                          confirm.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    class="carousel-slide"
+                    role="group"
+                    aria-roledescription="slide"
+                    aria-label="2 of 4"
+                  >
+                    <div class="slide-inner">
+                      <div class="slide-shot">
+                        <img
+                          src="step2.jpg"
+                          alt="HeyPay confirm-payment screen showing the peso amount, exchange rate, network fee, and a rate locked with a countdown."
+                          loading="lazy"
+                        />
+                      </div>
+                      <div class="slide-copy">
+                        <div class="n mono">02 &mdash; Confirm</div>
+                        <h3>Confirm the rate</h3>
+                        <p>
+                          Enter the amount in pesos and see the exact XLM cost, network fee, and
+                          total &mdash; all against a rate locked with a live countdown. One tap to
+                          confirm.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    class="carousel-slide"
+                    role="group"
+                    aria-roledescription="slide"
+                    aria-label="3 of 4"
+                  >
+                    <div class="slide-inner">
+                      <div class="slide-shot">
+                        <img
+                          src="step3.jpg"
+                          alt="HeyPay processing screen tracking each step from XLM on Stellar through conversion to the merchant bank payout."
+                          loading="lazy"
+                        />
+                      </div>
+                      <div class="slide-copy">
+                        <div class="n mono">03 &mdash; Settle</div>
+                        <h3>Watch it settle</h3>
+                        <p>
+                          A live overlay follows every step &mdash; the Stellar transfer, on-chain
+                          confirmation, XLM&rarr;PHP conversion, and the peso payout to the
+                          merchant's bank.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    class="carousel-slide"
+                    role="group"
+                    aria-roledescription="slide"
+                    aria-label="4 of 4"
+                  >
+                    <div class="slide-inner">
+                      <div class="slide-shot">
+                        <img
+                          src="step4.jpg"
+                          alt="HeyPay transactions screen showing a completed payment marked Settled, with the XLM spent and its peso value."
+                          loading="lazy"
+                        />
+                      </div>
+                      <div class="slide-copy">
+                        <div class="n mono">04 &mdash; Done</div>
+                        <h3>Settled in pesos</h3>
+                        <p>
+                          Pesos land in the merchant's bank account and the payment appears in your
+                          history marked <strong>Settled</strong> &mdash; with the XLM spent and its
+                          peso value.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="carousel-controls">
+                <button class="carousel-btn" id="carouselPrev" type="button" aria-label="Previous step">
+                  <span class="material-symbols-outlined">arrow_back</span>
+                </button>
+                <div class="carousel-dots" id="carouselDots" role="tablist" aria-label="Select step"></div>
+                <button class="carousel-btn" id="carouselNext" type="button" aria-label="Next step">
+                  <span class="material-symbols-outlined">arrow_forward</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1735,6 +1911,123 @@
           el.style.transitionDelay = (i % 4) * 60 + "ms";
           io.observe(el);
         });
+      })();
+
+      // how-it-works carousel
+      (function () {
+        var root = document.getElementById("stepCarousel");
+        var track = document.getElementById("carouselTrack");
+        var dotsWrap = document.getElementById("carouselDots");
+        if (!root || !track || !dotsWrap) return;
+
+        var slides = track.querySelectorAll(".carousel-slide");
+        var count = slides.length;
+        if (!count) return;
+        var index = 0;
+        var timer = null;
+        var AUTOPLAY_MS = 6000;
+        var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        // build dots
+        var dots = [];
+        for (var i = 0; i < count; i++) {
+          var dot = document.createElement("button");
+          dot.type = "button";
+          dot.className = "carousel-dot";
+          dot.setAttribute("role", "tab");
+          dot.setAttribute("aria-label", "Go to step " + (i + 1));
+          (function (n) {
+            dot.addEventListener("click", function () {
+              go(n, true);
+            });
+          })(i);
+          dotsWrap.appendChild(dot);
+          dots.push(dot);
+        }
+
+        function render() {
+          track.style.transform = "translateX(" + -index * 100 + "%)";
+          for (var j = 0; j < count; j++) {
+            dots[j].setAttribute("aria-current", j === index ? "true" : "false");
+            slides[j].setAttribute("aria-hidden", j === index ? "false" : "true");
+          }
+        }
+
+        function go(n, userAction) {
+          index = (n + count) % count;
+          render();
+          if (userAction) restart();
+        }
+
+        function next() {
+          go(index + 1, false);
+        }
+
+        function stop() {
+          if (timer) {
+            clearInterval(timer);
+            timer = null;
+          }
+        }
+
+        function restart() {
+          stop();
+          if (!reduceMotion) timer = setInterval(next, AUTOPLAY_MS);
+        }
+
+        document.getElementById("carouselPrev").addEventListener("click", function () {
+          go(index - 1, true);
+        });
+        document.getElementById("carouselNext").addEventListener("click", function () {
+          go(index + 1, true);
+        });
+
+        root.addEventListener("mouseenter", stop);
+        root.addEventListener("mouseleave", restart);
+        root.addEventListener("focusin", stop);
+        root.addEventListener("focusout", restart);
+        root.addEventListener("keydown", function (e) {
+          if (e.key === "ArrowLeft") {
+            go(index - 1, true);
+          } else if (e.key === "ArrowRight") {
+            go(index + 1, true);
+          }
+        });
+        document.addEventListener("visibilitychange", function () {
+          if (document.hidden) {
+            stop();
+          } else {
+            restart();
+          }
+        });
+
+        // touch / swipe
+        var startX = null;
+        track.addEventListener(
+          "touchstart",
+          function (e) {
+            startX = e.touches[0].clientX;
+            stop();
+          },
+          { passive: true },
+        );
+        track.addEventListener(
+          "touchend",
+          function (e) {
+            if (startX === null) return;
+            var dx = e.changedTouches[0].clientX - startX;
+            if (Math.abs(dx) > 40) {
+              go(index + (dx < 0 ? 1 : -1), true);
+            } else {
+              restart();
+            }
+            startX = null;
+          },
+          { passive: true },
+        );
+
+        render();
+        restart();
       })();
     </script>
   </body>
