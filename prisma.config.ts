@@ -7,8 +7,7 @@ import { defineConfig, env } from "prisma/config";
 // database makes Prisma refuse to run ("shadow database appears to be the same as the
 // main database"), which was breaking the Railway release command.
 const shadowDatabaseUrl = process.env.SHADOW_DATABASE_URL;
-const useShadow =
-  !!shadowDatabaseUrl && shadowDatabaseUrl !== process.env.DATABASE_URL;
+const useShadow = !!shadowDatabaseUrl && shadowDatabaseUrl !== process.env.DATABASE_URL;
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
