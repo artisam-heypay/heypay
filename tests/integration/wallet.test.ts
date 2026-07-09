@@ -4,35 +4,31 @@ import { resetDb, makePayer } from "../helpers/db";
 import { db } from "@/server/db";
 import { dec } from "@/lib/money";
 
-const { sessionUser, syncWalletDeposits } = vi.hoisted(() => ({
+const { sessionUser } = vi.hoisted(() => ({
   sessionUser: {
     current: null as null | { id: string; username: string; role: "PAYER"; isActive: boolean },
   },
-  syncWalletDeposits: vi.fn(),
 }));
-
-vi.mock("@/server/auth/sessions", async () => {
-  const { unauthorized } = await import("@/lib/errors");
-  return {
-    requireUser: vi.fn(async () => {
-      if (!sessionUser.current) throw unauthorized();
-      return sessionUser.current;
-    }),
-  };
-});
-vi.mock("@/server/rails", async () => {
-  const { dec: d } = await import("@/lib/money");
-  return {
-    rail: {
-      getQuote: vi.fn(async () => ({
-        rate: d("12"),
-        phpAmount: d("0"),
-        xlmAmount: d("0"),
-        expiresAt: new Date(),
-      })),
-    },
-  };
-});
+vi.mock("@/server/auth/sessions", () => ({
+  requireUser: vi.fn(async () => {
+    if (!sessionUser.current) {
+      const { AppError } = await import("@/lib/errors");
+      throw new AppError("UNAUTHORIZED", "no session", 401);
+    }
+    return sessionUser.current;
+  }),
+}));
+vi.mock("@/server/rails", () => ({
+  rail: {
+    getQuote: vi.fn(async () => ({
+      rate: dec("12"),
+      phpAmount: dec("0"),
+      xlmAmount: dec("0"),
+      expiresAt: new Date(),
+    })),
+  },
+}));
+const { syncWalletDeposits } = vi.hoisted(() => ({ syncWalletDeposits: vi.fn() }));
 vi.mock("@/server/queue/jobs/deposit-poller", () => ({
   syncWalletDeposits: (id: string) => syncWalletDeposits(id),
 }));

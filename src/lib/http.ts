@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import type { Role } from "@/generated/prisma";
+import type { Role } from "@/generated/prisma/client";
 import { AppError, badRequest, serverError, type ErrorEnvelope } from "./errors";
+import { captureException } from "@/server/observability/error-tracking";
 
 export type HandlerContext = {
   params: Record<string, string>;
@@ -40,6 +41,12 @@ export function route(
       if (appErr.status >= 500) {
         // Full detail stays server-side; clients only see the envelope.
         console.error("[route]", appErr.code, appErr.message, err);
+        captureException(err, {
+          source: "route",
+          code: appErr.code,
+          method: req.method,
+          path: req.nextUrl.pathname,
+        });
       }
       const body: ErrorEnvelope = appErr.toEnvelope();
       return NextResponse.json(body, { status: appErr.status });

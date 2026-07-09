@@ -4,10 +4,7 @@ import { resetDb, makePayer, makeMerchant } from "../../../tests/helpers/db";
 import { db } from "@/server/db";
 import { newPaymentReference } from "./reference";
 
-// `vi.mock` is hoisted above imports, so the spy is created via `vi.hoisted`.
-const { enqueueSettle } = vi.hoisted(() => ({
-  enqueueSettle: vi.fn<(id: string) => Promise<void>>(),
-}));
+const enqueueSettle = vi.fn(async (_id: string) => {});
 vi.mock("@/server/queue/queues", () => ({
   QUEUE_NAMES: { settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" },
   enqueueSettle: (id: string) => enqueueSettle(id),

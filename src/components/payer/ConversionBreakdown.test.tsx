@@ -1,14 +1,11 @@
-// @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
-import { render, cleanup } from "@testing-library/react";
-import { dec } from "@/lib/money";
+import { describe, it, expect } from "vitest";
+import { render, screen } from "@testing-library/react";
 import { ConversionBreakdown } from "./ConversionBreakdown";
-
-afterEach(cleanup);
+import { dec } from "@/lib/money";
 
 describe("ConversionBreakdown", () => {
-  it("shows requested PHP, the rate, the network fee, and the total XLM deduction", () => {
-    const { container } = render(
+  it("shows requested PHP, the rate, network fee, and total XLM deduction", () => {
+    render(
       <ConversionBreakdown
         amountPhp={dec("500.00")}
         quotedRate={dec("59.40")}
@@ -16,9 +13,10 @@ describe("ConversionBreakdown", () => {
         networkFeeXlm={dec("0.00001")}
       />,
     );
-    expect(container.textContent).toContain("₱500.00");
-    expect(container.textContent).toContain("1 XLM = ₱59.40");
-    expect(container.textContent).toContain("0.0000100 XLM"); // network fee
-    expect(container.textContent).toContain("8.4175184 XLM"); // total = amount + fee
+    expect(screen.getByText("₱500.00")).toBeInTheDocument();
+    expect(screen.getByText("1 XLM = ₱59.40")).toBeInTheDocument();
+    expect(screen.getByText("0.0000100 XLM")).toBeInTheDocument();
+    // total deduction = 8.4175084 + 0.0000100 = 8.4175184
+    expect(screen.getByText("8.4175184 XLM")).toBeInTheDocument();
   });
 });

@@ -18,7 +18,7 @@ describe("parseTlv", () => {
 
   it("exposes the nested merchant-account-info template (tag 26)", () => {
     const map = toMap(parseTlv(STATIC));
-    const sub = parseTemplate(map["26"] ?? "");
+    const sub = parseTemplate(map["26"]!);
     expect(sub["00"]).toBe("com.heypay"); // GUI / acquirer
     expect(sub["01"]).toBe("HEYPAY12345"); // merchant id
   });

@@ -15,6 +15,7 @@ to PHP via the **PDAX** exchange API and settles PHP into the merchant's
 registered **PH bank account**.
 
 ### Happy path (QRPH shown to payer)
+
 1. Payer opens HeyPay and authenticates.
 2. Payer scans an existing QRPH code (or uploads an image of it).
 3. The QRPH resolves to a **registered HeyPay merchant**.
@@ -23,10 +24,12 @@ registered **PH bank account**.
 6. HeyPay **sends PHP → merchant's PH bank account** via the PDAX cash-out API.
 
 ### Merchant setup
+
 A business owner creates a **Merchant** account and saves (a) the **decoded value
 of their QRPH** and (b) the **bank account** that will receive PHP.
 
 ### Scope for this version
+
 - Web only (responsive; desktop + mobile web).
 - Payers hold **custodial** Stellar wallets inside HeyPay.
 - Payers **prefund** their account with XLM; payments draw from the prefunded
@@ -36,6 +39,7 @@ of their QRPH** and (b) the **bank account** that will receive PHP.
 - Authentication is **basic username + password**, with a **seeded admin**.
 
 ### Explicitly out of scope (note as TODO/feature-flag stubs)
+
 - USDT / USDC payment assets (model for it; gate behind a flag).
 - KYC/AML onboarding, real OTP/2FA UX, fraud scoring.
 - Mobile native apps.
@@ -46,11 +50,11 @@ of their QRPH** and (b) the **bank account** that will receive PHP.
 
 ## 2. Personas & roles
 
-| Role | Description | Key surfaces |
-|---|---|---|
-| `ADMIN` | Seeded operator account. Can view users, merchants, all transactions, and system health. | `/admin/*` |
-| `PAYER` | Consumer with a custodial XLM wallet. Prefunds, scans, pays, views own history. | `/payer/*` |
-| `MERCHANT` | Business owner. Onboards QRPH + bank, receives PHP, views business history. | `/merchant/*` |
+| Role       | Description                                                                              | Key surfaces  |
+| ---------- | ---------------------------------------------------------------------------------------- | ------------- |
+| `ADMIN`    | Seeded operator account. Can view users, merchants, all transactions, and system health. | `/admin/*`    |
+| `PAYER`    | Consumer with a custodial XLM wallet. Prefunds, scans, pays, views own history.          | `/payer/*`    |
+| `MERCHANT` | Business owner. Onboards QRPH + bank, receives PHP, views business history.              | `/merchant/*` |
 
 A single `User` has exactly one `role`. A `MERCHANT` user also has one `Merchant`
 profile; a `PAYER` user has one `CustodialWallet`. (Keep them separable so a
@@ -89,6 +93,7 @@ future user could hold both; for v1 enforce one role per user.)
 ```
 
 ### Settlement state machine (a `Payment`)
+
 ```
 CREATED
   → QUOTED            (rate locked, XLM amount computed)
@@ -102,6 +107,7 @@ CREATED
   → FAILED            (any step failed; see failureReason) [terminal]
   → REFUND_PENDING / REFUNDED  (XLM returned to payer wallet)  [terminal]
 ```
+
 Each transition is persisted, idempotent, and retried with backoff by the worker.
 
 ---
@@ -307,6 +313,7 @@ model IdempotencyKey {
 ```
 
 ### Seed script (`prisma/seed.ts`)
+
 - Create the **admin** user from env (`ADMIN_USERNAME`, `ADMIN_PASSWORD`) with
   `role=ADMIN`, password hashed with **argon2id**. Idempotent (upsert by username).
 - Optionally seed a **demo payer** (with a testnet custodial wallet that is
@@ -325,40 +332,44 @@ checks the session cookie and the route's required role; unauthorized → `/logi
 wrong role → `403`. Use route groups `(auth)`, `(payer)`, `(merchant)`, `(admin)`.
 
 ### Public / auth
-| Route | Type | Purpose |
-|---|---|---|
-| `/` | Server | Marketing/redirect: if authed, send to role dashboard; else to `/login`. |
-| `/login` | Client form → Server Action | Username + password sign-in. |
-| `/signup` | Client form | Create `PAYER` or `MERCHANT` account (role chooser). |
-| `/logout` | Action | Destroy session, redirect to `/login`. |
+
+| Route     | Type                        | Purpose                                                                  |
+| --------- | --------------------------- | ------------------------------------------------------------------------ |
+| `/`       | Server                      | Marketing/redirect: if authed, send to role dashboard; else to `/login`. |
+| `/login`  | Client form → Server Action | Username + password sign-in.                                             |
+| `/signup` | Client form                 | Create `PAYER` or `MERCHANT` account (role chooser).                     |
+| `/logout` | Action                      | Destroy session, redirect to `/login`.                                   |
 
 ### Payer
-| Route | Purpose | Mirrors mock |
-|---|---|---|
-| `/payer/dashboard` | Total balance (XLM + ≈PHP), Prefund/Send, Scan QRPH CTA, recent payments, prefund panel (custodial address + QR + copy), network status. | *Payer Dashboard* |
-| `/payer/scan` | Scan QRPH via camera (getUserMedia) **or** upload QR image. Decodes → resolves merchant → routes to confirm. | *Scan flow* |
-| `/payer/pay/[paymentId]/confirm` | Confirm screen: merchant info, requested PHP, **live PDAX conversion** (rate, total XLM deduction, network fee), wallet source, Confirm/Cancel. Confirm → processing overlay → success. | *Confirm Payment* |
-| `/payer/prefund` | Custodial XLM deposit address + QR, network reminder (Stellar, no memo), pending deposit detection. | *Prefund Account* |
-| `/payer/transactions` | Personal transaction history (XLM debited + PHP, merchant, status, date). Detail drawer per tx. | *Recent Payments* |
-| `/payer/settings` | Profile, change password. | — |
+
+| Route                            | Purpose                                                                                                                                                                                 | Mirrors mock      |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `/payer/dashboard`               | Total balance (XLM + ≈PHP), Prefund/Send, Scan QRPH CTA, recent payments, prefund panel (custodial address + QR + copy), network status.                                                | _Payer Dashboard_ |
+| `/payer/scan`                    | Scan QRPH via camera (getUserMedia) **or** upload QR image. Decodes → resolves merchant → routes to confirm.                                                                            | _Scan flow_       |
+| `/payer/pay/[paymentId]/confirm` | Confirm screen: merchant info, requested PHP, **live PDAX conversion** (rate, total XLM deduction, network fee), wallet source, Confirm/Cancel. Confirm → processing overlay → success. | _Confirm Payment_ |
+| `/payer/prefund`                 | Custodial XLM deposit address + QR, network reminder (Stellar, no memo), pending deposit detection.                                                                                     | _Prefund Account_ |
+| `/payer/transactions`            | Personal transaction history (XLM debited + PHP, merchant, status, date). Detail drawer per tx.                                                                                         | _Recent Payments_ |
+| `/payer/settings`                | Profile, change password.                                                                                                                                                               | —                 |
 
 ### Merchant
-| Route | Purpose | Mirrors mock |
-|---|---|---|
-| `/merchant/onboarding` | 4-step wizard: (1) Business Identity, (2) Settlement Account (bank radio-cards + account number), (3) Link QRPH (upload image or scan), (4) Final Review → "Go Live". Live payer-preview pane. | *Merchant Onboarding* |
-| `/merchant/dashboard` | Earnings (Total Settled PHP + MoM), Pending XLM trades, Business Transactions table (customer, received XLM, settlement PHP, status), Business QR + settlement bank, support card, setup-completion banner if incomplete. | *Merchant Dashboard* |
-| `/merchant/transactions` | Full settlement history with filters (status, date range), CSV export. | *Business Transactions* |
-| `/merchant/qr` | View/download business QRPH, share payment link. | *My Business QR* |
-| `/merchant/settings` | Edit business name/logo, bank account, re-link QRPH, change password. | — |
+
+| Route                    | Purpose                                                                                                                                                                                                                   | Mirrors mock            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `/merchant/onboarding`   | 4-step wizard: (1) Business Identity, (2) Settlement Account (bank radio-cards + account number), (3) Link QRPH (upload image or scan), (4) Final Review → "Go Live". Live payer-preview pane.                            | _Merchant Onboarding_   |
+| `/merchant/dashboard`    | Earnings (Total Settled PHP + MoM), Pending XLM trades, Business Transactions table (customer, received XLM, settlement PHP, status), Business QR + settlement bank, support card, setup-completion banner if incomplete. | _Merchant Dashboard_    |
+| `/merchant/transactions` | Full settlement history with filters (status, date range), CSV export.                                                                                                                                                    | _Business Transactions_ |
+| `/merchant/qr`           | View/download business QRPH, share payment link.                                                                                                                                                                          | _My Business QR_        |
+| `/merchant/settings`     | Edit business name/logo, bank account, re-link QRPH, change password.                                                                                                                                                     | —                       |
 
 ### Admin
-| Route | Purpose |
-|---|---|
-| `/admin` | System overview: counts, volume (XLM/PHP), recent failures. |
-| `/admin/users` | List/search users, deactivate. |
-| `/admin/merchants` | Review/activate/suspend merchants. |
-| `/admin/payments` | All payments with full state timeline; manual retry/refund triggers. |
-| `/admin/health` | Stellar/PDAX/Redis connectivity, queue depth. |
+
+| Route              | Purpose                                                              |
+| ------------------ | -------------------------------------------------------------------- |
+| `/admin`           | System overview: counts, volume (XLM/PHP), recent failures.          |
+| `/admin/users`     | List/search users, deactivate.                                       |
+| `/admin/merchants` | Review/activate/suspend merchants.                                   |
+| `/admin/payments`  | All payments with full state timeline; manual retry/refund triggers. |
+| `/admin/health`    | Stellar/PDAX/Redis connectivity, queue depth.                        |
 
 ---
 
@@ -370,50 +381,56 @@ Validate every input with **Zod**. Use proper status codes and a consistent erro
 envelope: `{ "error": { "code": string, "message": string, "details"?: any } }`.
 
 ### Auth
-| Method | Path | Body | Returns | Notes |
-|---|---|---|---|---|
-| POST | `/api/auth/signup` | `{username, password, role}` | `{user}` + session cookie | role ∈ {PAYER, MERCHANT}. Creates wallet for PAYER. |
-| POST | `/api/auth/login` | `{username, password}` | `{user}` + session cookie | Rate-limited; generic error on failure. |
-| POST | `/api/auth/logout` | — | `204` | Revokes session. |
-| GET | `/api/auth/session` | — | `{user|null}` | Current session. |
-| POST | `/api/auth/password` | `{currentPassword, newPassword}` | `204` | Re-auth required. |
+
+| Method | Path                 | Body                             | Returns                   | Notes                                               |
+| ------ | -------------------- | -------------------------------- | ------------------------- | --------------------------------------------------- |
+| POST   | `/api/auth/signup`   | `{username, password, role}`     | `{user}` + session cookie | role ∈ {PAYER, MERCHANT}. Creates wallet for PAYER. |
+| POST   | `/api/auth/login`    | `{username, password}`           | `{user}` + session cookie | Rate-limited; generic error on failure.             |
+| POST   | `/api/auth/logout`   | —                                | `204`                     | Revokes session.                                    |
+| GET    | `/api/auth/session`  | —                                | `{user                    | null}`                                              | Current session. |
+| POST   | `/api/auth/password` | `{currentPassword, newPassword}` | `204`                     | Re-auth required.                                   |
 
 ### Payer wallet
-| Method | Path | Returns | Notes |
-|---|---|---|---|
-| GET | `/api/wallet` | `{publicKey, balanceXlm, reservedXlm, availableXlm, approxPhp}` | Available = balance − reserved. |
-| GET | `/api/wallet/deposit-address` | `{publicKey, qrSvg, network:"stellar", memoRequired:false}` | For prefund. |
-| POST | `/api/wallet/sync` | `{balanceXlm}` | Reconcile from Horizon; also detects new prefund deposits → `WalletTransaction`. |
-| GET | `/api/wallet/transactions?cursor=&limit=` | `{items, nextCursor}` | Wallet ledger (deposits/debits/refunds). |
+
+| Method | Path                                      | Returns                                                         | Notes                                                                            |
+| ------ | ----------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| GET    | `/api/wallet`                             | `{publicKey, balanceXlm, reservedXlm, availableXlm, approxPhp}` | Available = balance − reserved.                                                  |
+| GET    | `/api/wallet/deposit-address`             | `{publicKey, qrSvg, network:"stellar", memoRequired:false}`     | For prefund.                                                                     |
+| POST   | `/api/wallet/sync`                        | `{balanceXlm}`                                                  | Reconcile from Horizon; also detects new prefund deposits → `WalletTransaction`. |
+| GET    | `/api/wallet/transactions?cursor=&limit=` | `{items, nextCursor}`                                           | Wallet ledger (deposits/debits/refunds).                                         |
 
 ### QRPH + payments (payer)
-| Method | Path | Body | Returns | Notes |
-|---|---|---|---|---|
-| POST | `/api/qrph/decode` | `{raw?}` or multipart `{image}` | `{decoded, merchant?}` | Parses EMVCo QRPH; resolves to a registered `Merchant`. If amount is embedded (tag 54) include it. |
-| POST | `/api/payments/quote` | `{merchantId, amountPhp}` | `{paymentId, amountPhp, rate, amountXlm, networkFeeXlm, quoteExpiresAt}` | Locks a rate snapshot (TTL ~60–120s). Creates `Payment(status=QUOTED)`. Verifies payer has sufficient available XLM. |
-| POST | `/api/payments/[id]/confirm` | `{}` + `Idempotency-Key` | `{paymentId, status}` | Requires quote not expired & funds available. Reserves XLM, sets `AUTHORIZED`, enqueues settlement job. Returns immediately (async). |
-| GET | `/api/payments/[id]` | `{payment, events}` | — | Poll for live status (drives the processing overlay). Consider SSE (`/api/payments/[id]/stream`). |
-| POST | `/api/payments/[id]/cancel` | — | `{status}` | Only if not yet `STELLAR_SUBMITTED`. |
+
+| Method | Path                         | Body                            | Returns                                                                  | Notes                                                                                                                                |
+| ------ | ---------------------------- | ------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/api/qrph/decode`           | `{raw?}` or multipart `{image}` | `{decoded, merchant?}`                                                   | Parses EMVCo QRPH; resolves to a registered `Merchant`. If amount is embedded (tag 54) include it.                                   |
+| POST   | `/api/payments/quote`        | `{merchantId, amountPhp}`       | `{paymentId, amountPhp, rate, amountXlm, networkFeeXlm, quoteExpiresAt}` | Locks a rate snapshot (TTL ~60–120s). Creates `Payment(status=QUOTED)`. Verifies payer has sufficient available XLM.                 |
+| POST   | `/api/payments/[id]/confirm` | `{}` + `Idempotency-Key`        | `{paymentId, status}`                                                    | Requires quote not expired & funds available. Reserves XLM, sets `AUTHORIZED`, enqueues settlement job. Returns immediately (async). |
+| GET    | `/api/payments/[id]`         | `{payment, events}`             | —                                                                        | Poll for live status (drives the processing overlay). Consider SSE (`/api/payments/[id]/stream`).                                    |
+| POST   | `/api/payments/[id]/cancel`  | —                               | `{status}`                                                               | Only if not yet `STELLAR_SUBMITTED`.                                                                                                 |
 
 ### Merchant
-| Method | Path | Body | Returns | Notes |
-|---|---|---|---|---|
-| POST | `/api/merchant` | `{businessName}` | `{merchant}` | Step 1. Creates `DRAFT`. |
-| GET | `/api/merchant/me` | — | `{merchant}` | — |
-| PATCH | `/api/merchant/me` | partial | `{merchant}` | Update business/bank fields. |
-| POST | `/api/merchant/settlement` | `{bankCode, accountName, accountNumber}` | `{merchant}` | Step 2. Validates bank code; stores encrypted account no. + last4. |
-| POST | `/api/merchant/qrph` | `{raw?}` or multipart `{image}` | `{merchant, decoded}` | Step 3. Decode + persist QRPH + uploaded image to S3. |
-| POST | `/api/merchant/go-live` | — | `{merchant}` | Step 4. Validates completeness → `ACTIVE` (or `PENDING_REVIEW`). |
-| GET | `/api/merchant/transactions?status=&from=&to=&cursor=` | `{items, nextCursor}` | Settlement history. |
-| GET | `/api/merchant/earnings` | `{totalSettledPhp, momChangePct, pendingXlm}` | Dashboard cards. |
-| GET | `/api/merchant/qr` | `{qrphRaw, qrSvg, paymentLink}` | Business QR + share link. |
+
+| Method | Path                                                   | Body                                          | Returns                   | Notes                                                              |
+| ------ | ------------------------------------------------------ | --------------------------------------------- | ------------------------- | ------------------------------------------------------------------ |
+| POST   | `/api/merchant`                                        | `{businessName}`                              | `{merchant}`              | Step 1. Creates `DRAFT`.                                           |
+| GET    | `/api/merchant/me`                                     | —                                             | `{merchant}`              | —                                                                  |
+| PATCH  | `/api/merchant/me`                                     | partial                                       | `{merchant}`              | Update business/bank fields.                                       |
+| POST   | `/api/merchant/settlement`                             | `{bankCode, accountName, accountNumber}`      | `{merchant}`              | Step 2. Validates bank code; stores encrypted account no. + last4. |
+| POST   | `/api/merchant/qrph`                                   | `{raw?}` or multipart `{image}`               | `{merchant, decoded}`     | Step 3. Decode + persist QRPH + uploaded image to S3.              |
+| POST   | `/api/merchant/go-live`                                | —                                             | `{merchant}`              | Step 4. Validates completeness → `ACTIVE` (or `PENDING_REVIEW`).   |
+| GET    | `/api/merchant/transactions?status=&from=&to=&cursor=` | `{items, nextCursor}`                         | Settlement history.       |
+| GET    | `/api/merchant/earnings`                               | `{totalSettledPhp, momChangePct, pendingXlm}` | Dashboard cards.          |
+| GET    | `/api/merchant/qr`                                     | `{qrphRaw, qrSvg, paymentLink}`               | Business QR + share link. |
 
 ### File uploads
-| Method | Path | Returns | Notes |
-|---|---|---|---|
-| POST | `/api/uploads/presign` | `{url, fields, key}` | Presigned S3/MinIO POST for QRPH/logo. Validate content-type + size server-side; re-validate the object after upload. |
+
+| Method | Path                   | Returns              | Notes                                                                                                                 |
+| ------ | ---------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/uploads/presign` | `{url, fields, key}` | Presigned S3/MinIO POST for QRPH/logo. Validate content-type + size server-side; re-validate the object after upload. |
 
 ### Admin
+
 `GET /api/admin/overview`, `GET /api/admin/users`, `PATCH /api/admin/users/[id]`
 (activate/deactivate), `GET /api/admin/merchants`, `PATCH /api/admin/merchants/[id]`
 (status), `GET /api/admin/payments`, `POST /api/admin/payments/[id]/retry`,
@@ -421,15 +438,17 @@ envelope: `{ "error": { "code": string, "message": string, "details"?: any } }`.
 `role=ADMIN`.
 
 ### Webhooks (server-to-server)
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/api/webhooks/pdax` | Receive PDAX trade/cash-out status callbacks **if** the partner integration provides them. Verify signature/allowlist source IP. If PDAX offers no webhook for the relevant event, fall back to **polling** in the worker. Idempotent by external ref. |
+
+| Method | Path                 | Notes                                                                                                                                                                                                                                                  |
+| ------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/api/webhooks/pdax` | Receive PDAX trade/cash-out status callbacks **if** the partner integration provides them. Verify signature/allowlist source IP. If PDAX offers no webhook for the relevant event, fall back to **polling** in the worker. Idempotent by external ref. |
 
 ---
 
 ## 7. Third-party integrations
 
 ### 7.1 Stellar (`@stellar/stellar-sdk` v15.x)
+
 - **Networks:** testnet (`https://horizon-testnet.stellar.org`, friendbot for
   funding) in dev; mainnet (`https://horizon.stellar.org`) in prod. Drive via
   `STELLAR_NETWORK`, `STELLAR_HORIZON_URL`, `STELLAR_NETWORK_PASSPHRASE`.
@@ -442,7 +461,7 @@ envelope: `{ "error": { "code": string, "message": string, "details"?: any } }`.
   cached balance. Account must be created/funded (≥1 XLM base reserve) before use;
   surface "activate by depositing ≥ X XLM".
 - **Paying:** build a `payment` operation moving the payer's `amountXlm +
-  networkFeeXlm` from the custodial account to **HeyPay's PDAX XLM deposit
+networkFeeXlm` from the custodial account to **HeyPay's PDAX XLM deposit
   address** (`PDAX_XLM_DEPOSIT_ADDRESS`), with a memo tying it to the `Payment`
   (`MEMO_TEXT` or `MEMO_ID`). Sign server-side, submit via Horizon, store
   `stellarTxHash`, wait for confirmation (poll tx result).
@@ -450,7 +469,9 @@ envelope: `{ "error": { "code": string, "message": string, "details"?: any } }`.
   floats. Set `setTimeout(...)` (timebounds) and a sane `fee` (`fetchBaseFee`).
 
 ### 7.2 PDAX REST API (server-side only)
+
 Reference: PDAX Exchange REST API (`https://doc.restapi.pdax.ph`).
+
 - **Base URLs:** staging `https://services-stage.pdax.ph/api/exchange/v1`;
   production base from PDAX once credentialed (`institutions.pdax.ph`). Drive via
   `PDAX_BASE_URL`.
@@ -481,6 +502,7 @@ Reference: PDAX Exchange REST API (`https://doc.restapi.pdax.ph`).
   Select via `PAYMENT_RAIL=pdax|mock`.
 
 ### 7.3 QRPH decoding
+
 - QRPH follows the **EMVCo merchant-presented QR** spec (BSP National QR Standard).
   Parse the TLV string: tag `00` (payload format), `01` (point of init: 11 static
   / 12 dynamic), merchant account info templates (`26`–`51`), `52` MCC, `53`
@@ -497,6 +519,7 @@ Reference: PDAX Exchange REST API (`https://doc.restapi.pdax.ph`).
   with HeyPay".
 
 ### 7.4 Railway (infra)
+
 - **Postgres** plugin → `DATABASE_URL`.
 - **Redis** plugin → `REDIS_URL` (BullMQ).
 - **Object storage**: Railway volume mounted to the worker/web, or a Railway
@@ -511,6 +534,7 @@ Reference: PDAX Exchange REST API (`https://doc.restapi.pdax.ph`).
 ## 8. Core flows (sequence detail)
 
 ### 8.1 Payer prefund
+
 1. `/payer/prefund` → `GET /api/wallet/deposit-address` shows `G...` + QR + "use
    Stellar network, no memo required".
 2. Payer sends XLM from an external wallet/exchange.
@@ -519,6 +543,7 @@ Reference: PDAX Exchange REST API (`https://doc.restapi.pdax.ph`).
 4. Dashboard balance updates (poll or SSE).
 
 ### 8.2 Pay a merchant (the headline flow)
+
 1. `/payer/scan` decodes QRPH (camera/upload) → `POST /api/qrph/decode` →
    resolves `Merchant` (+ embedded amount if dynamic QR; else prompt for amount).
 2. `POST /api/payments/quote {merchantId, amountPhp}` → locks rate, computes
@@ -544,6 +569,7 @@ Reference: PDAX Exchange REST API (`https://doc.restapi.pdax.ph`).
    {merchant}").
 
 ### 8.3 Merchant onboarding
+
 Steps map 1:1 to the wizard. `go-live` requires: business name, decoded+CRC-valid
 QRPH, and a settlement bank account. On success status → `ACTIVE` (or
 `PENDING_REVIEW` if you keep an admin gate).
@@ -551,6 +577,7 @@ QRPH, and a settlement bank account. On success status → `ACTIVE` (or
 ---
 
 ## 9. Validation, money & correctness rules
+
 - **Decimals only** for money (Prisma `Decimal` + `decimal.js`/BigNumber in code).
   XLM 7 dp, PHP 2 dp. Round half-up at display; never accumulate float error.
 - **Rate locking:** a confirmed payment must use the `quotedRate`; if the quote
@@ -567,6 +594,7 @@ QRPH, and a settlement bank account. On success status → `ACTIVE` (or
 ---
 
 ## 10. Non-functional requirements
+
 - **Security:** see `AGENT.md` (auth, secrets, encryption, headers, rate limits).
 - **Observability:** structured logs with a `paymentId` correlation id; capture
   every `PaymentEvent`; health endpoint; error tracking (e.g. Sentry).
@@ -584,6 +612,7 @@ QRPH, and a settlement bank account. On success status → `ACTIVE` (or
 ---
 
 ## 11. Environment variables (summary)
+
 See `AGENT.md`/`.env.example` for the authoritative list. Key groups:
 `DATABASE_URL`, `SHADOW_DATABASE_URL`, `REDIS_URL`, `SESSION_SECRET`,
 `ENCRYPTION_MASTER_KEY` (+ key version), `ADMIN_USERNAME`/`ADMIN_PASSWORD`,
@@ -595,6 +624,7 @@ See `AGENT.md`/`.env.example` for the authoritative list. Key groups:
 ---
 
 ## 12. Deliverables checklist
+
 - [ ] Next.js 16 (App Router) app: payer, merchant, admin surfaces per §5, themed per `BRAND.md`.
 - [ ] All API endpoints in §6 with Zod validation + consistent error envelope.
 - [ ] Prisma 7 schema (§4) + migrations + idempotent `seed.ts` (admin + optional demo).

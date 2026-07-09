@@ -1,7 +1,7 @@
 "use server";
-import { Role } from "@/generated/prisma";
 import { requireRole } from "@/server/auth/sessions";
-import { getPayerPayments, type PayerPaymentListItem } from "@/server/payer/data";
+import { Role } from "@/generated/prisma/client";
+import { getPayerPayments, type PayerPaymentListItem } from "./data";
 
 export async function loadMorePayerPayments(
   cursor: string,

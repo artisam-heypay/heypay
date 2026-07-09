@@ -1,27 +1,21 @@
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import tsconfigPaths from "vite-tsconfig-paths";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  // `react()` transforms JSX/TSX (tsconfig sets jsx:"preserve" for Next, which Vite can't parse).
   plugins: [tsconfigPaths(), react()],
-  resolve: {
-    alias: {
-      // The real `server-only` package throws when imported outside an RSC bundle.
-      // Alias it to a no-op stub so server modules can be unit-tested under Node.
-      "server-only": fileURLToPath(new URL("./tests/helpers/server-only-stub.ts", import.meta.url)),
-    },
-  },
   test: {
     environment: "node",
-    include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.{ts,tsx}"],
+    // .tsx component tests run in jsdom; .ts unit/integration tests stay in node.
+    environmentMatchGlobs: [["**/*.test.tsx", "jsdom"]],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tests/**/*.test.ts", "tests/**/*.test.tsx"],
     globals: false,
-    // Load .env (DATABASE_URL, REDIS_URL, ENCRYPTION_*) so integration tests can
-    // reach the local docker-compose services.
-    setupFiles: ["dotenv/config"],
-    // Integration tests share one Postgres and TRUNCATE between cases; run test
-    // files sequentially so concurrent files can't clobber each other's rows.
+    setupFiles: ["./tests/helpers/setup.ts", "./tests/helpers/setup-dom.ts"],
     fileParallelism: false,
+  },
+  resolve: {
+    alias: {
+      "server-only": new URL("./tests/helpers/server-only-stub.ts", import.meta.url).pathname,
+    },
   },
 });

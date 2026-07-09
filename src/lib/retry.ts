@@ -1,3 +1,4 @@
+// src/lib/retry.ts
 export class TimeoutError extends Error {
   constructor(ms: number) {
     super(`operation timed out after ${ms}ms`);
@@ -18,10 +19,13 @@ export type RetryOptions = {
   maxMs?: number;
   timeoutMs?: number;
   jitter?: boolean;
+  label?: string; // human label for logs/poll-timeout messages (Phase 5 callers)
   isRetryable?: (err: unknown) => boolean;
   sleepImpl?: (ms: number) => Promise<void>;
   randomImpl?: () => number;
 };
+
+export type PollOpts = { attempts?: number; intervalMs?: number; label?: string };
 
 const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -70,6 +74,28 @@ export async function withRetry<T>(
   throw lastErr;
 }
 
+/**
+ * Poll `fn` until `done(value)` is true; throws after `attempts`. Returns the
+ * last value when done. Used by the worker to await PDAX trade/payout fills.
+ */
+export async function pollUntil<T>(
+  fn: () => Promise<T>,
+  done: (v: T) => boolean,
+  opts: PollOpts = {},
+): Promise<T> {
+  const attempts = opts.attempts ?? 30;
+  const intervalMs = opts.intervalMs ?? 1_000;
+  let value!: T;
+  for (let i = 0; i < attempts; i++) {
+    value = await fn();
+    if (done(value)) return value;
+    if (i < attempts - 1) await realSleep(intervalMs);
+  }
+  throw new Error(
+    `pollUntil timed out${opts.label ? ` (${opts.label})` : ""} after ${attempts} attempts`,
+  );
+}
+
 export type CircuitBreakerOptions = {
   failureThreshold?: number;
   resetMs?: number;
@@ -109,25 +135,4 @@ export class CircuitBreaker {
       throw err;
     }
   }
-}
-
-export type PollOpts = { attempts?: number; intervalMs?: number; label?: string };
-
-// Calls fn until done(value) is true; throws after `attempts`. Returns the last value when done.
-export async function pollUntil<T>(
-  fn: () => Promise<T>,
-  done: (v: T) => boolean,
-  opts: PollOpts = {},
-): Promise<T> {
-  const attempts = opts.attempts ?? 30;
-  const intervalMs = opts.intervalMs ?? 1_000;
-  let value!: T;
-  for (let i = 0; i < attempts; i++) {
-    value = await fn();
-    if (done(value)) return value;
-    if (i < attempts - 1) await new Promise<void>((r) => setTimeout(r, intervalMs));
-  }
-  throw new Error(
-    `pollUntil timed out${opts.label ? ` (${opts.label})` : ""} after ${attempts} attempts`,
-  );
 }

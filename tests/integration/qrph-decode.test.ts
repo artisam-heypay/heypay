@@ -2,23 +2,25 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { resetDb, makePayer, makeMerchant } from "../helpers/db";
 
-const { sessionUser, decodeQrph, resolveMerchant } = vi.hoisted(() => ({
+const { sessionUser } = vi.hoisted(() => ({
   sessionUser: {
     current: null as null | { id: string; username: string; role: "PAYER"; isActive: boolean },
   },
+}));
+vi.mock("@/server/auth/sessions", () => ({
+  requireRole: vi.fn(async () => {
+    if (!sessionUser.current) {
+      const { AppError } = await import("@/lib/errors");
+      throw new AppError("FORBIDDEN", "no", 403);
+    }
+    return sessionUser.current;
+  }),
+}));
+
+const { decodeQrph, resolveMerchant } = vi.hoisted(() => ({
   decodeQrph: vi.fn(),
   resolveMerchant: vi.fn(),
 }));
-
-vi.mock("@/server/auth/sessions", async () => {
-  const { forbidden } = await import("@/lib/errors");
-  return {
-    requireRole: vi.fn(async () => {
-      if (!sessionUser.current) throw forbidden();
-      return sessionUser.current;
-    }),
-  };
-});
 vi.mock("@/server/qrph/decode", () => ({
   decodeQrph: (raw: string) => decodeQrph(raw),
   decodeQrphImage: vi.fn(),
@@ -26,7 +28,6 @@ vi.mock("@/server/qrph/decode", () => ({
 vi.mock("@/server/qrph/resolve", () => ({ resolveMerchant: (d: unknown) => resolveMerchant(d) }));
 
 import { POST as decode } from "@/app/api/qrph/decode/route";
-
 const noParams = { params: Promise.resolve({}) };
 const post = (body: unknown) =>
   new NextRequest("http://localhost/api/qrph/decode", {
