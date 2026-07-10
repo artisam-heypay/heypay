@@ -5,12 +5,21 @@ import { dec } from "@/lib/money";
 import { newPaymentReference } from "@/server/payments/reference";
 
 // ---- mock externals ----
-const { sendAsset, confirmTx } = vi.hoisted(() => ({ sendAsset: vi.fn(), confirmTx: vi.fn() }));
+const { sendAsset, sendAssetViaPath, confirmTx, findConversionRoute } = vi.hoisted(() => ({
+  sendAsset: vi.fn(),
+  sendAssetViaPath: vi.fn(),
+  confirmTx: vi.fn(),
+  findConversionRoute: vi.fn(),
+}));
 vi.mock("@/server/stellar/wallet", () => ({
   walletService: {
     sendAsset: (i: unknown) => sendAsset(i),
+    sendAssetViaPath: (i: unknown) => sendAssetViaPath(i),
     confirmTx: (h: string) => confirmTx(h),
   },
+}));
+vi.mock("@/server/stellar/paths", () => ({
+  findConversionRoute: (f: string, t: string, d: unknown) => findConversionRoute(f, t, d),
 }));
 
 const { getDepositAddress, sellCryptoForPhp, getTradeStatus, cashOutPhpToBank, getPayoutStatus } =
@@ -312,5 +321,108 @@ describe("processSettleJob (USDT)", () => {
     expect(usdtBalance.cached.toFixed(7)).toBe("50.0000000");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+  });
+});
+
+/** USDC funded, but the rail only takes XLM: the payment converts on the way in. */
+async function makeAuthorizedConverting() {
+  const { user, wallet } = await makePayer({
+    cachedXlm: "10.0000000",
+    reservedXlm: "0.0000100",
+    assets: { USDC: { cached: "50.0000000", reserved: "17.1700000" } },
+  });
+  const { merchant } = await makeMerchant({ accountNumber: "9988776655" });
+  const payment = await db.payment.create({
+    data: {
+      reference: newPaymentReference(),
+      payerId: user.id,
+      merchantId: merchant.id,
+      asset: "USDC",
+      amountPhp: "1000.00",
+      quotedRate: "58.24000000",
+      amountAsset: "17.1700000",
+      settlementAsset: "XLM",
+      settlementAmount: "83.3333334",
+      networkFeeXlm: "0.0000100",
+      status: "AUTHORIZED",
+    },
+  });
+  return { user, wallet, merchant, payment };
+}
+
+describe("processSettleJob (converting on the DEX)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    return resetDb();
+  });
+
+  it("path-pays USDC to the rail's XLM wallet and sells XLM, not USDC", async () => {
+    mockHappyRail();
+    getDepositAddress.mockResolvedValue({ address: XLM_DEPOSIT, memo: null });
+    findConversionRoute.mockResolvedValue({ sourceAmount: dec("17"), path: [] });
+    sendAssetViaPath.mockResolvedValue({ txHash: "PATHHASH1" });
+
+    const { payment } = await makeAuthorizedConverting();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    // Sent to the XLM deposit wallet — the one that exists — not a USDC one.
+    expect(getDepositAddress).toHaveBeenCalledWith("XLM");
+    expect(sendAsset).not.toHaveBeenCalled();
+
+    const sent = sendAssetViaPath.mock.calls[0]![0];
+    expect(sent.asset).toBe("USDC");
+    expect(sent.destAsset).toBe("XLM");
+    expect(sent.destination).toBe(XLM_DEPOSIT);
+    // Exact debit of the payer's asset...
+    expect(sent.amount.toFixed(7)).toBe("17.1700000");
+    // ...and the rail must receive at least what covers the merchant, or the
+    // transaction fails on-chain rather than short-changing them.
+    expect(sent.destMin.toFixed(7)).toBe("83.3333334");
+
+    // The rail sells the XLM it received.
+    expect(sellCryptoForPhp.mock.calls[0]![0]).toMatchObject({ asset: "XLM" });
+    expect(sellCryptoForPhp.mock.calls[0]![0].amount.toFixed(7)).toBe("83.3333334");
+  });
+
+  it("debits the payer in USDC — the asset they funded with", async () => {
+    mockHappyRail();
+    getDepositAddress.mockResolvedValue({ address: XLM_DEPOSIT, memo: null });
+    findConversionRoute.mockResolvedValue({ sourceAmount: dec("17"), path: [] });
+    sendAssetViaPath.mockResolvedValue({ txHash: "PATHHASH2" });
+
+    const { wallet, payment } = await makeAuthorizedConverting();
+    await drive(payment.id);
+
+    const debits = await db.walletTransaction.findMany({
+      where: { walletId: wallet.id, type: "PAYMENT_DEBIT" },
+    });
+    const usdc = debits.find((d) => d.asset === "USDC")!;
+    expect(usdc.amount.toFixed(7)).toBe("-17.1700000");
+    const balance = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(balance.cached.toFixed(7)).toBe("32.8300000"); // 50 - 17.17
+  });
+
+  it("fails without moving funds when the DEX route vanishes before submission", async () => {
+    // The book can empty between quote and submit; refuse rather than submit a
+    // transaction that would be rejected on-chain.
+    confirmTx.mockResolvedValue(true);
+    getDepositAddress.mockResolvedValue({ address: XLM_DEPOSIT, memo: null });
+    findConversionRoute.mockResolvedValue(null);
+
+    const { wallet, payment } = await makeAuthorizedConverting();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("FAILED");
+    expect(final.failureReason).toMatch(/No Stellar DEX route/);
+    expect(sendAssetViaPath).not.toHaveBeenCalled();
+    // Holds released, nothing debited.
+    const balance = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(balance.reserved.toFixed(7)).toBe("0.0000000");
+    expect(balance.cached.toFixed(7)).toBe("50.0000000");
   });
 });

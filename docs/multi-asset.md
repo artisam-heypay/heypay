@@ -129,9 +129,43 @@ Consequences, all enforced in code rather than discovered mid-payment:
   `Invalid Quantity Step` (OT010029) — a rejection that would otherwise land
   _after_ the crypto had left the payer's wallet.
 
-Until PDAX adds a USDC trustline and a USDT wallet on this environment, USDC/USDT
-are receive-and-hold only (#163). Paying a merchant with them (#164) works
-against the mock rail, and against PDAX the moment those wallets exist.
+## Settling an asset the rail cannot take
+
+PDAX's UAT wallet accepts XLM, holds no USDC trustline, and has no USDT wallet at
+all. Rather than refuse those payments, HeyPay converts on the way in — strategy
+B from #164:
+
+- **direct** — the rail has a wallet for the asset and trades the pair. Send it
+  straight there (XLM today).
+- **path** — convert the asset into XLM on the Stellar DEX _in the same
+  transaction that delivers it_ (`path_payment_strict_send`). The rail only ever
+  sees XLM; the payer's wallet is debited exactly once, in their own asset.
+
+`resolveSettlementRoute` decides at **quote** time by asking Horizon whether the
+rail's deposit account exists and trusts the asset — which is what turns a
+mid-flight `op_no_trust` into a plain refusal before the payer confirms.
+
+`Payment.settlementAsset` / `Payment.settlementAmount` record what the rail is
+owed. Settlement sends `amountAsset` of the payer's asset with `destMin` set to
+`settlementAmount`, so the transaction fails on-chain rather than short-changing
+the merchant, and the payer is never charged more than quoted.
+
+Three guards, because a DEX is not an oracle:
+
+- **No route → refuse.** Testnet USDT has ~0.3 XLM of depth; a payment quoting it
+  is refused with "the Stellar DEX has too little USDT liquidity right now"
+  instead of submitting a transaction that would fail.
+- **Overpricing → refuse.** A thin or manipulated book can quote any price. A
+  conversion costing more than `SETTLEMENT_MAX_PREMIUM_BPS` (default 5%) above
+  the reference rate is refused. _Cheaper_ is allowed: the counterparty
+  subsidises the payer and the rail still receives everything the merchant is
+  owed.
+- **Slippage head-room.** `SETTLEMENT_SLIPPAGE_BPS` (default 1%) covers the book
+  moving between quote and submission. The route is re-found at submission, since
+  the one quoted may no longer be cheapest — or may have vanished.
+
+Measured on testnet: XLM settles directly; USDC quotes and settles as XLM via the
+DEX; USDT is refused for lack of liquidity.
 
 ## Trustlines are automatic
 

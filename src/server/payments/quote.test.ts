@@ -5,15 +5,21 @@ import { dec } from "@/lib/money";
 import type { PaymentAsset } from "@/lib/assets";
 
 const RATES: Record<PaymentAsset, string> = { XLM: "12", USDT: "58", USDC: "58" };
-const { supportsAsset, minSellAmount, getDepositAddress, canReceive } = vi.hoisted(() => ({
-  supportsAsset: vi.fn((_asset: string) => true),
-  minSellAmount: vi.fn((_asset: string) => null as import("@/lib/money").Decimal | null),
-  getDepositAddress: vi.fn(async (_asset: string) => ({ address: "GRAIL", memo: null })),
-  canReceive: vi.fn(async (_pk: string, _asset: string) => true),
-}));
+const { supportsAsset, minSellAmount, getDepositAddress, canReceive, findConversionRoute } =
+  vi.hoisted(() => ({
+    findConversionRoute: vi.fn(),
+    supportsAsset: vi.fn((_asset: string) => true),
+    minSellAmount: vi.fn((_asset: string) => null as import("@/lib/money").Decimal | null),
+    getDepositAddress: vi.fn(async (_asset: string) => ({ address: "GRAIL", memo: null })),
+    canReceive: vi.fn(async (_pk: string, _asset: string) => true),
+  }));
 
 vi.mock("@/server/stellar/wallet", () => ({
   walletService: { canReceive: (pk: string, a: string) => canReceive(pk, a) },
+}));
+
+vi.mock("@/server/stellar/paths", () => ({
+  findConversionRoute: (f: string, t: string, d: unknown) => findConversionRoute(f, t, d),
 }));
 
 vi.mock("@/server/rails", () => ({
@@ -46,10 +52,12 @@ import { createQuote } from "./quote";
 
 describe("createQuote", () => {
   beforeEach(async () => {
+    vi.clearAllMocks();
     supportsAsset.mockReturnValue(true);
     minSellAmount.mockReturnValue(null);
     getDepositAddress.mockResolvedValue({ address: "GRAIL", memo: null });
     canReceive.mockResolvedValue(true);
+    findConversionRoute.mockResolvedValue({ sourceAmount: dec("1"), path: [] });
     await resetDb();
   });
   afterEach(() => {
@@ -131,6 +139,120 @@ describe("createQuote", () => {
     expect(await db.payment.count()).toBe(0);
   });
 
+  it("converts on the DEX when the rail cannot receive the asset directly", async () => {
+    // PDAX's wallet takes XLM but holds no USDC trustline. Rather than refuse,
+    // the payment converts USDC -> XLM on the way in, and the rail sells XLM.
+    process.env.PAYMENT_ASSETS = "XLM,USDC";
+    canReceive.mockImplementation(async (_pk: string, a: string) => a === "XLM");
+    // Delivering the XLM the merchant needs costs 17 USDC on the book.
+    findConversionRoute.mockResolvedValue({ sourceAmount: dec("17"), path: [] });
+
+    const { user } = await makePayer({ assets: { USDC: { cached: "100.0000000" } } });
+    const { merchant } = await makeMerchant();
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("1000"),
+      asset: "USDC",
+    });
+
+    expect(res.asset).toBe("USDC");
+    expect(res.settlementAsset).toBe("XLM");
+    // 1% slippage head-room over the 17 USDC the DEX quoted.
+    expect(res.amountAsset.toFixed(7)).toBe("17.1700000");
+
+    const payment = await db.payment.findUniqueOrThrow({ where: { id: res.paymentId } });
+    expect(payment.settlementAsset).toBe("XLM");
+    // ₱1000 at the XLM rate of 12 = 83.3333334 XLM must reach the rail.
+    expect(payment.settlementAmount?.toFixed(7)).toBe("83.3333334");
+    // The rail was quoted in XLM — the asset it actually sells. (A USDCPHP
+    // snapshot also exists: the overpricing guard prices the payer's asset.)
+    const snap = await db.exchangeRateSnapshot.findFirstOrThrow({ where: { source: "PDAX" } });
+    expect(snap.pair).toBe("XLMPHP");
+  });
+
+  it("refuses a conversion that would overcharge the payer", async () => {
+    // A thin book can quote any price. ₱1000 of USDC is ~17.24 USDC at the
+    // reference rate; 40 USDC is far beyond the 5% cap.
+    process.env.PAYMENT_ASSETS = "XLM,USDC";
+    canReceive.mockImplementation(async (_pk: string, a: string) => a === "XLM");
+    findConversionRoute.mockResolvedValue({ sourceAmount: dec("40"), path: [] });
+
+    const { user } = await makePayer({ assets: { USDC: { cached: "100.0000000" } } });
+    const { merchant } = await makeMerchant();
+    await expect(
+      createQuote({
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: dec("1000"),
+        asset: "USDC",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("far above"),
+    });
+    expect(await db.payment.count()).toBe(0);
+  });
+
+  it("allows a conversion that is cheaper than the reference rate", async () => {
+    // The counterparty subsidises the payer and the rail still receives the full
+    // amount the merchant is owed, so a cheap book is not a reason to refuse.
+    process.env.PAYMENT_ASSETS = "XLM,USDC";
+    canReceive.mockImplementation(async (_pk: string, a: string) => a === "XLM");
+    findConversionRoute.mockResolvedValue({ sourceAmount: dec("0.0024604"), path: [] });
+
+    const { user } = await makePayer({ assets: { USDC: { cached: "100.0000000" } } });
+    const { merchant } = await makeMerchant();
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("1000"),
+      asset: "USDC",
+    });
+    expect(res.settlementAsset).toBe("XLM");
+    expect(res.amountAsset.lessThan(dec("1"))).toBe(true);
+  });
+
+  it("refuses when the DEX has no route with enough liquidity", async () => {
+    // Testnet USDT has ~0.3 XLM of depth. Submitting anyway would fail on-chain
+    // after the payer confirmed.
+    process.env.PAYMENT_ASSETS = "XLM,USDT";
+    canReceive.mockImplementation(async (_pk: string, a: string) => a === "XLM");
+    findConversionRoute.mockResolvedValue(null);
+
+    const { user } = await makePayer({ assets: { USDT: { cached: "500.0000000" } } });
+    const { merchant } = await makeMerchant();
+    await expect(
+      createQuote({
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: dec("1000"),
+        asset: "USDT",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("too little USDT liquidity"),
+    });
+    expect(await db.payment.count()).toBe(0);
+  });
+
+  it("settles directly, recording no conversion, when the rail takes the asset", async () => {
+    process.env.PAYMENT_ASSETS = "XLM,USDT";
+    const { user } = await makePayer({ assets: { USDT: { cached: "50.0000000" } } });
+    const { merchant } = await makeMerchant();
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("100"),
+      asset: "USDT",
+    });
+
+    expect(res.settlementAsset).toBe("USDT");
+    const payment = await db.payment.findUniqueOrThrow({ where: { id: res.paymentId } });
+    expect(payment.settlementAmount).toBeNull();
+    expect(findConversionRoute).not.toHaveBeenCalled();
+  });
+
   it("refuses when the rail has no deposit wallet for the asset", async () => {
     process.env.PAYMENT_ASSETS = "XLM,USDT";
     getDepositAddress.mockRejectedValue(new Error("FailedRetrievingWallet"));
@@ -162,7 +284,7 @@ describe("createQuote", () => {
       }),
     ).rejects.toMatchObject({
       status: 400,
-      message: expect.stringContaining("minimum USDT payment is 2 USDT"),
+      message: expect.stringContaining("2 USDT"),
     });
   });
 
@@ -180,28 +302,34 @@ describe("createQuote", () => {
     expect(res.amountAsset.greaterThanOrEqualTo(dec("2"))).toBe(true);
   });
 
-  it("rejects an enabled asset the rail cannot settle with badRequest (400)", async () => {
+  it("converts an asset the rail cannot trade into one it can", async () => {
+    // The rail has no USDTPHP pair, but it trades XLM. Converting on the DEX is
+    // a better answer than refusing the payment.
     process.env.PAYMENT_ASSETS = "XLM,USDT";
     supportsAsset.mockImplementation((a: string) => a === "XLM");
+    findConversionRoute.mockResolvedValue({ sourceAmount: dec("2"), path: [] });
     const { user } = await makePayer({ assets: { USDT: { cached: "50.0000000" } } });
     const { merchant } = await makeMerchant();
-    await expect(
-      createQuote({
-        payerId: user.id,
-        merchantId: merchant.id,
-        amountPhp: dec("100"),
-        asset: "USDT",
-      }),
-    ).rejects.toMatchObject({ status: 400 });
+
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("100"),
+      asset: "USDT",
+    });
+    expect(res.asset).toBe("USDT");
+    expect(res.settlementAsset).toBe("XLM");
   });
 });
 
 describe("createQuote (USDT)", () => {
   beforeEach(async () => {
+    vi.clearAllMocks();
     supportsAsset.mockReturnValue(true);
     minSellAmount.mockReturnValue(null);
     getDepositAddress.mockResolvedValue({ address: "GRAIL", memo: null });
     canReceive.mockResolvedValue(true);
+    findConversionRoute.mockResolvedValue({ sourceAmount: dec("1"), path: [] });
     process.env.PAYMENT_ASSETS = "XLM,USDT";
     await resetDb();
   });

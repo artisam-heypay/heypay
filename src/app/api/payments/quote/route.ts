@@ -30,6 +30,8 @@ export const POST = route(async (req) => {
     paymentId: q.paymentId,
     reference: q.reference,
     asset: q.asset,
+    // The asset the rail receives; differs when the payment converts on the DEX.
+    settlementAsset: q.settlementAsset,
     amountPhp: q.amountPhp.toFixed(2),
     rate: q.rate.toFixed(8),
     amountAsset: q.amountAsset.toFixed(7),

@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  Asset,
   Horizon,
   Keypair,
   Memo,
@@ -40,6 +41,22 @@ export interface WalletService {
     destination: string;
     asset: PaymentAsset;
     amount: Decimal;
+    memo: string;
+  }): Promise<{ txHash: string }>;
+  /**
+   * Sends exactly `amount` of `asset`, converting it on the DEX so the
+   * destination receives at least `destMin` of `destAsset`. The transaction
+   * fails on-chain (op_under_dest_min) rather than delivering less — the rail
+   * must never be short-changed, and the payer must never be over-charged.
+   */
+  sendAssetViaPath(input: {
+    encryptedSecret: string;
+    destination: string;
+    asset: PaymentAsset;
+    amount: Decimal;
+    destAsset: PaymentAsset;
+    destMin: Decimal;
+    path: Asset[];
     memo: string;
   }): Promise<{ txHash: string }>;
   /** Convenience wrapper over {@link sendAsset} for the native asset. */
@@ -248,6 +265,34 @@ export function createWalletService(
             destination,
             asset: stellarAsset,
             amount: formatAsset(amount),
+          }),
+        memo,
+      );
+      return { txHash };
+    },
+
+    async sendAssetViaPath({
+      encryptedSecret,
+      destination,
+      asset,
+      amount,
+      destAsset,
+      destMin,
+      path,
+      memo,
+    }) {
+      const sendAsset = resolveStellarAsset(asset);
+      const receiveAsset = resolveStellarAsset(destAsset);
+      const txHash = await submitOp(
+        encryptedSecret,
+        () =>
+          Operation.pathPaymentStrictSend({
+            sendAsset,
+            sendAmount: formatAsset(amount),
+            destination,
+            destAsset: receiveAsset,
+            destMin: formatAsset(destMin),
+            path,
           }),
         memo,
       );
