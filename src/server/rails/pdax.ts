@@ -7,6 +7,7 @@ import type { PaymentAsset } from "@/lib/assets";
 import { badRequest, serverError } from "@/lib/errors";
 import { withRetry } from "@/lib/retry";
 import {
+  railDepositAddress,
   railSettlementAssets,
   type BankPayout,
   type PaymentRailProvider,
@@ -203,6 +204,16 @@ export function createPdaxProvider(overrides: Partial<PdaxConfig> = {}) {
   } = {
     supportsAsset(asset) {
       return settlementAssets.includes(asset);
+    },
+
+    // The HMAC exchange API exposes no deposit-address endpoint (unlike the
+    // Institution API), so the address must be configured.
+    getDepositAddress(asset) {
+      const address = railDepositAddress(asset);
+      if (!address) {
+        throw serverError(`No deposit address configured (PDAX_${asset}_DEPOSIT_ADDRESS).`);
+      }
+      return Promise.resolve({ address, memo: null });
     },
 
     async getQuote({ sell, phpAmount }): Promise<Quote> {

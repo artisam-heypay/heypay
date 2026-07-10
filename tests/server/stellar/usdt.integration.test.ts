@@ -130,6 +130,34 @@ describe.skipIf(!RUN)("issued assets (testnet integration)", () => {
     expect(balance!.balance.toFixed(7)).toBe("42.5000000");
   }, 120_000);
 
+  it("trusts the real testnet USDC and USDT issuers resolved from config defaults", async () => {
+    // No *_ASSET_ISSUER set: testnet falls back to Circle's Centre issuer, which
+    // issues both codes there. Proves a fresh dev machine can trust and hold
+    // real testnet USDC/USDT with no extra configuration.
+    delete process.env.USDT_ASSET_ISSUER;
+    delete process.env.USDC_ASSET_ISSUER;
+    const svc = createWalletService();
+    const fresh = svc.generate();
+    await friendbot(fresh.publicKey);
+
+    for (const asset of ["USDC", "USDT"] as const) {
+      const before = await svc.getBalances(fresh.publicKey, [asset]);
+      expect(before[0]!.trustline).toBe(false);
+
+      const res = await svc.establishTrustline({
+        encryptedSecret: fresh.encryptedSecret,
+        asset,
+      });
+      expect(await svc.confirmTx(res.txHash!)).toBe(true);
+
+      const after = await svc.getBalances(fresh.publicKey, [asset]);
+      expect(after[0]!.trustline).toBe(true);
+      expect(after[0]!.balance.toFixed(7)).toBe("0.0000000");
+    }
+
+    process.env.USDT_ASSET_ISSUER = issuer.publicKey();
+  }, 120_000);
+
   it("sends USDT back out (the settlement leg)", async () => {
     const svc = createWalletService();
     const { txHash } = await svc.sendAsset({

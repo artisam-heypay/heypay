@@ -3,11 +3,9 @@ import "server-only";
 import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
-import { railDepositAddress } from "@/server/rails/provider";
 import { walletService } from "@/server/stellar/wallet";
 import { dec, type Decimal } from "@/lib/money";
 import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
-import { serverError } from "@/lib/errors";
 import { withRetry, pollUntil } from "@/lib/retry";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { audit } from "@/server/auth/audit";
@@ -53,15 +51,6 @@ function legs(p: {
     return { asset: p.asset, assetAmount: amountAsset, xlmFee: networkFeeXlm };
   }
   return { asset: p.asset, assetAmount: amountAsset.plus(networkFeeXlm), xlmFee: null };
-}
-
-/** The rail's deposit address for this payment's asset. */
-function depositAddressFor(asset: PaymentAsset): string {
-  const address = railDepositAddress(asset);
-  if (!address) {
-    throw serverError(`No rail deposit address configured (PDAX_${asset}_DEPOSIT_ADDRESS).`);
-  }
-  return address;
 }
 
 export async function processSettleJob(job: { data: { paymentId: string } }): Promise<void> {
@@ -112,15 +101,19 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
   // Idempotency: if a tx was already submitted, just advance.
   let txHash = p.stellarTxHash;
   if (!txHash) {
-    const destination = depositAddressFor(asset);
+    const deposit = await withRetry(() => rail.getDepositAddress(asset), {
+      label: "getDepositAddress",
+    });
     const res = await withRetry(
       () =>
         walletService.sendAsset({
           encryptedSecret: wallet.encryptedSecret,
-          destination,
+          destination: deposit.address,
           asset,
           amount: assetAmount,
-          memo: p.reference,
+          // The rail's address tag, when it gives one, is what credits the
+          // deposit to our account — it must win over our own reference.
+          memo: deposit.memo ?? p.reference,
         }),
       { label: "sendAsset" },
     );

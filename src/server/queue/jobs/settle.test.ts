@@ -13,15 +13,18 @@ vi.mock("@/server/stellar/wallet", () => ({
   },
 }));
 
-const { sellCryptoForPhp, getTradeStatus, cashOutPhpToBank, getPayoutStatus } = vi.hoisted(() => ({
-  sellCryptoForPhp: vi.fn(),
-  getTradeStatus: vi.fn(),
-  cashOutPhpToBank: vi.fn(),
-  getPayoutStatus: vi.fn(),
-}));
+const { getDepositAddress, sellCryptoForPhp, getTradeStatus, cashOutPhpToBank, getPayoutStatus } =
+  vi.hoisted(() => ({
+    getDepositAddress: vi.fn(),
+    sellCryptoForPhp: vi.fn(),
+    getTradeStatus: vi.fn(),
+    cashOutPhpToBank: vi.fn(),
+    getPayoutStatus: vi.fn(),
+  }));
 vi.mock("@/server/rails", () => ({
   rail: {
     supportsAsset: () => true,
+    getDepositAddress: (a: string) => getDepositAddress(a),
     sellCryptoForPhp: (i: unknown) => sellCryptoForPhp(i),
     getTradeStatus: (r: string) => getTradeStatus(r),
     cashOutPhpToBank: (i: unknown) => cashOutPhpToBank(i),
@@ -35,8 +38,8 @@ vi.mock("@/server/queue/queues", () => ({
   enqueueSettle: vi.fn(async () => {}),
 }));
 
-process.env.PDAX_XLM_DEPOSIT_ADDRESS = "GHEYPAYDEPOSITADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
-process.env.PDAX_USDT_DEPOSIT_ADDRESS = "GHEYPAYUSDTDEPOSITADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+const XLM_DEPOSIT = "GHEYPAYDEPOSITADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+const USDT_DEPOSIT = "GHEYPAYUSDTDEPOSITADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
 import { processSettleJob } from "./settle";
 import { isTerminal } from "@/server/payments/state-machine";
@@ -95,6 +98,10 @@ async function drive(paymentId: string) {
 
 function mockHappyRail() {
   confirmTx.mockResolvedValue(true);
+  getDepositAddress.mockImplementation(async (asset: string) => ({
+    address: asset === "XLM" ? XLM_DEPOSIT : USDT_DEPOSIT,
+    memo: null,
+  }));
   sellCryptoForPhp.mockResolvedValue({ tradeRef: "TRADE1" });
   getTradeStatus.mockResolvedValue({ state: "FILLED", feePhp: dec("2"), filledPhp: dec("100") });
   cashOutPhpToBank.mockResolvedValue({ payoutRef: "PAYOUT1" });
@@ -136,6 +143,7 @@ describe("processSettleJob", () => {
 
   it("forced Stellar-confirm failure → FAILED, reservation released, no debit (no double-debit)", async () => {
     sendAsset.mockResolvedValue({ txHash: "STELLARHASH2" });
+    getDepositAddress.mockResolvedValue({ address: XLM_DEPOSIT, memo: null });
     confirmTx.mockResolvedValue(false); // tx never landed → funds never left
 
     const { wallet, payment } = await makeAuthorized();
@@ -153,6 +161,7 @@ describe("processSettleJob", () => {
 
   it("forced post-Stellar (trade) failure → REFUND_PENDING → REFUNDED with one debit + one credit", async () => {
     sendAsset.mockResolvedValue({ txHash: "STELLARHASH3" });
+    getDepositAddress.mockResolvedValue({ address: XLM_DEPOSIT, memo: null });
     confirmTx.mockResolvedValue(true);
     sellCryptoForPhp.mockResolvedValue({ tradeRef: "TRADE3" });
     getTradeStatus.mockResolvedValue({ state: "FAILED" }); // trade rejected after XLM moved
@@ -199,11 +208,35 @@ describe("processSettleJob (USDT)", () => {
     expect(final.status).toBe("SETTLED");
     const sent = sendAsset.mock.calls[0]![0];
     expect(sent.asset).toBe("USDT");
-    expect(sent.destination).toBe(process.env.PDAX_USDT_DEPOSIT_ADDRESS);
+    expect(sent.destination).toBe(USDT_DEPOSIT);
     // Only the merchant's crypto is sold; the XLM fee never reached the rail.
     expect(sent.amount.toFixed(7)).toBe("1.7241380");
     expect(sellCryptoForPhp.mock.calls[0]![0]).toMatchObject({ asset: "USDT" });
     expect(sellCryptoForPhp.mock.calls[0]![0].amount.toFixed(7)).toBe("1.7241380");
+  });
+
+  it("sends the rail's address tag as the memo, overriding the payment reference", async () => {
+    // PDAX credits shared deposit addresses by tag. Sending our own reference
+    // instead would strand the deposit.
+    sendAsset.mockResolvedValue({ txHash: "USDTHASH-TAG" });
+    mockHappyRail();
+    getDepositAddress.mockResolvedValue({ address: USDT_DEPOSIT, memo: "123123123" });
+
+    const { payment } = await makeAuthorizedUsdt();
+    await drive(payment.id);
+
+    expect(sendAsset.mock.calls[0]![0].memo).toBe("123123123");
+    expect(sendAsset.mock.calls[0]![0].memo).not.toBe(payment.reference);
+  });
+
+  it("falls back to the payment reference when the rail gives no tag", async () => {
+    sendAsset.mockResolvedValue({ txHash: "USDTHASH-NOTAG" });
+    mockHappyRail();
+
+    const { payment } = await makeAuthorizedUsdt();
+    await drive(payment.id);
+
+    expect(sendAsset.mock.calls[0]![0].memo).toBe(payment.reference);
   });
 
   it("debits USDT from the USDT balance and the network fee from XLM", async () => {
@@ -239,6 +272,7 @@ describe("processSettleJob (USDT)", () => {
 
   it("refunds USDT — not XLM — and does not return the spent network fee", async () => {
     sendAsset.mockResolvedValue({ txHash: "USDTHASH3" });
+    getDepositAddress.mockResolvedValue({ address: USDT_DEPOSIT, memo: null });
     confirmTx.mockResolvedValue(true);
     sellCryptoForPhp.mockResolvedValue({ tradeRef: "TRADE-U" });
     getTradeStatus.mockResolvedValue({ state: "FAILED" });
@@ -264,6 +298,7 @@ describe("processSettleJob (USDT)", () => {
 
   it("releases both holds when the Stellar tx never lands", async () => {
     sendAsset.mockResolvedValue({ txHash: "USDTHASH4" });
+    getDepositAddress.mockResolvedValue({ address: USDT_DEPOSIT, memo: null });
     confirmTx.mockResolvedValue(false);
 
     const { wallet, payment } = await makeAuthorizedUsdt();
