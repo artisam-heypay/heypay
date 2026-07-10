@@ -27,9 +27,14 @@ vi.mock("@/server/auth/sessions", () => ({
   }),
 }));
 vi.mock("@/server/auth/rate-limit", () => ({ rateLimit: vi.fn(async () => {}) }));
+vi.mock("@/server/stellar/wallet", () => ({
+  walletService: { canReceive: async () => true },
+}));
 vi.mock("@/server/rails", () => ({
   rail: {
     supportsAsset: () => true,
+    minSellAmount: () => null,
+    getDepositAddress: async () => ({ address: "GRAIL", memo: null }),
     getQuote: vi.fn(async ({ phpAmount }: { phpAmount: import("@/lib/money").Decimal }) => ({
       asset: "XLM" as const,
       rate: dec("12"),

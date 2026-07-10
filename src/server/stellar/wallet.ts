@@ -33,6 +33,8 @@ export interface WalletService {
   getBalance(publicKey: string): Promise<Decimal>;
   /** Balances for the given assets, including whether a trustline exists. */
   getBalances(publicKey: string, assets?: readonly PaymentAsset[]): Promise<AssetBalance[]>;
+  /** Whether `publicKey` exists and, for an issued asset, trusts its issuer. */
+  canReceive(publicKey: string, asset: PaymentAsset): Promise<boolean>;
   sendAsset(input: {
     encryptedSecret: string;
     destination: string;
@@ -100,6 +102,46 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Horizon rejects a bad transaction with a bare HTTP 400, which the SDK's axios
+ * surfaces as "Request failed with status code 400" — useless to anyone reading
+ * a log or an error toast. The reason lives in `extras.result_codes`; translate
+ * the ones we can actually cause into something a human can act on.
+ */
+const OP_RESULT_HELP: Record<string, string> = {
+  op_no_trust: "the destination account does not accept this asset (no trustline)",
+  op_underfunded: "the sending account does not hold enough of this asset",
+  op_no_destination: "the destination account does not exist on this network",
+  op_line_full: "the destination's trustline limit for this asset is full",
+  op_no_issuer: "the asset's issuer account does not exist on this network",
+  op_low_reserve: "the account would drop below its minimum XLM reserve",
+};
+
+function describeStellarError(e: unknown): string | null {
+  const extras = (
+    e as { response?: { data?: { extras?: { result_codes?: Record<string, unknown> } } } }
+  )?.response?.data?.extras;
+  const codes = extras?.result_codes;
+  if (!codes) return null;
+  const opCodes = Array.isArray(codes.operations) ? (codes.operations as string[]) : [];
+  const failing = opCodes.find((c) => c !== "op_success");
+  const txCode = typeof codes.transaction === "string" ? codes.transaction : "tx_failed";
+  const help = failing ? OP_RESULT_HELP[failing] : undefined;
+  const detail = failing ?? txCode;
+  return help
+    ? `Stellar rejected the transaction: ${help} (${detail})`
+    : `Stellar rejected the transaction (${detail})`;
+}
+
+/** Rethrow Horizon submission failures with the on-chain reason attached. */
+function rethrowStellarError(e: unknown): never {
+  const described = describeStellarError(e);
+  if (!described) throw e;
+  const err = new Error(described, { cause: e });
+  err.name = "StellarSubmitError";
+  throw err;
+}
+
 /** Find the Horizon balance line for `asset`, or undefined when no trustline exists. */
 function findBalance(balances: HorizonBalance[], asset: PaymentAsset): HorizonBalance | undefined {
   if (!isIssuedAsset(asset)) return balances.find((b) => b.asset_type === "native");
@@ -133,8 +175,12 @@ export function createWalletService(
     if (memo !== undefined) builder = builder.addMemo(Memo.text(memo));
     const tx = builder.setTimeout(TX_TIMEOUT_SECONDS).build();
     tx.sign(keypair);
-    const res = await srv().submitTransaction(tx);
-    return res.hash;
+    try {
+      const res = await srv().submitTransaction(tx);
+      return res.hash;
+    } catch (e) {
+      rethrowStellarError(e);
+    }
   }
 
   const service: WalletService = {
@@ -179,6 +225,18 @@ export function createWalletService(
           trustline: isIssuedAsset(asset) ? line !== undefined : true,
         };
       });
+    },
+
+    async canReceive(publicKey, asset) {
+      try {
+        const account = await srv().loadAccount(publicKey);
+        if (!isIssuedAsset(asset)) return true; // any existing account accepts XLM
+        const balances = account.balances as HorizonBalance[];
+        return findBalance(balances, asset) !== undefined;
+      } catch (e) {
+        if (isNotFound(e)) return false; // account doesn't exist on this network
+        throw e;
+      }
     },
 
     async sendAsset({ encryptedSecret, destination, asset, amount, memo }) {

@@ -7,6 +7,8 @@ import { withRetry } from "@/lib/retry";
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import { assertAssetEnabled, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { getAssetBalance } from "@/server/wallet/balances";
+import { walletService } from "@/server/stellar/wallet";
+import { getAssetRate } from "./rate";
 import { newPaymentReference } from "./reference";
 
 // One Stellar payment operation costs the base fee of 100 stroops = 0.0000100 XLM.
@@ -37,6 +39,8 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   if (!rail.supportsAsset(asset)) {
     throw badRequest(`The payment rail cannot settle ${asset}.`, { asset });
   }
+  await assertRailCanReceive(asset);
+  await assertAboveRailMinimum(asset, input.amountPhp);
 
   const merchant = await db.merchant.findUnique({ where: { id: input.merchantId } });
   if (!merchant || merchant.status !== "ACTIVE")
@@ -94,6 +98,49 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
     networkFeeXlm,
     quoteExpiresAt: quote.expiresAt,
   };
+}
+
+/**
+ * Refuse to quote an asset the rail's deposit account cannot actually receive.
+ *
+ * Stellar rejects a payment to an account that doesn't trust the asset — but it
+ * does so at submission, by which point the payer has confirmed and we are one
+ * step from moving money. Checking the destination up front turns a mid-flight
+ * `op_no_trust` failure into a plain "we can't take USDC yet" at quote time.
+ */
+async function assertRailCanReceive(asset: PaymentAsset): Promise<void> {
+  let destination: string;
+  try {
+    destination = (await rail.getDepositAddress(asset)).address;
+  } catch {
+    throw badRequest(`The payment rail has no ${asset} deposit wallet.`, { asset });
+  }
+  if (!(await walletService.canReceive(destination, asset))) {
+    throw badRequest(`The payment rail cannot receive ${asset} on this network yet.`, {
+      asset,
+      destination,
+    });
+  }
+}
+
+/**
+ * Exchanges enforce a minimum *crypto* order size, so the PHP floor moves with
+ * the rate. Converting the floor here lets us name the amount the payer needs
+ * instead of surfacing PDAX's "Order quantity is less than minimum required
+ * quantity" from a failed quote.
+ */
+async function assertAboveRailMinimum(asset: PaymentAsset, amountPhp: Decimal): Promise<void> {
+  const minAsset = rail.minSellAmount(asset);
+  if (!minAsset) return;
+  const rate = await getAssetRate(asset);
+  if (!rate) return; // no rate to convert with; the rail will reject it if too small
+  const estimated = phpToAsset(amountPhp, rate);
+  if (estimated.greaterThanOrEqualTo(minAsset)) return;
+  const minPhp = minAsset.times(rate).toDecimalPlaces(2, Decimal.ROUND_UP);
+  throw badRequest(
+    `The minimum ${asset} payment is ${minAsset.toString()} ${asset} (about ₱${minPhp.toFixed(2)}).`,
+    { asset, minAsset: minAsset.toString(), minPhp: minPhp.toFixed(2) },
+  );
 }
 
 /**

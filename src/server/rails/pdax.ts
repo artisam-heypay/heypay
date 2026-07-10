@@ -206,6 +206,12 @@ export function createPdaxProvider(overrides: Partial<PdaxConfig> = {}) {
       return settlementAssets.includes(asset);
     },
 
+    // The HMAC exchange API documents no per-pair minimum; the Institution API
+    // does, and enforces it server-side either way.
+    minSellAmount() {
+      return null;
+    },
+
     // The HMAC exchange API exposes no deposit-address endpoint (unlike the
     // Institution API), so the address must be configured.
     getDepositAddress(asset) {

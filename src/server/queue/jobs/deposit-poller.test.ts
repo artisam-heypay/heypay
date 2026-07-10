@@ -3,15 +3,17 @@ import { resetDb, makePayer } from "../../../../tests/helpers/db";
 import { db } from "@/server/db";
 import { dec } from "@/lib/money";
 
-const { listIncomingPayments, getBalances } = vi.hoisted(() => ({
+const { listIncomingPayments, getBalances, establishTrustline } = vi.hoisted(() => ({
   listIncomingPayments: vi.fn(),
   getBalances: vi.fn(),
+  establishTrustline: vi.fn(),
 }));
 vi.mock("@/server/stellar/wallet", () => ({
   walletService: {
     listIncomingPayments: (pk: string, c?: string, assets?: string[]) =>
       listIncomingPayments(pk, c, assets),
     getBalances: (pk: string, assets?: string[]) => getBalances(pk, assets),
+    establishTrustline: (i: unknown) => establishTrustline(i),
   },
 }));
 
@@ -132,6 +134,47 @@ describe("syncWalletDeposits", () => {
     expect(row.cached.toFixed(7)).toBe("42.5000000");
     // Horizon reported a live trustline, so the wallet is marked able to receive.
     expect(row.trustlineEstablishedAt).not.toBeNull();
+  });
+
+  it("adds a missing trustline itself once the wallet holds enough XLM", async () => {
+    // Stellar requires a trustline before an issued asset can arrive. A custodial
+    // wallet can add it on the payer's behalf, so they never see the step.
+    process.env.PAYMENT_ASSETS = "XLM,USDT";
+    process.env.USDT_ASSET_ISSUER = USDT_ISSUER;
+    const { wallet } = await makePayer({ cachedXlm: "5.0000000" });
+    listIncomingPayments.mockResolvedValue({ items: [], cursor: "c" });
+    getBalances.mockResolvedValue([{ asset: "USDT", balance: dec("0"), trustline: false }]);
+    establishTrustline.mockResolvedValue({ txHash: "T1", alreadyEstablished: false });
+
+    await syncWalletDeposits(wallet.id);
+
+    expect(establishTrustline.mock.calls[0]![0]).toMatchObject({ asset: "USDT" });
+    const row = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDT" } },
+    });
+    expect(row.trustlineEstablishedAt).not.toBeNull();
+  });
+
+  it("waits to add a trustline until the wallet can cover the reserve", async () => {
+    process.env.PAYMENT_ASSETS = "XLM,USDT";
+    process.env.USDT_ASSET_ISSUER = USDT_ISSUER;
+    const { wallet } = await makePayer({ cachedXlm: "0.1000000" });
+    listIncomingPayments.mockResolvedValue({ items: [], cursor: "c" });
+    getBalances.mockResolvedValue([{ asset: "USDT", balance: dec("0"), trustline: false }]);
+
+    await syncWalletDeposits(wallet.id);
+    expect(establishTrustline).not.toHaveBeenCalled();
+  });
+
+  it("keeps syncing deposits when auto-trustline fails", async () => {
+    process.env.PAYMENT_ASSETS = "XLM,USDT";
+    process.env.USDT_ASSET_ISSUER = USDT_ISSUER;
+    const { wallet } = await makePayer({ cachedXlm: "5.0000000" });
+    listIncomingPayments.mockResolvedValue({ items: [], cursor: "c" });
+    getBalances.mockResolvedValue([{ asset: "USDT", balance: dec("0"), trustline: false }]);
+    establishTrustline.mockRejectedValue(new Error("Stellar rejected the transaction"));
+
+    await expect(syncWalletDeposits(wallet.id)).resolves.toMatchObject({ newDeposits: 0 });
   });
 
   it("ignores an asset that is not enabled", async () => {

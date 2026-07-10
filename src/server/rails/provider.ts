@@ -38,6 +38,12 @@ export interface PaymentRailProvider {
    * settling it as something else.
    */
   supportsAsset(asset: PaymentAsset): boolean;
+  /**
+   * Smallest amount of `asset` the rail will sell, or null when it has no floor.
+   * Exchanges enforce this in crypto units, so the equivalent PHP floor moves
+   * with the rate.
+   */
+  minSellAmount(asset: PaymentAsset): Decimal | null;
   /** The rail's deposit address for `asset`, resolved at settlement time. */
   getDepositAddress(asset: PaymentAsset): Promise<CryptoDepositAddress>;
   getQuote(input: { sell: PaymentAsset; buy: "PHP"; phpAmount: Decimal }): Promise<Quote>;

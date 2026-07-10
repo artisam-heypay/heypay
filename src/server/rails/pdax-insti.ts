@@ -31,14 +31,33 @@ const TOKEN_SLACK_MS = 60_000;
 // aren't a whole multiple of it are rejected with "Invalid Quantity Step"
 // (XLM: 13.7 fails, 27.5 is accepted). The step is a property of the pair, not
 // of us, so it's overridable per asset via PDAX_INSTI_QTY_STEP_<ASSET>.
+// Probed against the UAT firm-quote endpoint: XLM accepts 13.5 but rejects 13.7;
+// USDC accepts 6dp (1.621345) but rejects 7dp; USDT accepts 3.01 but rejects
+// 3.001. A wrong step is not a rounding nit — PDAX rejects the whole order with
+// "Invalid Quantity Step" (OT010029) and the payment fails after the crypto has
+// already left the wallet.
 const DEFAULT_QTY_STEP: Record<PaymentAsset, string> = {
   XLM: "0.5",
-  USDT: "0.000001",
   USDC: "0.000001",
+  USDT: "0.01",
+};
+
+// PDAX also enforces a minimum *crypto* quantity per pair, so the PHP floor
+// moves with the rate. Probed on UAT: below these, the price endpoint fails with
+// "below IMM minimum quantity" / "Order quantity is less than minimum required
+// quantity" before we ever reach the trade.
+const DEFAULT_MIN_QTY: Record<PaymentAsset, string> = {
+  XLM: "10",
+  USDC: "1",
+  USDT: "2",
 };
 
 function qtyStep(asset: PaymentAsset): Decimal {
   return dec(process.env[`PDAX_INSTI_QTY_STEP_${asset}`] ?? DEFAULT_QTY_STEP[asset]);
+}
+
+function minQty(asset: PaymentAsset): Decimal {
+  return dec(process.env[`PDAX_INSTI_MIN_QTY_${asset}`] ?? DEFAULT_MIN_QTY[asset]);
 }
 
 // PDAX fiat-withdraw bank codes (docs "Bank Code" section). Merchant records
@@ -254,6 +273,10 @@ export function createPdaxInstiProvider(
   return {
     supportsAsset(asset) {
       return settlementAssets.includes(asset);
+    },
+
+    minSellAmount(asset) {
+      return minQty(asset);
     },
 
     async getDepositAddress(asset): Promise<CryptoDepositAddress> {

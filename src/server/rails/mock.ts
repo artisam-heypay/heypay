@@ -67,8 +67,9 @@ export function createMockProvider(
   };
 
   return {
-    // The mock rail trades every asset — that's the point of it.
+    // The mock rail trades every asset, in any size — that's the point of it.
     supportsAsset: () => true,
+    minSellAmount: () => null,
 
     getDepositAddress(asset) {
       // Dev/CI: a configured testnet account if there is one, else a stand-in

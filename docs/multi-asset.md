@@ -89,6 +89,43 @@ from the issuer account and the deposit poller credits it.
 To pay, scan a merchant QR and choose **USDT** on the confirm screen. Switching
 asset re-quotes (a quote locks one asset's rate), cancelling the superseded quote.
 
+## PDAX UAT reality check (probed 2026-07-10)
+
+| Pair      | Price  | Min sell qty | Quantity step | PDAX deposit wallet                            |
+| --------- | ------ | ------------ | ------------- | ---------------------------------------------- |
+| `XLMPHP`  | 7.299  | 10 XLM       | 0.5           | exists, testnet                                |
+| `USDCPHP` | 61.677 | 1 USDC       | 0.000001      | address exists but **holds no USDC trustline** |
+| `USDTPHP` | 61.34  | 2 USDT       | 0.01          | **none** (`FailedRetrievingWallet`)            |
+
+Consequences, all enforced in code rather than discovered mid-payment:
+
+- **Quoting checks the destination first.** Stellar rejects a payment to an
+  account that does not trust the asset — but only at submission, after the payer
+  has confirmed. `createQuote` resolves the rail's deposit address and asks
+  Horizon whether it can receive the asset, so USDC/USDT fail with "the payment
+  rail cannot receive USDC on this network yet" instead of an `op_no_trust`
+  transaction failure.
+- **Quoting checks the minimum.** Exchanges enforce a minimum _crypto_ order
+  size, so the PHP floor moves with the rate. A ₱50 XLM payment is refused with
+  "The minimum XLM payment is 10 XLM (about ₱72.99)".
+- **The quantity step is per pair.** USDT rejects anything finer than 0.01 with
+  `Invalid Quantity Step` (OT010029) — a rejection that would otherwise land
+  _after_ the crypto had left the payer's wallet.
+
+Until PDAX adds a USDC trustline and a USDT wallet on this environment, USDC/USDT
+are receive-and-hold only (#163). Paying a merchant with them (#164) works
+against the mock rail, and against PDAX the moment those wallets exist.
+
+## Trustlines are automatic
+
+Stellar cannot be talked out of requiring a trustline: the network rejects an
+untrusted incoming payment. A custodial wallet can, however, add the trustline on
+the payer's behalf, and does — `syncWalletDeposits` establishes any missing
+trustline for an enabled asset as soon as the wallet holds enough XLM to cover
+the extra 0.5 XLM reserve. The payer never has to press "Enable"; the manual
+`POST /api/wallet/trustline` remains for an unfunded wallet that has just been
+topped up.
+
 ## Deploying it
 
 Same variables. The two that need real answers before enabling USDT on mainnet:

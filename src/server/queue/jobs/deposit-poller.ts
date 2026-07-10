@@ -6,14 +6,51 @@ import { redis } from "@/server/redis";
 import { walletService } from "@/server/stellar/wallet";
 import { dec, Decimal } from "@/lib/money";
 import { enabledAssets, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
-import { isAssetConfigured } from "@/server/stellar/assets";
-import { creditAsset, getAssetBalances, markTrustlineEstablished } from "@/server/wallet/balances";
+import { isAssetConfigured, TRUSTLINE_XLM_REQUIREMENT } from "@/server/stellar/assets";
+import {
+  creditAsset,
+  getAssetBalance,
+  getAssetBalances,
+  markTrustlineEstablished,
+} from "@/server/wallet/balances";
 
 const cursorKey = (walletId: string) => `horizon:cursor:${walletId}`;
 
 /** Enabled assets we can actually recognise on-chain (issued ones need an issuer). */
 function creditableAssets(): PaymentAsset[] {
   return enabledAssets().filter(isAssetConfigured);
+}
+
+/**
+ * Add the trustlines an enabled issued asset needs, without asking the payer.
+ *
+ * Stellar cannot be talked out of requiring a trustline — the network rejects an
+ * untrusted incoming payment — so the only way to spare the payer the step is to
+ * do it for them, which a custodial wallet can. It costs 0.5 XLM of extra
+ * reserve per line plus a fee, so it waits until the wallet is funded; an
+ * unfunded account simply cannot hold one.
+ *
+ * Best-effort: a failure here must never fail a deposit sync. The payer can
+ * still trigger it manually from the prefund screen.
+ */
+async function autoEstablishTrustlines(
+  wallet: { id: string; stellarPublicKey: string; encryptedSecret: string },
+  assets: readonly PaymentAsset[],
+): Promise<void> {
+  for (const asset of assets) {
+    const { available } = await getAssetBalance(db, wallet.id, "XLM");
+    if (available.lessThan(dec(TRUSTLINE_XLM_REQUIREMENT))) return; // not funded enough (yet)
+    try {
+      await walletService.establishTrustline({ encryptedSecret: wallet.encryptedSecret, asset });
+      await markTrustlineEstablished(wallet.id, asset);
+    } catch (err) {
+      console.error("[deposit-poll] auto-trustline failed", {
+        walletId: wallet.id,
+        asset,
+        error: (err as Error).message,
+      });
+    }
+  }
 }
 
 export async function syncWalletDeposits(walletId: string): Promise<{
@@ -66,9 +103,12 @@ export async function syncWalletDeposits(walletId: string): Promise<{
   const issued = assets.filter(isIssuedAsset);
   if (issued.length > 0) {
     const onChain = await walletService.getBalances(wallet.stellarPublicKey, issued);
+    const missing: PaymentAsset[] = [];
     for (const b of onChain) {
       if (b.trustline) await markTrustlineEstablished(walletId, b.asset);
+      else missing.push(b.asset);
     }
+    if (missing.length > 0) await autoEstablishTrustlines(wallet, missing);
   }
 
   if (newCursor) await redis.set(cursorKey(walletId), newCursor);
