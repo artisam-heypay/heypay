@@ -15,6 +15,8 @@ export type PrefundAsset = {
   /** Issued assets need a trustline before the wallet can receive them. */
   trustlineRequired: boolean;
   canReceive: boolean;
+  /** Issuer account this asset must come from; null for native XLM. */
+  issuer: string | null;
 };
 
 /**
@@ -68,6 +70,7 @@ export function PrefundView({
         publicKey={publicKey}
         qrSvg={qrSvg}
         asset={current.asset}
+        issuer={current.issuer}
         trustlineRequired={current.trustlineRequired}
         canReceive={trustlines[current.asset] ?? current.canReceive}
         onTrustlineEstablished={() => setTrustlines((prev) => ({ ...prev, [current.asset]: true }))}

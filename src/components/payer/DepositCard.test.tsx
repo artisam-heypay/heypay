@@ -25,4 +25,22 @@ describe("DepositCard", () => {
     expect(screen.queryByText("GABC123")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Enable USDC/ })).toBeInTheDocument();
   });
+
+  it("shows the accepted issuer even while the trustline gate is up", () => {
+    // The payer needs the issuer to check what their own wallet holds *before*
+    // enabling the asset — an issuer mismatch is the whole failure mode.
+    const issuer = "GAHPYWLK6YRN7CVYZOO4H3VDRZ7PVF5UJGLZCSPAEIKJE2XSWF5LAGER";
+    render(
+      <DepositCard
+        publicKey="GABC123"
+        qrSvg="<svg></svg>"
+        asset="USDT"
+        issuer={issuer}
+        trustlineRequired
+        canReceive={false}
+      />,
+    );
+    expect(screen.getByText(issuer)).toBeInTheDocument();
+    expect(screen.getByText(/Accepted USDT issuer/)).toBeInTheDocument();
+  });
 });

@@ -54,6 +54,23 @@ trustlines). `auth_required` is false, so any wallet may trustline and receive.
 This is the default when `*_ASSET_ISSUER` is unset and `STELLAR_NETWORK` is not
 `mainnet` — so testnet works with no issuer config at all.
 
+**Caveat found in practice:** wallet swap features (e.g. Freighter's Swap on
+testnet) hand out USDT from whatever issuer has DEX liquidity — _not_ Circle's.
+A deposit of that USDT is rejected with `op_no_trust`, because the custodial
+wallet trusts a different `USDT:issuer` pair. Two consequences:
+
+- The prefund screen now displays the **accepted issuer** for each issued asset,
+  with a copy button, so a payer can compare it against the token their own
+  wallet holds before sending.
+- If your payers acquire USDT via a specific DEX/issuer, point
+  `USDT_ASSET_ISSUER` at that issuer instead. **After changing an issuer**, reset
+  the stale flags — `UPDATE "WalletBalance" SET "trustlineEstablishedAt"=NULL
+WHERE asset='USDT'` — the deposit poller then re-checks the chain and
+  establishes the new trustline automatically. The prefund page and
+  `/api/wallet/deposit-address` read trustline state from the chain, not the
+  cache, precisely so an issuer change cannot hand out an address the network
+  would reject.
+
 ### PDAX deposit addresses
 
 The Institution rail resolves them at settlement time from
