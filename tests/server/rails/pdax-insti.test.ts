@@ -29,6 +29,7 @@ function fetchStub(handler: (url: string, init?: RequestInit) => Response) {
 
 afterEach(() => {
   delete process.env.PDAX_SETTLEMENT_ASSETS;
+  delete process.env.PDAX_INSTI_QTY_STEP_USDT;
   delete process.env.PDAX_XLM_DEPOSIT_ADDRESS;
   delete process.env.PDAX_USDC_DEPOSIT_ADDRESS;
 });
@@ -131,6 +132,32 @@ describe("PdaxInstiProvider asset support", () => {
     await expect(
       p.getQuote({ sell: "USDC", buy: "PHP", phpAmount: new Decimal("100") }),
     ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("rounds a USDT sell to its 0.01 step, which PDAX enforces", async () => {
+    // Probed on UAT: USDT accepts 3.01 but rejects 3.001 with OT010029
+    // "Invalid Quantity Step" — and that rejection lands after the crypto has
+    // already left the payer's wallet.
+    process.env.PDAX_SETTLEMENT_ASSETS = "XLM,USDT";
+    const bodies: string[] = [];
+    const fetchImpl = fetchStub((url, init) => {
+      bodies.push(String(init?.body ?? ""));
+      if (url.includes("/trade/quote")) {
+        return jsonResponse({ data: { quote_id: "q1", expires_at: "2026-01-01T00:00:00Z" } });
+      }
+      return jsonResponse({ data: { order_id: 7, status: "successful" } });
+    });
+    const p = createPdaxInstiProvider({ ...baseCfg, fetchImpl });
+
+    await p.sellCryptoForPhp({ ref: "TXN-U", asset: "USDT", amount: new Decimal("3.2590000") });
+    expect(JSON.parse(bodies[0]!).base_quantity).toBe("3.25");
+  });
+
+  it("reports the per-asset minimum sell amount", async () => {
+    const p = createPdaxInstiProvider({ ...baseCfg, fetchImpl: fetchStub(() => jsonResponse({})) });
+    expect(p.minSellAmount("XLM")?.toString()).toBe("10");
+    expect(p.minSellAmount("USDC")?.toString()).toBe("1");
+    expect(p.minSellAmount("USDT")?.toString()).toBe("2");
   });
 
   it("does not round a USDC sell to the XLM 0.5 quantity step", async () => {
