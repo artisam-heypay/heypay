@@ -11,4 +11,18 @@ describe("DepositCard", () => {
       screen.getByText(/Send only XLM on the Stellar network\. No memo is required\./),
     ).toBeInTheDocument();
   });
+
+  it("gates an untrusted issued asset behind a one-time trustline", () => {
+    render(
+      <DepositCard
+        publicKey="GABC123"
+        qrSvg="<svg></svg>"
+        asset="USDC"
+        trustlineRequired
+        canReceive={false}
+      />,
+    );
+    expect(screen.queryByText("GABC123")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Enable USDC/ })).toBeInTheDocument();
+  });
 });
