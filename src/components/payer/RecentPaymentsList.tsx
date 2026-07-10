@@ -49,7 +49,7 @@ export function RecentPaymentsList({ payments }: { payments: RecentPayment[] }) 
                   <StatusBadge status={p.status} />
                 </div>
               </div>
-              <MoneyAmount xlm={p.amountXlm} php={p.amountPhp} size="row" />
+              <MoneyAmount xlm={p.amountAsset} asset={p.asset} php={p.amountPhp} size="row" />
             </li>
           ))}
         </ul>

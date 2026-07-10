@@ -170,9 +170,10 @@ describe("WalletService.listIncomingPayments", () => {
     // payment TO GME, and the create_account that first funded GME; GOTHER's excluded.
     expect(out.items).toHaveLength(2);
     expect(out.items[0]!.txHash).toBe("h1");
-    expect(out.items[0]!.amountXlm.equals(new Decimal("10.0"))).toBe(true);
+    expect(out.items[0]!.amount.equals(new Decimal("10.0"))).toBe(true);
+    expect(out.items[0]!.asset).toBe("XLM");
     expect(out.items[1]!.txHash).toBe("h3");
-    expect(out.items[1]!.amountXlm.equals(new Decimal("1.0"))).toBe(true);
+    expect(out.items[1]!.amount.equals(new Decimal("1.0"))).toBe(true);
     expect(out.items[1]!.from).toBe("GX");
     expect(out.cursor).toBe("c3"); // advances past every scanned record
     expect(builder.cursor).toHaveBeenCalledWith("c0");

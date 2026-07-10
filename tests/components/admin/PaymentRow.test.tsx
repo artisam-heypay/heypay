@@ -12,7 +12,8 @@ const row = {
   payerUsername: "alice",
   merchantName: "Sari Store",
   amountPhp: "100.00",
-  amountXlm: "10.0000000",
+  asset: "XLM",
+  amountAsset: "10.0000000",
   failureReason: "PDAX timeout",
   createdAt: "2026-06-28T00:00:00.000Z",
 };

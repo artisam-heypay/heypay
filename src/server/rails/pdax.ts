@@ -2,15 +2,17 @@
 import "server-only";
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { Decimal, dec, phpToXlm } from "@/lib/money";
+import { Decimal, dec, phpToAsset } from "@/lib/money";
+import type { PaymentAsset } from "@/lib/assets";
 import { badRequest, serverError } from "@/lib/errors";
 import { withRetry } from "@/lib/retry";
-import type {
-  BankPayout,
-  PaymentRailProvider,
-  PayoutStatus,
-  Quote,
-  TradeStatus,
+import {
+  railSettlementAssets,
+  type BankPayout,
+  type PaymentRailProvider,
+  type PayoutStatus,
+  type Quote,
+  type TradeStatus,
 } from "@/server/rails/provider";
 
 const QUOTE_TTL_MS = 90_000;
@@ -129,6 +131,17 @@ function resolveConfig(overrides: Partial<PdaxConfig>): PdaxConfig {
 
 export function createPdaxProvider(overrides: Partial<PdaxConfig> = {}) {
   const cfg = resolveConfig(overrides);
+  // Which `<ASSET>PHP` pairs this PDAX account may trade. Quoting an unlisted
+  // asset would 404 on /rates or open a trade we can't settle, so refuse early.
+  const settlementAssets = railSettlementAssets();
+  const assertSupported = (asset: PaymentAsset): void => {
+    if (!settlementAssets.includes(asset)) {
+      throw badRequest(`PDAX is not configured to settle ${asset}.`, {
+        asset,
+        supported: settlementAssets,
+      });
+    }
+  };
 
   async function call<S extends z.ZodTypeAny>(
     method: "GET" | "POST",
@@ -188,24 +201,31 @@ export function createPdaxProvider(overrides: Partial<PdaxConfig> = {}) {
       destination: string;
     }): Promise<{ withdrawRef: string }>;
   } = {
-    async getQuote({ phpAmount }): Promise<Quote> {
-      const r = await call("GET", "/rates/XLMPHP", RateSchema);
+    supportsAsset(asset) {
+      return settlementAssets.includes(asset);
+    },
+
+    async getQuote({ sell, phpAmount }): Promise<Quote> {
+      assertSupported(sell);
+      const r = await call("GET", `/rates/${sell}PHP`, RateSchema);
       const rate = dec(r.price);
       return {
+        asset: sell,
         rate,
         phpAmount,
-        xlmAmount: phpToXlm(phpAmount, rate),
+        assetAmount: phpToAsset(phpAmount, rate),
         expiresAt: new Date(cfg.now() + QUOTE_TTL_MS),
       };
     },
 
-    async sellCryptoForPhp({ ref, xlmAmount }) {
+    async sellCryptoForPhp({ ref, asset, amount }) {
+      assertSupported(asset);
       const r = await call("POST", "/trades", RefSchema, {
         body: {
-          traded_currency: "XLM",
+          traded_currency: asset,
           settlement_currency: "PHP",
           side: "sell",
-          traded_amount: xlmAmount.toFixed(7),
+          traded_amount: amount.toFixed(7),
           client_ref: ref,
         },
       });

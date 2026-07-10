@@ -15,6 +15,7 @@ export async function resetDb(): Promise<void> {
   await db.exchangeRateSnapshot.deleteMany();
   await db.auditLog.deleteMany();
   await db.merchant.deleteMany();
+  await db.walletBalance.deleteMany();
   await db.custodialWallet.deleteMany();
   await db.session.deleteMany();
   await db.user.deleteMany();
@@ -23,6 +24,10 @@ export async function resetDb(): Promise<void> {
 export async function makePayer(opts?: {
   cachedXlm?: string;
   reservedXlm?: string;
+  /** Issued-asset balances, e.g. `{ USDT: { cached: "50.0000000" } }`. Trusted unless said otherwise. */
+  assets?: Partial<
+    Record<"USDC" | "USDT", { cached?: string; reserved?: string; trustline?: boolean }>
+  >;
 }): Promise<{ user: User; wallet: CustodialWallet }> {
   const user = await db.user.create({
     data: { username: `payer-${randomUUID()}`, passwordHash: "x", role: "PAYER" },
@@ -36,6 +41,17 @@ export async function makePayer(opts?: {
       reservedXlm: opts?.reservedXlm ?? "0.0000000",
     },
   });
+  for (const [asset, cfg] of Object.entries(opts?.assets ?? {})) {
+    await db.walletBalance.create({
+      data: {
+        walletId: wallet.id,
+        asset: asset as "USDC" | "USDT",
+        cached: cfg.cached ?? "0.0000000",
+        reserved: cfg.reserved ?? "0.0000000",
+        trustlineEstablishedAt: cfg.trustline === false ? null : new Date(),
+      },
+    });
+  }
   return { user, wallet };
 }
 

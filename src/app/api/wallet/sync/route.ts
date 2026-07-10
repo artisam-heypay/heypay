@@ -11,6 +11,9 @@ export const POST = route(async (req) => {
   const user = await requireUser();
   const wallet = await db.custodialWallet.findUnique({ where: { userId: user.id } });
   if (!wallet) throw notFound("wallet not found");
-  const { balanceXlm } = await syncWalletDeposits(wallet.id);
-  return json({ balanceXlm: balanceXlm.toFixed(7) });
+  const { balanceXlm, balances } = await syncWalletDeposits(wallet.id);
+  return json({
+    balanceXlm: balanceXlm.toFixed(7),
+    balances: Object.fromEntries(Object.entries(balances).map(([a, v]) => [a, v.toFixed(7)])),
+  });
 });

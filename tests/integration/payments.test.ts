@@ -29,10 +29,12 @@ vi.mock("@/server/auth/sessions", () => ({
 vi.mock("@/server/auth/rate-limit", () => ({ rateLimit: vi.fn(async () => {}) }));
 vi.mock("@/server/rails", () => ({
   rail: {
+    supportsAsset: () => true,
     getQuote: vi.fn(async ({ phpAmount }: { phpAmount: import("@/lib/money").Decimal }) => ({
+      asset: "XLM" as const,
       rate: dec("12"),
       phpAmount,
-      xlmAmount: phpAmount.div(12),
+      assetAmount: phpAmount.div(12),
       expiresAt: new Date(Date.now() + 90_000),
     })),
   },
@@ -76,7 +78,8 @@ describe("payments API", () => {
     );
     const q = await qRes.json();
     expect(qRes.status).toBe(200);
-    expect(q.amountXlm).toBe("8.3333334");
+    expect(q.asset).toBe("XLM");
+    expect(q.amountAsset).toBe("8.3333334");
 
     const cRes = await confirm(
       new NextRequest(`http://localhost/api/payments/${q.paymentId}/confirm`, {
@@ -109,7 +112,7 @@ describe("payments API", () => {
         merchantId: merchant.id,
         amountPhp: "100.00",
         quotedRate: "12.00000000",
-        amountXlm: "8.3333334",
+        amountAsset: "8.3333334",
         networkFeeXlm: "0.0000100",
         status: "QUOTED",
         quoteExpiresAt: new Date(Date.now() + 90_000),
@@ -136,7 +139,7 @@ describe("payments API", () => {
         merchantId: merchant.id,
         amountPhp: "100.00",
         quotedRate: "12.00000000",
-        amountXlm: "8.3333334",
+        amountAsset: "8.3333334",
         networkFeeXlm: "0.0000100",
         status: "QUOTED",
       },
@@ -168,7 +171,7 @@ describe("payments API", () => {
         merchantId: merchant.id,
         amountPhp: "100.00",
         quotedRate: "12.00000000",
-        amountXlm: "8.3333334",
+        amountAsset: "8.3333334",
         networkFeeXlm: "0.0000100",
         status: "AUTHORIZED",
       },
@@ -191,7 +194,7 @@ describe("payments API", () => {
         merchantId: merchant.id,
         amountPhp: "100.00",
         quotedRate: "12.00000000",
-        amountXlm: "8.3333334",
+        amountAsset: "8.3333334",
         networkFeeXlm: "0.0000100",
         status: "STELLAR_SUBMITTED",
       },

@@ -12,7 +12,7 @@ export const GET = route(async (_req, ctx) => {
   return json({
     ...p,
     amountPhp: p.amountPhp.toFixed(2),
-    amountXlm: p.amountXlm.toFixed(7),
+    amountAsset: p.amountAsset.toFixed(7),
     createdAt: p.createdAt.toISOString(),
     events: p.events.map((e) => ({ ...e, createdAt: e.createdAt.toISOString() })),
   });

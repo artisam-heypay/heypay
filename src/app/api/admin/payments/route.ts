@@ -13,7 +13,7 @@ export const GET = route(async (req) => {
     items: page.items.map((p) => ({
       ...p,
       amountPhp: p.amountPhp.toFixed(2),
-      amountXlm: p.amountXlm.toFixed(7),
+      amountAsset: p.amountAsset.toFixed(7),
       createdAt: p.createdAt.toISOString(),
     })),
     nextCursor: page.nextCursor,

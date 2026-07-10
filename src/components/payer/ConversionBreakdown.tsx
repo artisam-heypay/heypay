@@ -4,15 +4,20 @@ import { type Decimal, displayPhp, displayXlm, formatPhp } from "@/lib/money";
 export function ConversionBreakdown({
   amountPhp,
   quotedRate,
-  amountXlm,
+  amountAsset,
   networkFeeXlm,
+  asset = "XLM",
 }: {
   amountPhp: Decimal;
   quotedRate: Decimal;
-  amountXlm: Decimal;
+  amountAsset: Decimal;
   networkFeeXlm: Decimal;
+  asset?: string;
 }) {
-  const total = amountXlm.plus(networkFeeXlm);
+  // The Stellar fee is always XLM. It only adds to the deduction when XLM is also
+  // the funding asset; otherwise it is charged separately against the XLM balance.
+  const isXlm = asset === "XLM";
+  const total = isXlm ? amountAsset.plus(networkFeeXlm) : amountAsset;
   return (
     <Card>
       <p className="text-label-md uppercase text-on-surface-variant">You pay</p>
@@ -21,7 +26,9 @@ export function ConversionBreakdown({
       <dl className="mt-stack-md divide-y divide-outline-variant">
         <div className="flex items-center justify-between py-stack-sm">
           <dt className="text-body-md text-on-surface-variant">Exchange rate</dt>
-          <dd className="font-mono text-mono-data">1 XLM = ₱{formatPhp(quotedRate)}</dd>
+          <dd className="font-mono text-mono-data">
+            1 {asset} = ₱{formatPhp(quotedRate)}
+          </dd>
         </div>
         <div className="flex items-center justify-between py-stack-sm">
           <dt className="text-body-md text-on-surface-variant">Network fee</dt>
@@ -30,7 +37,7 @@ export function ConversionBreakdown({
         <div className="flex items-center justify-between py-stack-sm">
           <dt className="font-display text-body-md font-bold">Total deduction</dt>
           <dd>
-            <MoneyAmount xlm={total} php={amountPhp} size="row" />
+            <MoneyAmount xlm={total} asset={asset} php={amountPhp} size="row" />
           </dd>
         </div>
       </dl>

@@ -2,7 +2,8 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { prisma } from "@/server/db";
 import { notFound } from "@/lib/errors";
-import { dec, formatXlm, formatPhp } from "@/lib/money";
+import { dec, formatAsset, formatXlm, formatPhp } from "@/lib/money";
+import type { PaymentAsset } from "@/lib/assets";
 import type { Merchant, Payment, PaymentStatus } from "@/generated/prisma/client";
 import { MerchantStatus } from "@/generated/prisma/client";
 import type { TxQuery } from "@/lib/schemas/merchant";
@@ -36,7 +37,9 @@ export type MerchantTxItem = {
   id: string;
   reference: string;
   customer: string;
-  amountXlm: string;
+  /** The payer's funding asset; the merchant is still settled in PHP. */
+  asset: PaymentAsset;
+  amountAsset: string;
   amountPhp: string;
   netSettledPhp: string | null;
   status: PaymentStatus;
@@ -119,9 +122,11 @@ export async function getMerchantEarnings(merchantId: string): Promise<MerchantE
     where: { merchantId, status: "SETTLED" },
     select: { netSettledPhp: true, settledAt: true },
   });
+  // `pendingXlm` is an XLM figure, so only XLM-funded payments belong in it —
+  // adding a USDT `amountAsset` here would sum two different units.
   const pending = await prisma.payment.findMany({
-    where: { merchantId, status: { in: PENDING_STATUSES } },
-    select: { amountXlm: true },
+    where: { merchantId, status: { in: PENDING_STATUSES }, asset: "XLM" },
+    select: { amountAsset: true },
   });
 
   let total = dec(0),
@@ -138,7 +143,7 @@ export async function getMerchantEarnings(merchantId: string): Promise<MerchantE
     else if (at && at >= prevStart && at < curStart) lastMonth = lastMonth.plus(v);
   }
   let pendingXlm = dec(0);
-  for (const p of pending) pendingXlm = pendingXlm.plus(dec(p.amountXlm.toString()));
+  for (const p of pending) pendingXlm = pendingXlm.plus(dec(p.amountAsset.toString()));
 
   const momChangePct = lastMonth.isZero()
     ? null
@@ -158,7 +163,8 @@ function mapTx(p: Payment & { payer: { username: string } }): MerchantTxItem {
     id: p.id,
     reference: p.reference,
     customer: p.payer.username,
-    amountXlm: formatXlm(dec(p.amountXlm.toString())),
+    asset: p.asset,
+    amountAsset: formatAsset(dec(p.amountAsset.toString())),
     amountPhp: formatPhp(dec(p.amountPhp.toString())),
     netSettledPhp: p.netSettledPhp ? formatPhp(dec(p.netSettledPhp.toString())) : null,
     status: p.status,

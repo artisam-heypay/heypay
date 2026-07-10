@@ -46,14 +46,14 @@ describe("generateTotp (RFC 6238 SHA-1 vector)", () => {
 });
 
 describe("PdaxProvider method mapping", () => {
-  it("getQuote maps price into a Decimal rate and computes xlmAmount", async () => {
+  it("getQuote maps price into a Decimal rate and computes assetAmount", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       jsonResponse({ traded_currency: "XLM", settlement_currency: "PHP", price: "3.50" }),
     );
     const p = createPdaxProvider({ ...baseCfg, fetchImpl });
     const q = await p.getQuote({ sell: "XLM", buy: "PHP", phpAmount: new Decimal("100.00") });
     expect(q.rate.toString()).toBe("3.5");
-    expect(q.xlmAmount.toFixed(7)).toBe("28.5714286");
+    expect(q.assetAmount.toFixed(7)).toBe("28.5714286");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(String(url)).toBe(`${baseCfg.baseUrl}/rates/XLMPHP`);
@@ -63,7 +63,11 @@ describe("PdaxProvider method mapping", () => {
   it("sellCryptoForPhp posts XLM->PHP and maps reference to tradeRef", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ reference: "TR-123" }));
     const p = createPdaxProvider({ ...baseCfg, fetchImpl });
-    const r = await p.sellCryptoForPhp({ ref: "TXN-A", xlmAmount: new Decimal("28.5714286") });
+    const r = await p.sellCryptoForPhp({
+      ref: "TXN-A",
+      asset: "XLM",
+      amount: new Decimal("28.5714286"),
+    });
     expect(r.tradeRef).toBe("TR-123");
     const [, init] = fetchImpl.mock.calls[0]!;
     const sent = JSON.parse(String(init?.body));
@@ -131,7 +135,7 @@ describe("PdaxProvider resilience + validation", () => {
       .mockResolvedValueOnce(jsonResponse({ error: "down" }, 503))
       .mockResolvedValueOnce(jsonResponse({ reference: "TR-RETRY" }));
     const p = createPdaxProvider({ ...baseCfg, fetchImpl });
-    const r = await p.sellCryptoForPhp({ ref: "TXN-R", xlmAmount: new Decimal("1") });
+    const r = await p.sellCryptoForPhp({ ref: "TXN-R", asset: "XLM", amount: new Decimal("1") });
     expect(r.tradeRef).toBe("TR-RETRY");
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
@@ -140,7 +144,7 @@ describe("PdaxProvider resilience + validation", () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ error: "bad" }, 400));
     const p = createPdaxProvider({ ...baseCfg, fetchImpl });
     await expect(
-      p.sellCryptoForPhp({ ref: "TXN-B", xlmAmount: new Decimal("1") }),
+      p.sellCryptoForPhp({ ref: "TXN-B", asset: "XLM", amount: new Decimal("1") }),
     ).rejects.toThrow();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
@@ -149,7 +153,7 @@ describe("PdaxProvider resilience + validation", () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ not_a_reference: true }));
     const p = createPdaxProvider({ ...baseCfg, fetchImpl });
     await expect(
-      p.sellCryptoForPhp({ ref: "TXN-C", xlmAmount: new Decimal("1") }),
+      p.sellCryptoForPhp({ ref: "TXN-C", asset: "XLM", amount: new Decimal("1") }),
     ).rejects.toThrow();
   });
 });

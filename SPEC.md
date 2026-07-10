@@ -19,8 +19,8 @@ registered **PH bank account**.
 1. Payer opens HeyPay and authenticates.
 2. Payer scans an existing QRPH code (or uploads an image of it).
 3. The QRPH resolves to a **registered HeyPay merchant**.
-4. Payer confirms; payment is funded with **XLM** (USDT/USDC are future scope).
-5. HeyPay **sells XLM → PHP** via the PDAX trade API.
+4. Payer confirms; payment is funded with **XLM** or, when enabled via `PAYMENT_ASSETS`, an issued asset such as **USDT** (see `docs/multi-asset.md`).
+5. HeyPay **sells the funding asset → PHP** via the PDAX trade API.
 6. HeyPay **sends PHP → merchant's PH bank account** via the PDAX cash-out API.
 
 ### Merchant setup
@@ -40,7 +40,6 @@ of their QRPH** and (b) the **bank account** that will receive PHP.
 
 ### Explicitly out of scope (note as TODO/feature-flag stubs)
 
-- USDT / USDC payment assets (model for it; gate behind a flag).
 - KYC/AML onboarding, real OTP/2FA UX, fraud scoring.
 - Mobile native apps.
 - Real money movement in non-production environments (use PDAX **staging** +
@@ -132,7 +131,7 @@ datasource db {
 
 enum Role { ADMIN PAYER MERCHANT }
 
-enum PaymentAsset { XLM USDC USDT }   // only XLM enabled in v1
+enum PaymentAsset { XLM USDC USDT }   // enabled set is config: PAYMENT_ASSETS
 
 enum PaymentStatus {
   CREATED QUOTED AUTHORIZED

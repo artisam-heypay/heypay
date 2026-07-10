@@ -2,8 +2,10 @@
 import "server-only";
 import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
-import { dec, availableXlm } from "@/lib/money";
+import { dec } from "@/lib/money";
+import { isIssuedAsset } from "@/lib/assets";
 import { conflict, forbidden, notFound } from "@/lib/errors";
+import { getAssetBalance, reserveAsset } from "@/server/wallet/balances";
 import { withIdempotencyKey } from "./idempotency";
 import { applyTransition } from "./state-machine";
 import { enqueueSettle } from "@/server/queue/queues";
@@ -30,20 +32,32 @@ export async function confirmPayment(input: ConfirmPaymentInput): Promise<Confir
 
     const wallet = payment.payer.wallet;
     if (!wallet) throw conflict("payer wallet not found");
-    const total = dec(payment.amountXlm.toString()).plus(payment.networkFeeXlm.toString());
+
+    const asset = payment.asset;
+    const amountAsset = dec(payment.amountAsset.toString());
+    const networkFeeXlm = dec(payment.networkFeeXlm.toString());
+    // For XLM both legs are the same balance, so reserve them as one amount; for
+    // an issued asset the fee is a separate XLM hold.
+    const assetHold = isIssuedAsset(asset) ? amountAsset : amountAsset.plus(networkFeeXlm);
 
     const updated = await db.$transaction(async (tx) => {
-      const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-      const available = availableXlm(
-        dec(w.cachedXlmBalance.toString()),
-        dec(w.reservedXlm.toString()),
-      );
-      if (available.lessThan(total)) throw conflict("insufficient available XLM balance");
-      await tx.custodialWallet.update({
-        where: { id: w.id },
-        data: { reservedXlm: dec(w.reservedXlm.toString()).plus(total).toFixed(7) },
+      const balance = await getAssetBalance(tx, wallet.id, asset);
+      if (balance.available.lessThan(assetHold))
+        throw conflict(`insufficient available ${asset} balance`);
+      await reserveAsset(tx, wallet.id, asset, assetHold);
+
+      if (isIssuedAsset(asset)) {
+        const xlm = await getAssetBalance(tx, wallet.id, "XLM");
+        if (xlm.available.lessThan(networkFeeXlm))
+          throw conflict("insufficient XLM to cover the Stellar network fee");
+        await reserveAsset(tx, wallet.id, "XLM", networkFeeXlm);
+      }
+
+      return applyTransition(tx, payment, "AUTHORIZED", {
+        asset,
+        reservedAsset: assetHold.toFixed(7),
+        reservedXlmFee: isIssuedAsset(asset) ? networkFeeXlm.toFixed(7) : undefined,
       });
-      return applyTransition(tx, payment, "AUTHORIZED", { reservedXlm: total.toFixed(7) });
     });
 
     await enqueueSettle(payment.id);

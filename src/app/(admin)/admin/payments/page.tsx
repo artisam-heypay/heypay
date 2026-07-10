@@ -78,7 +78,8 @@ export default async function AdminPaymentsPage({
                   payerUsername: p.payerUsername,
                   merchantName: p.merchantName,
                   amountPhp: p.amountPhp.toFixed(2),
-                  amountXlm: p.amountXlm.toFixed(7),
+                  asset: p.asset,
+                  amountAsset: p.amountAsset.toFixed(7),
                   failureReason: p.failureReason,
                   createdAt: p.createdAt.toISOString(),
                 }}

@@ -9,7 +9,7 @@ describe("ConversionBreakdown", () => {
       <ConversionBreakdown
         amountPhp={dec("500.00")}
         quotedRate={dec("59.40")}
-        amountXlm={dec("8.4175084")}
+        amountAsset={dec("8.4175084")}
         networkFeeXlm={dec("0.00001")}
       />,
     );

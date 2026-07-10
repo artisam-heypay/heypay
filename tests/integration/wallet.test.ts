@@ -20,10 +20,12 @@ vi.mock("@/server/auth/sessions", () => ({
 }));
 vi.mock("@/server/rails", () => ({
   rail: {
+    supportsAsset: () => true,
     getQuote: vi.fn(async () => ({
+      asset: "XLM" as const,
       rate: dec("12"),
       phpAmount: dec("0"),
-      xlmAmount: dec("0"),
+      assetAmount: dec("0"),
       expiresAt: new Date(),
     })),
   },
@@ -43,7 +45,11 @@ describe("wallet API", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     sessionUser.current = null;
-    syncWalletDeposits.mockResolvedValue({ balanceXlm: dec("42"), newDeposits: 1 });
+    syncWalletDeposits.mockResolvedValue({
+      balanceXlm: dec("42"),
+      balances: { XLM: dec("42") },
+      newDeposits: 1,
+    });
     await resetDb();
   });
 
@@ -59,6 +65,14 @@ describe("wallet API", () => {
       reservedXlm: "2.0000000",
       availableXlm: "8.0000000",
     });
+    // Multi-asset view: XLM only, until PAYMENT_ASSETS enables more.
+    expect(body.assets).toEqual([
+      expect.objectContaining({
+        asset: "XLM",
+        available: "8.0000000",
+        canReceive: true,
+      }),
+    ]);
   });
 
   it("POST /api/wallet/sync reconciles via syncWalletDeposits", async () => {
@@ -70,7 +84,10 @@ describe("wallet API", () => {
     });
     const res = await postSync(req, noParams);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ balanceXlm: "42.0000000" });
+    expect(await res.json()).toEqual({
+      balanceXlm: "42.0000000",
+      balances: { XLM: "42.0000000" },
+    });
     expect(syncWalletDeposits).toHaveBeenCalledOnce();
   });
 
@@ -82,7 +99,7 @@ describe("wallet API", () => {
         data: {
           walletId: wallet.id,
           type: "PREFUND_DEPOSIT",
-          amountXlm: "1.0000000",
+          amount: "1.0000000",
           balanceAfter: `${i + 1}.0000000`,
           stellarTxHash: `H${i}`,
         },

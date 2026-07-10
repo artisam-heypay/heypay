@@ -71,7 +71,7 @@ describe("applyTransition (persisted)", () => {
         merchantId: merchant.id,
         amountPhp: "100.00",
         quotedRate: "12.00000000",
-        amountXlm: "8.3333334",
+        amountAsset: "8.3333334",
         networkFeeXlm: "0.0000100",
         status: "QUOTED",
         quoteExpiresAt: new Date(Date.now() + 90_000),

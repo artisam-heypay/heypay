@@ -1,7 +1,10 @@
 import "server-only";
 import { db } from "@/server/db";
 import { dec, type Decimal } from "@/lib/money";
-import { displayPhp, displayXlm } from "@/lib/money";
+import { displayAsset, displayPhp } from "@/lib/money";
+import { enabledAssets, type PaymentAsset } from "@/lib/assets";
+import { isAssetConfigured } from "@/server/stellar/assets";
+import { getAssetBalances, type WalletAssetBalance } from "@/server/wallet/balances";
 import type { PaymentStatus } from "@/generated/prisma/client";
 
 export type WalletSummary = {
@@ -9,18 +12,21 @@ export type WalletSummary = {
   balanceXlm: Decimal;
   reservedXlm: Decimal;
   availableXlm: Decimal;
+  /** Every enabled, issuer-configured asset, XLM first. */
+  balances: WalletAssetBalance[];
 };
 
 export async function getWalletSummary(payerId: string): Promise<WalletSummary | null> {
   const wallet = await db.custodialWallet.findUnique({ where: { userId: payerId } });
   if (!wallet) return null;
-  const balanceXlm = dec(wallet.cachedXlmBalance.toString());
-  const reservedXlm = dec(wallet.reservedXlm.toString());
+  const balances = await getAssetBalances(db, wallet.id, enabledAssets().filter(isAssetConfigured));
+  const xlm = balances.find((b) => b.asset === "XLM");
   return {
     publicKey: wallet.stellarPublicKey,
-    balanceXlm,
-    reservedXlm,
-    availableXlm: balanceXlm.minus(reservedXlm),
+    balanceXlm: xlm?.cached ?? dec("0"),
+    reservedXlm: xlm?.reserved ?? dec("0"),
+    availableXlm: xlm?.available ?? dec("0"),
+    balances,
   };
 }
 
@@ -29,7 +35,8 @@ export type RecentPayment = {
   reference: string;
   merchantName: string;
   merchantCity: string | null;
-  amountXlm: Decimal;
+  asset: PaymentAsset;
+  amountAsset: Decimal;
   amountPhp: Decimal;
   status: PaymentStatus;
   createdAt: string;
@@ -47,7 +54,8 @@ export async function getRecentPayments(payerId: string, limit = 5): Promise<Rec
     reference: p.reference,
     merchantName: p.merchant.businessName,
     merchantCity: p.merchant.qrphMerchantCity,
-    amountXlm: dec(p.amountXlm.toString()),
+    asset: p.asset,
+    amountAsset: dec(p.amountAsset.toString()),
     amountPhp: dec(p.amountPhp.toString()),
     status: p.status,
     createdAt: p.createdAt.toISOString(),
@@ -59,7 +67,8 @@ export type PayerPaymentListItem = {
   reference: string;
   merchantName: string;
   merchantCity: string | null;
-  amountXlm: string;
+  asset: PaymentAsset;
+  amountAsset: string;
   amountPhp: string;
   status: PaymentStatus;
   createdAt: string;
@@ -83,7 +92,8 @@ export async function getPayerPayments(
     reference: p.reference,
     merchantName: p.merchant.businessName,
     merchantCity: p.merchant.qrphMerchantCity,
-    amountXlm: displayXlm(dec(p.amountXlm.toString())),
+    asset: p.asset,
+    amountAsset: displayAsset(dec(p.amountAsset.toString()), p.asset),
     amountPhp: displayPhp(dec(p.amountPhp.toString())),
     status: p.status,
     createdAt: p.createdAt.toISOString(),

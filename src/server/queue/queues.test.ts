@@ -42,7 +42,7 @@ describe("queues", () => {
         merchantId: merchant.id,
         amountPhp: "100.00",
         quotedRate: "12.00000000",
-        amountXlm: "8.3333334",
+        amountAsset: "8.3333334",
         networkFeeXlm: "0.0000100",
         status: "AUTHORIZED",
       },

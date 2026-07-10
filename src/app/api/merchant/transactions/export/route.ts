@@ -12,11 +12,21 @@ export const GET = route(async (req) => {
   const rows = await allMerchantTransactions(merchant.id, { status, from, to });
 
   const csv = toCsv(
-    ["Reference", "Customer", "Received XLM", "Amount PHP", "Settled PHP", "Status", "Date"],
+    [
+      "Reference",
+      "Customer",
+      "Asset",
+      "Amount Received",
+      "Amount PHP",
+      "Settled PHP",
+      "Status",
+      "Date",
+    ],
     rows.map((r) => [
       r.reference,
       r.customer,
-      r.amountXlm,
+      r.asset,
+      r.amountAsset,
       r.amountPhp,
       r.netSettledPhp,
       r.status,
