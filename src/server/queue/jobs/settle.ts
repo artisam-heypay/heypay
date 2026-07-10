@@ -4,6 +4,7 @@ import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
+import { findConversionRoute } from "@/server/stellar/paths";
 import { dec, type Decimal } from "@/lib/money";
 import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { withRetry, pollUntil } from "@/lib/retry";
@@ -101,20 +102,49 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
   // Idempotency: if a tx was already submitted, just advance.
   let txHash = p.stellarTxHash;
   if (!txHash) {
-    const deposit = await withRetry(() => rail.getDepositAddress(asset), {
+    // The rail receives `settlementAsset`; when that isn't the payer's asset the
+    // payment converts on the DEX on its way there, in this same transaction.
+    const settlementAsset = p.settlementAsset ?? asset;
+    const deposit = await withRetry(() => rail.getDepositAddress(settlementAsset), {
       label: "getDepositAddress",
     });
+    // The rail's address tag, when it gives one, is what credits the deposit to
+    // our account — it must win over our own reference.
+    const memo = deposit.memo ?? p.reference;
+
     const res = await withRetry(
-      () =>
-        walletService.sendAsset({
+      async () => {
+        if (settlementAsset === asset || !p.settlementAmount) {
+          return walletService.sendAsset({
+            encryptedSecret: wallet.encryptedSecret,
+            destination: deposit.address,
+            asset,
+            amount: assetAmount,
+            memo,
+          });
+        }
+        // Re-find the route at submission: the book has moved since quoting, and
+        // the path recorded then may no longer be the cheapest (or exist).
+        const destMin = dec(p.settlementAmount.toString());
+        const route = await findConversionRoute(asset, settlementAsset, destMin);
+        if (!route) {
+          throw new Error(
+            `No Stellar DEX route to convert ${asset} into ${settlementAsset} for this payment`,
+          );
+        }
+        return walletService.sendAssetViaPath({
           encryptedSecret: wallet.encryptedSecret,
           destination: deposit.address,
           asset,
           amount: assetAmount,
-          // The rail's address tag, when it gives one, is what credits the
-          // deposit to our account — it must win over our own reference.
-          memo: deposit.memo ?? p.reference,
-        }),
+          destAsset: settlementAsset,
+          // Deliver at least what the rail needs; the tx fails rather than
+          // short-changing the merchant.
+          destMin,
+          path: route.path,
+          memo,
+        });
+      },
       { label: "sendAsset" },
     );
     txHash = res.txHash;
@@ -195,17 +225,14 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
 async function stepRequestTrade(p: PaymentWithRels): Promise<void> {
   let tradeRef = p.pdaxTradeRef;
   if (!tradeRef) {
-    // Sell only the crypto the merchant is owed — the XLM network fee was spent
-    // on-chain and never reached the rail.
-    const res = await withRetry(
-      () =>
-        rail.sellCryptoForPhp({
-          ref: p.reference,
-          asset: p.asset,
-          amount: dec(p.amountAsset.toString()),
-        }),
-      { label: "sellCryptoForPhp" },
-    );
+    // Sell what actually reached the rail: the payer's asset when it was sent
+    // directly, or the asset it was converted into on the way. The XLM network
+    // fee was spent on-chain and never reached the rail either way.
+    const asset = p.settlementAsset ?? p.asset;
+    const amount = dec((p.settlementAmount ?? p.amountAsset).toString());
+    const res = await withRetry(() => rail.sellCryptoForPhp({ ref: p.reference, asset, amount }), {
+      label: "sellCryptoForPhp",
+    });
     tradeRef = res.tradeRef;
     await db.payment.update({ where: { id: p.id }, data: { pdaxTradeRef: tradeRef } });
   }

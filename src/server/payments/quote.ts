@@ -7,7 +7,7 @@ import { withRetry } from "@/lib/retry";
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import { assertAssetEnabled, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { getAssetBalance } from "@/server/wallet/balances";
-import { walletService } from "@/server/stellar/wallet";
+import { resolveSettlementRoute, quoteConversion } from "./settlement-route";
 import { getAssetRate } from "./rate";
 import { newPaymentReference } from "./reference";
 
@@ -15,6 +15,26 @@ import { newPaymentReference } from "./reference";
 // Fees are charged in XLM for every asset, so a USDT payment still needs a sliver
 // of XLM in the wallet.
 export const STELLAR_BASE_FEE_XLM: Decimal = dec("0.0000100");
+
+/**
+ * Head-room over the DEX quote when a payment converts on the way to the rail.
+ * The order book moves between quoting and submitting; without this the path
+ * payment fails (op_under_dest_min) and the payer just sees an error. The unused
+ * remainder is delivered to the rail, not kept.
+ */
+const CONVERSION_SLIPPAGE = dec(process.env.SETTLEMENT_SLIPPAGE_BPS ?? "100").div(10_000);
+
+/**
+ * How far above the reference rate a DEX conversion may cost the payer before it
+ * is refused (default 5%).
+ *
+ * A thin or manipulated order book can quote any price. Costing *less* than the
+ * reference is harmless — the counterparty subsidises the payer, and the rail
+ * still receives the full amount the merchant is owed — so only the expensive
+ * side is capped. Without this, a bad book could silently charge a payer many
+ * times what their asset is worth.
+ */
+const MAX_CONVERSION_PREMIUM = dec(process.env.SETTLEMENT_MAX_PREMIUM_BPS ?? "500").div(10_000);
 
 export type CreateQuoteInput = {
   payerId: string;
@@ -30,17 +50,19 @@ export type CreateQuoteResult = {
   rate: Decimal;
   amountAsset: Decimal;
   networkFeeXlm: Decimal;
+  /** The asset the rail receives; differs from `asset` when the payment converts. */
+  settlementAsset: PaymentAsset;
   quoteExpiresAt: Date;
 };
 
 export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteResult> {
   const asset: PaymentAsset = input.asset ?? "XLM";
   assertAssetEnabled(asset); // gated behind PAYMENT_ASSETS
-  if (!rail.supportsAsset(asset)) {
-    throw badRequest(`The payment rail cannot settle ${asset}.`, { asset });
-  }
-  await assertRailCanReceive(asset);
-  await assertAboveRailMinimum(asset, input.amountPhp);
+
+  // How this asset reaches the rail — directly, or converted on the DEX. Decided
+  // before anything is priced, because it changes what gets priced.
+  const route = await resolveSettlementRoute(asset);
+  const settlementAsset = route.settlementAsset;
 
   const merchant = await db.merchant.findUnique({ where: { id: input.merchantId } });
   if (!merchant || merchant.status !== "ACTIVE")
@@ -49,19 +71,43 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   const wallet = await db.custodialWallet.findUnique({ where: { userId: input.payerId } });
   if (!wallet) throw conflict("payer wallet not found");
 
+  // The rail always quotes and sells the asset it receives.
+  await assertAboveRailMinimum(settlementAsset, input.amountPhp);
   const quote = await withRetry(
-    () => rail.getQuote({ sell: asset, buy: "PHP", phpAmount: input.amountPhp }),
+    () => rail.getQuote({ sell: settlementAsset, buy: "PHP", phpAmount: input.amountPhp }),
     { label: "rail.getQuote" },
   );
-  const rate = quote.rate;
-  const amountAsset = phpToAsset(input.amountPhp, rate); // ROUND_UP, 7dp (payer covers)
-  const networkFeeXlm = STELLAR_BASE_FEE_XLM;
 
+  // The rail needs this much of `settlementAsset` to cover the merchant's PHP.
+  const settlementAmount = phpToAsset(input.amountPhp, quote.rate); // ROUND_UP, 7dp
+
+  let amountAsset: Decimal;
+  let rate: Decimal;
+  if (route.mode === "direct") {
+    amountAsset = settlementAmount;
+    rate = quote.rate;
+  } else {
+    // Convert on the DEX: price the payer's asset by what it costs to deliver
+    // `settlementAmount`, plus head-room for the book moving before submission.
+    const conversion = await quoteConversion(asset, route, settlementAmount);
+    amountAsset = conversion.sourceAmount
+      .times(dec(1).plus(CONVERSION_SLIPPAGE))
+      .toDecimalPlaces(7, Decimal.ROUND_UP);
+    await assertConversionNotOverpriced(asset, input.amountPhp, amountAsset);
+    // The payer's effective rate: what one unit of their asset buys in PHP.
+    rate = input.amountPhp.div(amountAsset).toDecimalPlaces(8, Decimal.ROUND_DOWN);
+  }
+
+  const networkFeeXlm = STELLAR_BASE_FEE_XLM;
   await assertFundsAvailable(wallet.id, asset, amountAsset, networkFeeXlm);
 
   const payment = await db.$transaction(async (tx) => {
     await tx.exchangeRateSnapshot.create({
-      data: { pair: `${asset}PHP`, rate: rate.toFixed(8), source: "PDAX" },
+      data: {
+        pair: `${settlementAsset}PHP`,
+        rate: quote.rate.toFixed(8),
+        source: "PDAX",
+      },
     });
     const p = await tx.payment.create({
       data: {
@@ -72,6 +118,10 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
         amountPhp: input.amountPhp.toFixed(2),
         quotedRate: rate.toFixed(8),
         amountAsset: amountAsset.toFixed(7),
+        settlementAsset,
+        // Only meaningful when the payment converts; a direct one settles in
+        // `amountAsset` itself.
+        settlementAmount: route.mode === "path" ? settlementAmount.toFixed(7) : null,
         networkFeeXlm: networkFeeXlm.toFixed(7),
         status: "QUOTED",
         quoteExpiresAt: quote.expiresAt,
@@ -82,7 +132,12 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
         paymentId: p.id,
         fromStatus: "CREATED",
         toStatus: "QUOTED",
-        detail: { asset, rate: rate.toFixed(8) },
+        detail: {
+          asset,
+          rate: rate.toFixed(8),
+          settlementAsset,
+          settlementMode: route.mode,
+        },
       },
     });
     return p;
@@ -96,31 +151,30 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
     rate,
     amountAsset,
     networkFeeXlm,
+    settlementAsset,
     quoteExpiresAt: quote.expiresAt,
   };
 }
 
 /**
- * Refuse to quote an asset the rail's deposit account cannot actually receive.
- *
- * Stellar rejects a payment to an account that doesn't trust the asset — but it
- * does so at submission, by which point the payer has confirmed and we are one
- * step from moving money. Checking the destination up front turns a mid-flight
- * `op_no_trust` failure into a plain "we can't take USDC yet" at quote time.
+ * Refuse a DEX conversion that would charge the payer materially more than their
+ * asset is worth. Cheaper than reference is allowed — see MAX_CONVERSION_PREMIUM.
  */
-async function assertRailCanReceive(asset: PaymentAsset): Promise<void> {
-  let destination: string;
-  try {
-    destination = (await rail.getDepositAddress(asset)).address;
-  } catch {
-    throw badRequest(`The payment rail has no ${asset} deposit wallet.`, { asset });
-  }
-  if (!(await walletService.canReceive(destination, asset))) {
-    throw badRequest(`The payment rail cannot receive ${asset} on this network yet.`, {
-      asset,
-      destination,
-    });
-  }
+async function assertConversionNotOverpriced(
+  asset: PaymentAsset,
+  amountPhp: Decimal,
+  amountAsset: Decimal,
+): Promise<void> {
+  const referenceRate = await getAssetRate(asset);
+  if (!referenceRate) return; // nothing to compare against
+  const fairAmount = phpToAsset(amountPhp, referenceRate);
+  const maxAmount = fairAmount.times(dec(1).plus(MAX_CONVERSION_PREMIUM));
+  if (amountAsset.lessThanOrEqualTo(maxAmount)) return;
+  throw badRequest(
+    `Converting ${asset} on the Stellar DEX currently costs ${amountAsset.toFixed(7)} ${asset}, ` +
+      `far above the ${fairAmount.toFixed(7)} ${asset} this payment is worth. Try again later.`,
+    { asset, quoted: amountAsset.toFixed(7), fair: fairAmount.toFixed(7) },
+  );
 }
 
 /**
@@ -138,7 +192,7 @@ async function assertAboveRailMinimum(asset: PaymentAsset, amountPhp: Decimal): 
   if (estimated.greaterThanOrEqualTo(minAsset)) return;
   const minPhp = minAsset.times(rate).toDecimalPlaces(2, Decimal.ROUND_UP);
   throw badRequest(
-    `The minimum ${asset} payment is ${minAsset.toString()} ${asset} (about ₱${minPhp.toFixed(2)}).`,
+    `The minimum payment is about ₱${minPhp.toFixed(2)} (${minAsset.toString()} ${asset}).`,
     { asset, minAsset: minAsset.toString(), minPhp: minPhp.toFixed(2) },
   );
 }

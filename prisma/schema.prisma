@@ -185,6 +185,13 @@ model Payment {
   // crypto debited from the payer, denominated in `asset` (column kept as
   // amountXlm for back-compat with pre-multi-asset rows, all of which are XLM)
   amountAsset       Decimal       @map("amountXlm") @db.Decimal(20, 7)
+  // What the rail actually receives and sells. Equal to `asset` when the rail can
+  // take the payer's asset directly; otherwise the asset it is converted into on
+  // the Stellar DEX during the same payment (path payment), e.g. USDC -> XLM.
+  settlementAsset   PaymentAsset?
+  // Minimum amount of `settlementAsset` that must reach the rail. Null for a
+  // direct settlement, where `amountAsset` is what arrives.
+  settlementAmount  Decimal?      @db.Decimal(20, 7)
   // Stellar fees are always paid in XLM, whatever asset is being moved.
   networkFeeXlm     Decimal       @db.Decimal(20, 7) @default(0)
   pdaxFeePhp        Decimal       @db.Decimal(14, 2) @default(0)
