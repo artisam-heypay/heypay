@@ -24,6 +24,13 @@ export type PayoutStatus = {
   feePhp?: Decimal;
 };
 
+/**
+ * Where settlement sends the payer's crypto. `memo` is the rail's address tag:
+ * exchanges share one address across customers and credit the deposit by memo,
+ * so omitting it can lose the funds. Null memo means the rail didn't ask for one.
+ */
+export type CryptoDepositAddress = { address: string; memo: string | null };
+
 export interface PaymentRailProvider {
   /**
    * Whether this rail can turn `asset` into PHP directly. A rail that can't
@@ -31,6 +38,8 @@ export interface PaymentRailProvider {
    * settling it as something else.
    */
   supportsAsset(asset: PaymentAsset): boolean;
+  /** The rail's deposit address for `asset`, resolved at settlement time. */
+  getDepositAddress(asset: PaymentAsset): Promise<CryptoDepositAddress>;
   getQuote(input: { sell: PaymentAsset; buy: "PHP"; phpAmount: Decimal }): Promise<Quote>;
   /** Sells `amount` of `asset` for PHP. Crypto must already be at the rail's deposit address. */
   sellCryptoForPhp(input: {
@@ -48,13 +57,21 @@ export interface PaymentRailProvider {
 }
 
 /**
- * The rail's deposit address for `asset` — where settlement sends the payer's
- * crypto before it is sold for PHP. Configured per asset because an exchange
- * hands out a distinct address (and sometimes a distinct network) per asset.
+ * Statically configured deposit address for `asset`, if any. Takes precedence
+ * over anything a rail resolves at runtime, so an operator can pin the address
+ * the XLM leg has always used.
  */
 export function railDepositAddress(asset: PaymentAsset): string | null {
   const value = process.env[`PDAX_${asset}_DEPOSIT_ADDRESS`]?.trim();
   return value ? value : null;
+}
+
+/**
+ * PDAX names a crypto wallet by asset *and* network, e.g. `USDCXLM` is USDC on
+ * Stellar (as opposed to USDC on another chain). Native XLM is just `XLM`.
+ */
+export function pdaxCryptoCurrency(asset: PaymentAsset): string {
+  return asset === "XLM" ? "XLM" : `${asset}XLM`;
 }
 
 /**

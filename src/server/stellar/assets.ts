@@ -30,17 +30,43 @@ const ISSUER_ENV_KEY: Record<Exclude<PaymentAsset, "XLM">, string> = {
   USDT: "USDT_ASSET_ISSUER",
 };
 
+/**
+ * Testnet-only fallback issuers, so a dev machine works with no extra config.
+ *
+ * Both are issued by the account whose `home_domain` is `centre.io` (Circle's
+ * Centre Consortium) on testnet — verified against Horizon: it holds 46k+
+ * authorized USDC trustlines, making it the de-facto testnet USDC issuer, and it
+ * issues a test USDT as well. `auth_required` is false, so any wallet may add a
+ * trustline and receive.
+ *
+ * Deliberately NOT applied on mainnet: there, a wrong issuer means real money
+ * sent to a worthless lookalike, so mainnet must name its issuer explicitly.
+ */
+const TESTNET_ISSUER: Record<Exclude<PaymentAsset, "XLM">, string> = {
+  USDC: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  USDT: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+};
+
+function isMainnet(): boolean {
+  return process.env.STELLAR_NETWORK === "mainnet";
+}
+
 /** Stellar asset code as it appears on-chain (`balances[].asset_code`). */
 export function assetCode(asset: PaymentAsset): string {
   return asset;
 }
 
-/** The configured issuer account for an issued asset, or null when unset. */
+/**
+ * The issuer account for an issued asset: the configured one, else the testnet
+ * default, else null. Returns null on mainnet whenever the env var is unset.
+ */
 export function assetIssuer(asset: PaymentAsset): string | null {
   if (!isIssuedAsset(asset)) return null;
   const key = ISSUER_ENV_KEY[asset as Exclude<PaymentAsset, "XLM">];
   const value = process.env[key]?.trim();
-  return value ? value : null;
+  if (value) return value;
+  if (isMainnet()) return null;
+  return TESTNET_ISSUER[asset as Exclude<PaymentAsset, "XLM">];
 }
 
 /** True when the asset can actually be used: native, or issued with an issuer configured. */
@@ -58,7 +84,7 @@ export function resolveStellarAsset(asset: PaymentAsset): Asset {
   const issuer = assetIssuer(asset);
   if (!issuer) {
     const key = ISSUER_ENV_KEY[asset as Exclude<PaymentAsset, "XLM">];
-    throw serverError(`${asset} is enabled but ${key} is not set.`);
+    throw serverError(`${asset} is enabled on mainnet but ${key} is not set.`);
   }
   return new Asset(assetCode(asset), issuer);
 }

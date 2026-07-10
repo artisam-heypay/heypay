@@ -13,8 +13,11 @@ import type { PaymentAsset } from "@/lib/assets";
 import { AppError, badRequest, serverError } from "@/lib/errors";
 import { withRetry } from "@/lib/retry";
 import {
+  pdaxCryptoCurrency,
+  railDepositAddress,
   railSettlementAssets,
   type BankPayout,
+  type CryptoDepositAddress,
   type PaymentRailProvider,
   type PayoutStatus,
   type Quote,
@@ -77,6 +80,14 @@ const OrderStatusSchema = z.object({
 });
 const WithdrawSchema = z.object({
   data: z.object({ identifier: z.string(), status: z.string(), fee: z.number() }),
+});
+// `tag` is PDAX's memo for shared deposit addresses; absent for some assets.
+const CryptoDepositSchema = z.object({
+  data: z.object({
+    currency: z.string(),
+    address: z.string().min(1),
+    tag: z.string().nullish(),
+  }),
 });
 const FiatTxSchema = z.object({
   data: z.array(
@@ -243,6 +254,18 @@ export function createPdaxInstiProvider(
   return {
     supportsAsset(asset) {
       return settlementAssets.includes(asset);
+    },
+
+    async getDepositAddress(asset): Promise<CryptoDepositAddress> {
+      // A pinned address wins, so the XLM leg keeps using whatever it always has.
+      const pinned = railDepositAddress(asset);
+      if (pinned) return { address: pinned, memo: null };
+
+      const qs = new URLSearchParams({ currency: pdaxCryptoCurrency(asset) });
+      const r = await call("GET", `/pdax-institution/v1/crypto/deposit?${qs}`, CryptoDepositSchema);
+      // PDAX credits shared deposit addresses by tag, so it must ride along as
+      // the Stellar memo — dropping it can strand the deposit.
+      return { address: r.data.address, memo: r.data.tag ?? null };
     },
 
     async getQuote({ sell, phpAmount }): Promise<Quote> {

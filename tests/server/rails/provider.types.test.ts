@@ -37,9 +37,10 @@ describe("provider contract", () => {
     expectTypeOf(s.state).toEqualTypeOf<"PENDING" | "SETTLED" | "FAILED">();
   });
 
-  it("PaymentRailProvider has exactly the six locked methods", () => {
+  it("PaymentRailProvider has exactly the seven locked methods", () => {
     expectTypeOf<keyof PaymentRailProvider>().toEqualTypeOf<
       | "supportsAsset"
+      | "getDepositAddress"
       | "getQuote"
       | "sellCryptoForPhp"
       | "getTradeStatus"

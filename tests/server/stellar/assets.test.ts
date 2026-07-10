@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import {
   assetIssuer,
   isAssetConfigured,
@@ -7,11 +7,43 @@ import {
 } from "@/server/stellar/assets";
 
 const ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
-const OTHER_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+const OTHER_ISSUER = "GDEWOLMOPAVRTGNJVWOE6U6LHZVAWIJZVWM6PDLCFTUTJJEKSU32TO5W";
+/** Circle's Centre issuer on testnet; issues both USDC and USDT there. */
+const TESTNET_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
+const network = process.env.STELLAR_NETWORK;
+
+beforeEach(() => {
+  process.env.STELLAR_NETWORK = "testnet";
+});
 afterEach(() => {
   delete process.env.USDT_ASSET_ISSUER;
   delete process.env.USDC_ASSET_ISSUER;
+  process.env.STELLAR_NETWORK = network;
+});
+
+describe("issuer defaults", () => {
+  it("falls back to the Centre testnet issuer for USDC and USDT on testnet", () => {
+    expect(assetIssuer("USDC")).toBe(TESTNET_ISSUER);
+    expect(assetIssuer("USDT")).toBe(TESTNET_ISSUER);
+    expect(isAssetConfigured("USDC")).toBe(true);
+    expect(isAssetConfigured("USDT")).toBe(true);
+  });
+
+  it("lets an explicit issuer override the testnet default", () => {
+    process.env.USDC_ASSET_ISSUER = ISSUER;
+    expect(assetIssuer("USDC")).toBe(ISSUER);
+  });
+
+  it("has no default on mainnet — a wrong issuer there means real money lost", () => {
+    process.env.STELLAR_NETWORK = "mainnet";
+    expect(assetIssuer("USDC")).toBeNull();
+    expect(isAssetConfigured("USDC")).toBe(false);
+    expect(() => resolveStellarAsset("USDC")).toThrow(/USDC_ASSET_ISSUER/);
+
+    process.env.USDC_ASSET_ISSUER = ISSUER;
+    expect(resolveStellarAsset("USDC").getIssuer()).toBe(ISSUER);
+  });
 });
 
 describe("resolveStellarAsset", () => {
@@ -29,7 +61,8 @@ describe("resolveStellarAsset", () => {
     expect(asset.getIssuer()).toBe(ISSUER);
   });
 
-  it("throws rather than guessing an issuer when one is not configured", () => {
+  it("throws rather than guessing an issuer on mainnet when one is not configured", () => {
+    process.env.STELLAR_NETWORK = "mainnet";
     expect(isAssetConfigured("USDT")).toBe(false);
     expect(() => resolveStellarAsset("USDT")).toThrow(/USDT_ASSET_ISSUER/);
   });
@@ -61,6 +94,7 @@ describe("matchPaymentAsset", () => {
   });
 
   it("rejects an issued asset when no issuer is configured", () => {
+    process.env.STELLAR_NETWORK = "mainnet"; // no testnet fallback applies
     const rec = { asset_type: "credit_alphanum4", asset_code: "USDT", asset_issuer: ISSUER };
     expect(matchPaymentAsset(rec, ["XLM", "USDT"])).toBeNull();
   });

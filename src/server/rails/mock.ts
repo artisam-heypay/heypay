@@ -3,14 +3,15 @@ import "server-only";
 import { Decimal, dec, phpToAsset } from "@/lib/money";
 import type { PaymentAsset } from "@/lib/assets";
 import { badRequest } from "@/lib/errors";
-import type {
-  BankPayout,
-  PaymentRailProvider,
-  PayoutResult,
-  PayoutStatus,
-  Quote,
-  TradeResult,
-  TradeStatus,
+import {
+  railDepositAddress,
+  type BankPayout,
+  type PaymentRailProvider,
+  type PayoutResult,
+  type PayoutStatus,
+  type Quote,
+  type TradeResult,
+  type TradeStatus,
 } from "@/server/rails/provider";
 
 const QUOTE_TTL_MS = 90_000;
@@ -68,6 +69,13 @@ export function createMockProvider(
   return {
     // The mock rail trades every asset — that's the point of it.
     supportsAsset: () => true,
+
+    getDepositAddress(asset) {
+      // Dev/CI: a configured testnet account if there is one, else a stand-in
+      // that never gets submitted to a network.
+      const address = railDepositAddress(asset) ?? `GMOCK${asset}DEPOSITADDRESS`;
+      return Promise.resolve({ address, memo: null });
+    },
 
     async getQuote({ sell, phpAmount }): Promise<Quote> {
       await sleep(delayMs);
