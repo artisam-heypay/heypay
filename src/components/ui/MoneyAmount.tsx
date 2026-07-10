@@ -11,7 +11,8 @@ export function MoneyAmount({
   /** Crypto amount, denominated in `asset`. */
   xlm: Decimal;
   asset?: string;
-  php: Decimal;
+  /** Null when no rate is available — better to show nothing than a false ₱0.00. */
+  php: Decimal | null;
   size?: "display" | "md" | "row";
   phpPrefix?: string;
 }) {
@@ -28,9 +29,11 @@ export function MoneyAmount({
   return (
     <div className={clsx(size === "row" ? "flex flex-col items-end" : "flex flex-col")}>
       <span className={clsx("font-mono", cryptoCls)}>{displayAsset(xlm, asset)}</span>
-      <span className={phpCls}>
-        {phpPrefix} {displayPhp(php)}
-      </span>
+      {php !== null && (
+        <span className={phpCls}>
+          {phpPrefix} {displayPhp(php)}
+        </span>
+      )}
     </div>
   );
 }

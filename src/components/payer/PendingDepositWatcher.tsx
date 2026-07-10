@@ -1,12 +1,31 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { dec, displayXlm } from "@/lib/money";
+import { dec, displayAsset } from "@/lib/money";
 import { Icon } from "@/components/ui";
 
-export function PendingDepositWatcher({ initialBalance }: { initialBalance: string }) {
+type SyncResponse = { balanceXlm: string; balances?: Record<string, string> };
+
+/**
+ * Polls the deposit sync for a credit in `asset` and announces the first one it
+ * sees. Watching one asset at a time mirrors the deposit address on screen: the
+ * payer is told to send that asset, so that's the balance we expect to move.
+ */
+export function PendingDepositWatcher({
+  initialBalance,
+  asset = "XLM",
+}: {
+  initialBalance: string;
+  asset?: string;
+}) {
   const [delta, setDelta] = useState<string | null>(null);
   const baseRef = useRef(dec(initialBalance));
+
+  useEffect(() => {
+    // Switching asset re-baselines: a USDC balance is not a delta on the XLM one.
+    baseRef.current = dec(initialBalance);
+    setDelta(null);
+  }, [asset, initialBalance]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -19,10 +38,12 @@ export function PendingDepositWatcher({ initialBalance }: { initialBalance: stri
           signal: controller.signal,
         });
         if (!res.ok) return;
-        const { balanceXlm } = (await res.json()) as { balanceXlm: string };
-        const diff = dec(balanceXlm).minus(baseRef.current);
+        const body = (await res.json()) as SyncResponse;
+        const current = body.balances?.[asset] ?? (asset === "XLM" ? body.balanceXlm : null);
+        if (current === null) return;
+        const diff = dec(current).minus(baseRef.current);
         if (diff.greaterThan(0)) {
-          setDelta(displayXlm(diff));
+          setDelta(displayAsset(diff, asset));
           stopped = true;
           clearInterval(id);
         }
@@ -34,7 +55,7 @@ export function PendingDepositWatcher({ initialBalance }: { initialBalance: stri
       if (!stopped) controller.abort();
       clearInterval(id);
     };
-  }, []);
+  }, [asset]);
 
   if (!delta) return null;
   return (
