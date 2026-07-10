@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { Icon, MoneyAmount, TonalCard } from "@/components/ui";
-import type { Decimal } from "@/lib/money";
-import { BalanceLive } from "./BalanceLive";
+import { Icon, TonalCard } from "@/components/ui";
+import { HoldingsLive, type HoldingsSnapshot } from "./HoldingsLive";
 
 const PILL_FOCUS = "focus:outline-none focus:ring-4 focus:ring-primary/10";
 const primaryPill =
@@ -12,12 +11,10 @@ const outlinePill =
   `font-display font-bold text-primary hover:bg-primary/5 ${PILL_FOCUS}`;
 
 export function HeroBalanceCard({
-  availableXlm,
-  approxPhp,
+  holdings,
   live = true,
 }: {
-  availableXlm: Decimal;
-  approxPhp: Decimal;
+  holdings: HoldingsSnapshot;
   live?: boolean;
 }) {
   return (
@@ -26,14 +23,7 @@ export function HeroBalanceCard({
         aria-hidden
         className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/5 blur-3xl"
       />
-      <p className="text-label-md uppercase text-on-surface-variant">Total Balance</p>
-      <div className="mt-stack-sm">
-        {live ? (
-          <BalanceLive initialXlm={availableXlm.toFixed(7)} initialPhp={approxPhp.toFixed(2)} />
-        ) : (
-          <MoneyAmount xlm={availableXlm} php={approxPhp} size="display" />
-        )}
-      </div>
+      <HoldingsLive initial={holdings} live={live} />
       <div className="mt-stack-lg flex flex-wrap gap-stack-md">
         <Link href="/payer/prefund" className={primaryPill}>
           Prefund
