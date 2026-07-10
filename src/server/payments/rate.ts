@@ -5,10 +5,12 @@ import type { PaymentAsset } from "@/lib/assets";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
 
-// Amount used for the live fallback quote. Some rails (PDAX Institution) reject
-// probes below their minimum trade size — a ₱1 quote fails with "below IMM
-// minimum" — so probe well above any plausible minimum.
-const RATE_PROBE_PHP = dec("100");
+// Amounts tried, in order, for the live fallback quote. Rails enforce a minimum
+// trade size *per pair*: PDAX prices XLMPHP and USDCPHP at ₱100 but rejects
+// USDTPHP below roughly ₱500 ("Order quantity is less than minimum required
+// quantity"). Escalating means a pair with a higher floor still yields a rate
+// instead of silently reporting none, while cheap pairs still cost one call.
+const RATE_PROBE_PHP = [dec("100"), dec("500"), dec("2000")];
 
 /**
  * Reference `asset`→PHP rate (1 unit = N PHP) for approximate balance display.
@@ -28,12 +30,15 @@ export async function getAssetRate(asset: PaymentAsset): Promise<Decimal | null>
   if (snap) return dec(snap.rate.toString());
 
   if (!rail.supportsAsset(asset)) return null;
-  try {
-    const quote = await rail.getQuote({ sell: asset, buy: "PHP", phpAmount: RATE_PROBE_PHP });
-    return quote.rate;
-  } catch {
-    return null;
+  for (const phpAmount of RATE_PROBE_PHP) {
+    try {
+      const quote = await rail.getQuote({ sell: asset, buy: "PHP", phpAmount });
+      return quote.rate;
+    } catch {
+      // Below this pair's minimum (or a transient rail error) — try a larger probe.
+    }
   }
+  return null;
 }
 
 /** Back-compat helper for the XLM leg. */

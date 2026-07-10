@@ -1,10 +1,10 @@
 import QRCode from "qrcode";
 import { requireRole } from "@/server/auth/sessions";
 import { Role } from "@/generated/prisma/client";
-import { dec } from "@/lib/money";
-import { getWalletSummary, getRecentPayments } from "@/server/payer/data";
-import { getXlmPhpRate } from "@/server/payments/rate";
+import { getRecentPayments } from "@/server/payer/data";
+import { getHoldings } from "@/server/payer/holdings";
 import { HeroBalanceCard } from "@/components/payer/HeroBalanceCard";
+import type { HoldingsSnapshot } from "@/components/payer/HoldingsLive";
 import { ScanQrphCard } from "@/components/payer/ScanQrphCard";
 import { RecentPaymentsList } from "@/components/payer/RecentPaymentsList";
 import { PrefundPanel } from "@/components/payer/PrefundPanel";
@@ -12,16 +12,24 @@ import { NetworkStatus } from "@/components/payer/NetworkStatus";
 
 export default async function PayerDashboardPage() {
   const user = await requireRole(Role.PAYER);
-  const [wallet, recent] = await Promise.all([
-    getWalletSummary(user.id),
+  const [holdings, recent] = await Promise.all([
+    getHoldings(user.id),
     getRecentPayments(user.id, 5),
   ]);
 
-  const availableXlm = wallet?.availableXlm ?? dec("0");
-  const rate = await getXlmPhpRate();
-  const approxPhp = rate ? availableXlm.times(rate) : dec("0");
+  const snapshot: HoldingsSnapshot = {
+    totalPhp: holdings?.totalPhp.toFixed(2) ?? "0.00",
+    hasUnpricedBalance: holdings?.hasUnpricedBalance ?? false,
+    tokens: (holdings?.tokens ?? []).map((t) => ({
+      asset: t.asset,
+      balance: t.balance.toFixed(7),
+      valuePhp: t.valuePhp?.toFixed(2) ?? null,
+    })),
+  };
 
-  const qrSvg = wallet ? await QRCode.toString(wallet.publicKey, { type: "svg", margin: 1 }) : "";
+  const qrSvg = holdings
+    ? await QRCode.toString(holdings.publicKey, { type: "svg", margin: 1 })
+    : "";
 
   return (
     <div className="flex flex-col gap-stack-lg">
@@ -32,14 +40,14 @@ export default async function PayerDashboardPage() {
 
       <div className="grid grid-cols-1 gap-stack-lg lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <HeroBalanceCard availableXlm={availableXlm} approxPhp={approxPhp} />
+          <HeroBalanceCard holdings={snapshot} />
         </div>
         <ScanQrphCard />
 
         <div className="lg:col-span-2">
           <RecentPaymentsList payments={recent} />
         </div>
-        {wallet && <PrefundPanel publicKey={wallet.publicKey} qrSvg={qrSvg} />}
+        {holdings && <PrefundPanel publicKey={holdings.publicKey} qrSvg={qrSvg} />}
       </div>
     </div>
   );

@@ -97,16 +97,27 @@ Same variables. The two that need real answers before enabling USDT on mainnet:
   Confirm a live issuer on stellar.expert before setting `USDT_ASSET_ISSUER`, or
   ship **USDC** instead — same mechanism, one env var different — which is
   well-supported on Stellar.
-- **The `<ASSET>PHP` pair.** Pair availability is account-specific. PDAX's
-  Institution API documents `quote_currency=USDC` against `base_currency=PHP`,
-  so USDC is the safe choice; confirm `USDT/PHP` with your relationship manager.
-  An asset left out of `PDAX_SETTLEMENT_ASSETS` is still receivable and holdable
-  (#163) — quoting a payment in it is refused with a 400 rather than opening a
-  trade that cannot be settled.
+- **The `<ASSET>PHP` pair.** Pair availability is account-specific. All three
+  were confirmed live against the PDAX UAT sandbox (`XLM` 7.299, `USDC` 61.677,
+  `USDT` 61.34). An asset left out of `PDAX_SETTLEMENT_ASSETS` is still
+  receivable and holdable (#163) — quoting a payment in it is refused with a 400
+  rather than opening a trade that cannot be settled.
+- **Per-pair minimum trade size.** PDAX prices `XLMPHP` and `USDCPHP` from ₱100
+  but rejects `USDTPHP` below roughly ₱500. `getAssetRate` therefore escalates
+  its probe (₱100 → ₱500 → ₱2000) instead of reporting a pair as unpriceable the
+  moment a ₱100 quote is refused.
 
 The alternative settlement route considered in #164 — converting USDT→XLM on the
 Stellar DEX with a path payment, then running the existing XLM sell — is not
 implemented. `PaymentRailProvider.supportsAsset` is the seam where it would go.
+
+## Holdings
+
+`getHoldings` (`src/server/payer/holdings.ts`) is the payer's portfolio: every
+enabled token, its balance, its PHP value, and the total. A token whose pair the
+rail cannot price keeps its balance but has a null value and is **excluded from
+the total** — counting an unpriced balance as ₱0 would understate the total. The
+dashboard shows the caveat whenever that happens.
 
 ## Storage
 
