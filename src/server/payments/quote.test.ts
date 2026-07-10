@@ -158,8 +158,10 @@ describe("createQuote", () => {
 
     expect(res.asset).toBe("USDC");
     expect(res.settlementAsset).toBe("XLM");
-    // 1% slippage head-room over the 17 USDC the DEX quoted.
-    expect(res.amountAsset.toFixed(7)).toBe("17.1700000");
+    // The DEX asks 17 USDC (17.17 with slippage), below what ₱1000 of USDC is
+    // worth at the reference rate of 58 — so the payer is charged the market
+    // amount, not the cheaper book price.
+    expect(res.amountAsset.toFixed(7)).toBe("17.2413794");
 
     const payment = await db.payment.findUniqueOrThrow({ where: { id: res.paymentId } });
     expect(payment.settlementAsset).toBe("XLM");
@@ -194,9 +196,11 @@ describe("createQuote", () => {
     expect(await db.payment.count()).toBe(0);
   });
 
-  it("allows a conversion that is cheaper than the reference rate", async () => {
-    // The counterparty subsidises the payer and the rail still receives the full
-    // amount the merchant is owed, so a cheap book is not a reason to refuse.
+  it("charges the market price when the DEX is mispriced in the payer's favour", async () => {
+    // Testnet sells XLM almost free, implying ₱406,101 per USDC. Quoting that
+    // would be nonsense on the confirm screen and a windfall taken from whoever
+    // posted the stale offer, so the payer is charged what USDC is actually
+    // worth. The rail still receives the full amount the merchant is owed.
     process.env.PAYMENT_ASSETS = "XLM,USDC";
     canReceive.mockImplementation(async (_pk: string, a: string) => a === "XLM");
     findConversionRoute.mockResolvedValue({ sourceAmount: dec("0.0024604"), path: [] });
@@ -210,7 +214,27 @@ describe("createQuote", () => {
       asset: "USDC",
     });
     expect(res.settlementAsset).toBe("XLM");
-    expect(res.amountAsset.lessThan(dec("1"))).toBe(true);
+    // ₱1000 at the USDC reference rate of 58, not the DEX's 0.0024604.
+    expect(res.amountAsset.toFixed(7)).toBe("17.2413794");
+    expect(res.rate.toFixed(2)).toBe("58.00");
+  });
+
+  it("charges the DEX price when it is dearer than market but within the cap", async () => {
+    process.env.PAYMENT_ASSETS = "XLM,USDC";
+    canReceive.mockImplementation(async (_pk: string, a: string) => a === "XLM");
+    // 17.5 USDC is above the 17.2413794 market amount, inside the 5% cap.
+    findConversionRoute.mockResolvedValue({ sourceAmount: dec("17.5"), path: [] });
+
+    const { user } = await makePayer({ assets: { USDC: { cached: "100.0000000" } } });
+    const { merchant } = await makeMerchant();
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("1000"),
+      asset: "USDC",
+    });
+    // Plus the 1% slippage head-room.
+    expect(res.amountAsset.toFixed(7)).toBe("17.6750000");
   });
 
   it("refuses when the DEX has no route with enough liquidity", async () => {

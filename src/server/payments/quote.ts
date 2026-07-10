@@ -90,10 +90,11 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
     // Convert on the DEX: price the payer's asset by what it costs to deliver
     // `settlementAmount`, plus head-room for the book moving before submission.
     const conversion = await quoteConversion(asset, route, settlementAmount);
-    amountAsset = conversion.sourceAmount
+    const dexCost = conversion.sourceAmount
       .times(dec(1).plus(CONVERSION_SLIPPAGE))
       .toDecimalPlaces(7, Decimal.ROUND_UP);
-    await assertConversionNotOverpriced(asset, input.amountPhp, amountAsset);
+    await assertConversionNotOverpriced(asset, input.amountPhp, dexCost);
+    amountAsset = await chargeAtLeastMarketPrice(asset, input.amountPhp, dexCost);
     // The payer's effective rate: what one unit of their asset buys in PHP.
     rate = input.amountPhp.div(amountAsset).toDecimalPlaces(8, Decimal.ROUND_DOWN);
   }
@@ -154,6 +155,30 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
     settlementAsset,
     quoteExpiresAt: quote.expiresAt,
   };
+}
+
+/**
+ * The payer is charged the market price of their asset, never the DEX's.
+ *
+ * A thin order book can be mispriced in the payer's favour as easily as against
+ * them — testnet currently sells XLM so cheaply that ₱197 costs 0.0005 USDC,
+ * implying a rate of ₱406,101 per USDC. Quoting that is nonsense on the confirm
+ * screen and would be a windfall taken from whoever posted the stale offer.
+ *
+ * So the debit is the greater of what the DEX asks and what the asset is worth.
+ * The rail still receives exactly `settlementAmount`; any surplus the conversion
+ * yields lands in HeyPay's own rail balance, not a counterparty's pocket.
+ * (The expensive side is capped separately — see MAX_CONVERSION_PREMIUM.)
+ */
+async function chargeAtLeastMarketPrice(
+  asset: PaymentAsset,
+  amountPhp: Decimal,
+  dexCost: Decimal,
+): Promise<Decimal> {
+  const referenceRate = await getAssetRate(asset);
+  if (!referenceRate) return dexCost; // no market price to compare against
+  const marketAmount = phpToAsset(amountPhp, referenceRate);
+  return dexCost.greaterThan(marketAmount) ? dexCost : marketAmount;
 }
 
 /**
