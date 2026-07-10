@@ -6,6 +6,7 @@ export function DepositCard({
   publicKey,
   qrSvg,
   asset = "XLM",
+  issuer = null,
   trustlineRequired = false,
   canReceive = true,
   onTrustlineEstablished,
@@ -13,12 +14,20 @@ export function DepositCard({
   publicKey: string;
   qrSvg: string;
   asset?: string;
+  /**
+   * The issuer account this asset must come from. On Stellar an asset is the
+   * `code:issuer` pair — a same-named token from any other issuer is a
+   * different asset and the deposit will be rejected, so the payer must be
+   * able to compare this against what their wallet actually holds.
+   */
+  issuer?: string | null;
   /** True for issued assets (USDC/USDT), which the network won't deliver untrusted. */
   trustlineRequired?: boolean;
   canReceive?: boolean;
   onTrustlineEstablished?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [issuerCopied, setIssuerCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +40,17 @@ export function DepositCard({
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // clipboard unavailable — address is still visible/selectable
+    }
+  }
+
+  async function copyIssuer() {
+    if (!issuer) return;
+    try {
+      await navigator.clipboard.writeText(issuer);
+      setIssuerCopied(true);
+      setTimeout(() => setIssuerCopied(false), 2000);
+    } catch {
+      // clipboard unavailable — issuer is still visible/selectable
     }
   }
 
@@ -118,6 +138,31 @@ export function DepositCard({
             </span>
           </div>
         </>
+      )}
+
+      {issuer && (
+        <div className="mt-stack-md rounded-lg bg-surface-container p-stack-md">
+          <p className="text-body-sm text-on-surface-variant">
+            Accepted {asset} issuer — a {asset} token from any other issuer is a different asset and
+            will be rejected:
+          </p>
+          <div className="mt-1 flex items-center gap-stack-sm">
+            <code className="min-w-0 flex-1 select-all break-all font-mono text-mono-data">
+              {issuer}
+            </code>
+            <button
+              type="button"
+              onClick={copyIssuer}
+              aria-label="Copy asset issuer"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+            >
+              <Icon name="content_copy" />
+            </button>
+          </div>
+          <p aria-live="polite" className="mt-1 h-4 text-body-sm text-primary">
+            {issuerCopied ? "Issuer copied" : ""}
+          </p>
+        </div>
       )}
     </Card>
   );

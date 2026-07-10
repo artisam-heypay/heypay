@@ -7,7 +7,7 @@ import { db } from "@/server/db";
 import { assertAssetEnabled, isIssuedAsset } from "@/lib/assets";
 import { assetIssuer } from "@/server/stellar/assets";
 import { notFound } from "@/lib/errors";
-import { getAssetBalance } from "@/server/wallet/balances";
+import { walletService } from "@/server/stellar/wallet";
 
 const querySchema = z.object({ asset: z.enum(["XLM", "USDC", "USDT"]).default("XLM") });
 
@@ -19,7 +19,10 @@ export const GET = route(async (req) => {
   const wallet = await db.custodialWallet.findUnique({ where: { userId: user.id } });
   if (!wallet) throw notFound("wallet not found");
 
-  const balance = await getAssetBalance(db, wallet.id, asset);
+  // Chain truth, not the cached flag: if the configured issuer changes, the
+  // cache says "can receive" about a trustline to the old issuer, and handing
+  // out the address on that basis produces op_no_trust for the sender.
+  const canReceive = await walletService.canReceive(wallet.stellarPublicKey, asset);
   const qrSvg = await QRCode.toString(wallet.stellarPublicKey, { type: "svg", margin: 1 });
 
   return json({
@@ -32,6 +35,6 @@ export const GET = route(async (req) => {
     // account is allowed to receive it yet.
     issuer: assetIssuer(asset),
     trustlineRequired: isIssuedAsset(asset),
-    canReceive: balance.canReceive,
+    canReceive,
   });
 });

@@ -3,12 +3,15 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PrefundView } from "./PrefundView";
 
+const ISSUER = "GAHPYWLK6YRN7CVYZOO4H3VDRZ7PVF5UJGLZCSPAEIKJE2XSWF5LAGER";
+
 const XLM = {
   asset: "XLM",
   balance: "10.0000000",
   approxPhp: "35.00",
   trustlineRequired: false,
   canReceive: true,
+  issuer: null,
 };
 const USDC = {
   asset: "USDC",
@@ -16,6 +19,7 @@ const USDC = {
   approxPhp: "0.00",
   trustlineRequired: true,
   canReceive: true,
+  issuer: ISSUER,
 };
 const USDT = {
   asset: "USDT",
@@ -23,6 +27,7 @@ const USDT = {
   approxPhp: "0.00",
   trustlineRequired: true,
   canReceive: false,
+  issuer: ISSUER,
 };
 
 const view = (assets = [XLM, USDC, USDT]) =>
@@ -51,6 +56,19 @@ describe("PrefundView", () => {
     expect(screen.getByText(/Send only USDC on the Stellar network/)).toBeInTheDocument();
     // The address is the same account for every Stellar asset.
     expect(screen.getByText("GABC123")).toBeInTheDocument();
+  });
+
+  it("names the accepted issuer for an issued asset — a same-code token from another issuer is rejected", async () => {
+    const user = userEvent.setup();
+    view();
+    // XLM is native and has no issuer to show.
+    expect(screen.queryByText(ISSUER)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: /USDC/ }));
+
+    expect(screen.getByText(ISSUER)).toBeInTheDocument();
+    expect(screen.getByText(/Accepted USDC issuer/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy asset issuer" })).toBeInTheDocument();
   });
 
   it("withholds the deposit address for an untrusted asset", async () => {
