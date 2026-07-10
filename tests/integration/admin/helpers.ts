@@ -108,7 +108,7 @@ export async function seedPayment(
   opts: {
     status?: PaymentStatus;
     amountPhp?: Decimal | string;
-    amountXlm?: Decimal | string;
+    amountAsset?: Decimal | string;
     netSettledPhp?: Decimal | string;
     failureReason?: string;
     withEvents?: boolean;
@@ -123,7 +123,7 @@ export async function seedPayment(
       merchantId: merchant.id,
       amountPhp: opts.amountPhp?.toString() ?? "100.00",
       quotedRate: "12.00000000",
-      amountXlm: opts.amountXlm?.toString() ?? "8.3333334",
+      amountAsset: opts.amountAsset?.toString() ?? "8.3333334",
       networkFeeXlm: "0.0000100",
       status: opts.status ?? "SETTLED",
       netSettledPhp: opts.netSettledPhp?.toString() ?? null,

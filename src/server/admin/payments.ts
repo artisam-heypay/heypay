@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/server/db";
 import { PaymentStatus } from "@/generated/prisma/client";
 import { dec, Decimal } from "@/lib/money";
+import type { PaymentAsset } from "@/lib/assets";
 import { enqueueSettle } from "@/server/queue/queues";
 import { audit } from "@/server/auth/audit";
 import { conflict, notFound } from "@/lib/errors";
@@ -14,7 +15,9 @@ export type AdminPaymentRow = {
   payerUsername: string;
   merchantName: string;
   amountPhp: Decimal;
-  amountXlm: Decimal;
+  asset: PaymentAsset;
+  /** Crypto debited from the payer, denominated in `asset`. */
+  amountAsset: Decimal;
   failureReason: string | null;
   createdAt: Date;
 };
@@ -42,7 +45,8 @@ function toRow(p: {
   reference: string;
   status: PaymentStatus;
   amountPhp: unknown;
-  amountXlm: unknown;
+  asset: PaymentAsset;
+  amountAsset: unknown;
   failureReason: string | null;
   createdAt: Date;
   payer: { username: string };
@@ -55,7 +59,8 @@ function toRow(p: {
     payerUsername: p.payer.username,
     merchantName: p.merchant.businessName,
     amountPhp: dec(String(p.amountPhp)),
-    amountXlm: dec(String(p.amountXlm)),
+    asset: p.asset,
+    amountAsset: dec(String(p.amountAsset)),
     failureReason: p.failureReason,
     createdAt: p.createdAt,
   };

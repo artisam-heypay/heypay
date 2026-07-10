@@ -85,12 +85,31 @@ model CustodialWallet {
   stellarPublicKey   String   @unique            // G...
   encryptedSecret    String                      // envelope-encrypted S... (AES-256-GCM)
   secretKeyVersion   Int      @default(1)        // for key rotation
-  // cached balance from Horizon; source of truth is Horizon + ledger
+  // Native-XLM cached balance from Horizon; source of truth is Horizon + ledger.
+  // Issued assets (USDC/USDT) live in `balances` — see WalletBalance.
   cachedXlmBalance   Decimal  @default(0) @db.Decimal(20, 7)
   reservedXlm        Decimal  @default(0) @db.Decimal(20, 7) // in-flight payments
   lastSyncedAt       DateTime?
   createdAt          DateTime @default(now())
   walletTxs          WalletTransaction[]
+  balances           WalletBalance[]
+}
+
+/// Per-asset balance for *issued* Stellar assets (USDC/USDT). Native XLM stays on
+/// CustodialWallet.cachedXlmBalance/reservedXlm; `src/server/wallet/balances.ts`
+/// is the single accessor that presents both behind one asset-keyed API.
+model WalletBalance {
+  id                     String          @id @default(cuid())
+  walletId               String
+  wallet                 CustodialWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  asset                  PaymentAsset
+  cached                 Decimal         @default(0) @db.Decimal(20, 7)
+  reserved               Decimal         @default(0) @db.Decimal(20, 7) // in-flight payments
+  // Set once the account holds a changeTrust line to the asset's issuer; until
+  // then the wallet cannot receive this asset at all.
+  trustlineEstablishedAt DateTime?
+  updatedAt              DateTime        @updatedAt
+  @@unique([walletId, asset])
 }
 
 model WalletTransaction {
@@ -98,13 +117,17 @@ model WalletTransaction {
   walletId      String
   wallet        CustodialWallet @relation(fields: [walletId], references: [id])
   type          WalletTxType
-  amountXlm     Decimal      @db.Decimal(20, 7)  // signed: + credit, - debit
-  balanceAfter  Decimal      @db.Decimal(20, 7)
+  asset         PaymentAsset @default(XLM)
+  // signed: + credit, - debit. Denominated in `asset` (column kept as amountXlm
+  // for back-compat with pre-multi-asset rows, all of which are XLM).
+  amount        Decimal      @map("amountXlm") @db.Decimal(20, 7)
+  balanceAfter  Decimal      @db.Decimal(20, 7)  // of `asset`, after this entry
   stellarTxHash String?      @unique
   paymentId     String?
   memo          String?
   createdAt     DateTime     @default(now())
   @@index([walletId, createdAt])
+  @@index([walletId, asset, createdAt])
 }
 
 model Merchant {
@@ -156,10 +179,13 @@ model Payment {
   merchantId        String
   merchant          Merchant      @relation(fields: [merchantId], references: [id])
 
-  asset             PaymentAsset  @default(XLM)
+  asset             PaymentAsset  @default(XLM)          // payer's funding asset
   amountPhp         Decimal       @db.Decimal(14, 2)   // requested PHP amount
-  quotedRate        Decimal       @db.Decimal(20, 8)   // locked XLM→PHP rate
-  amountXlm         Decimal       @db.Decimal(20, 7)   // XLM debited from payer
+  quotedRate        Decimal       @db.Decimal(20, 8)   // locked `asset`→PHP rate
+  // crypto debited from the payer, denominated in `asset` (column kept as
+  // amountXlm for back-compat with pre-multi-asset rows, all of which are XLM)
+  amountAsset       Decimal       @map("amountXlm") @db.Decimal(20, 7)
+  // Stellar fees are always paid in XLM, whatever asset is being moved.
   networkFeeXlm     Decimal       @db.Decimal(20, 7) @default(0)
   pdaxFeePhp        Decimal       @db.Decimal(14, 2) @default(0)
   netSettledPhp     Decimal?      @db.Decimal(14, 2)   // PHP actually paid out

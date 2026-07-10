@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { dec, displayPhp } from "@/lib/money";
 import { Icon } from "@/components/ui";
+import { AssetPicker } from "./AssetPicker";
 import { ConversionBreakdown } from "./ConversionBreakdown";
 import { WalletSourceRow } from "./WalletSourceRow";
 import { ProcessingOverlay } from "./ProcessingOverlay";
@@ -9,25 +11,35 @@ import type { PaymentStatus } from "@/generated/prisma/client";
 
 const TERMINAL = new Set(["SETTLED", "FAILED", "REFUNDED"]);
 
+export type ConfirmAssetOption = { asset: string; available: string; canReceive: boolean };
+
 export function ConfirmPayment(props: {
   paymentId: string;
+  merchantId: string;
+  asset: string;
+  assetOptions: ConfirmAssetOption[];
   amountPhp: string;
   quotedRate: string;
-  amountXlm: string;
+  amountAsset: string;
   networkFeeXlm: string;
   quoteExpiresAt: string | null;
   merchantName: string;
   walletPublicKey: string;
-  availableXlm: string;
+  availableAsset: string;
   approxPhp: string;
 }) {
+  const router = useRouter();
   const amountPhp = dec(props.amountPhp);
-  const amountXlm = dec(props.amountXlm);
+  const amountAsset = dec(props.amountAsset);
   const networkFeeXlm = dec(props.networkFeeXlm);
-  const requiredXlm = amountXlm.plus(networkFeeXlm);
-  const availableXlm = dec(props.availableXlm);
+  const availableAsset = dec(props.availableAsset);
+  // A Stellar fee is always paid in XLM. When XLM funds the payment it comes out
+  // of the same balance as the amount; otherwise it is a separate XLM debit.
+  const isXlm = props.asset === "XLM";
+  const requiredAsset = isXlm ? amountAsset.plus(networkFeeXlm) : amountAsset;
 
   const [processing, setProcessing] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [status, setStatus] = useState<PaymentStatus>("AUTHORIZED");
   const [failureReason, setFailureReason] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
@@ -35,7 +47,7 @@ export function ConfirmPayment(props: {
   const pollBusyRef = useRef(false);
 
   const expired = secondsLeft !== null && secondsLeft <= 0;
-  const insufficient = availableXlm.lessThan(requiredXlm);
+  const insufficient = availableAsset.lessThan(requiredAsset);
 
   useEffect(() => {
     if (!props.quoteExpiresAt) return;
@@ -52,6 +64,45 @@ export function ConfirmPayment(props: {
       pollBusyRef.current = false;
     };
   }, []);
+
+  /**
+   * A quote locks one asset's rate, so picking a different asset means cancelling
+   * this payment and quoting a fresh one rather than mutating it in place.
+   */
+  async function switchAsset(asset: string) {
+    if (asset === props.asset || switching) return;
+    setSwitching(true);
+    setFailureReason(null);
+    try {
+      const res = await fetch("/api/payments/quote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          merchantId: props.merchantId,
+          amountPhp: props.amountPhp,
+          asset,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setFailureReason(body?.error?.message ?? `Could not quote in ${asset}.`);
+        return;
+      }
+      const { paymentId } = (await res.json()) as { paymentId: string };
+      // Release the superseded quote's reservation; the new one already holds funds.
+      await fetch(`/api/payments/${props.paymentId}/cancel`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      }).catch(() => {});
+      router.replace(`/payer/pay/${paymentId}/confirm`);
+    } catch {
+      setFailureReason("Network error.");
+    } finally {
+      setSwitching(false);
+    }
+  }
 
   async function confirm() {
     setProcessing(true);
@@ -114,17 +165,30 @@ export function ConfirmPayment(props: {
   return (
     <>
       <div className="flex flex-col gap-stack-lg">
+        <AssetPicker
+          options={props.assetOptions.map((o) => ({
+            asset: o.asset,
+            balance: `${o.available} ${o.asset}`,
+            canReceive: o.canReceive,
+          }))}
+          value={props.asset}
+          onChange={switchAsset}
+          busy={switching || processing}
+        />
+
         <ConversionBreakdown
           amountPhp={amountPhp}
+          asset={props.asset}
           quotedRate={dec(props.quotedRate)}
-          amountXlm={amountXlm}
+          amountAsset={amountAsset}
           networkFeeXlm={networkFeeXlm}
         />
         <WalletSourceRow
           publicKey={props.walletPublicKey}
-          availableXlm={availableXlm}
+          asset={props.asset}
+          availableAsset={availableAsset}
           approxPhp={dec(props.approxPhp)}
-          requiredXlm={requiredXlm}
+          requiredAsset={requiredAsset}
         />
 
         {expired && (
@@ -135,12 +199,17 @@ export function ConfirmPayment(props: {
         {secondsLeft !== null && secondsLeft > 0 && (
           <p className="text-body-sm text-on-surface-variant">Rate locked for {secondsLeft}s</p>
         )}
+        {!processing && failureReason && (
+          <p role="alert" className="text-body-md text-error">
+            {failureReason}
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-stack-md">
           <button
             type="button"
             onClick={confirm}
-            disabled={expired || insufficient || processing}
+            disabled={expired || insufficient || processing || switching}
             aria-busy={processing || undefined}
             className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
           >

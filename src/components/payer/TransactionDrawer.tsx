@@ -8,7 +8,8 @@ type PaymentDetail = {
     status: string;
     amountPhp: string;
     quotedRate: string;
-    amountXlm: string;
+    asset: string;
+    amountAsset: string;
     networkFeeXlm: string;
     merchantName: string;
     stellarTxHash: string | null;
@@ -82,8 +83,11 @@ export function TransactionDrawer({
 
             <dl className="divide-y divide-outline-variant">
               <Row label="Amount (PHP)" value={`₱${data.payment.amountPhp}`} />
-              <Row label="Rate" value={`1 XLM = ₱${data.payment.quotedRate}`} />
-              <Row label="XLM debited" value={`${data.payment.amountXlm} XLM`} />
+              <Row label="Rate" value={`1 ${data.payment.asset} = ₱${data.payment.quotedRate}`} />
+              <Row
+                label={`${data.payment.asset} debited`}
+                value={`${data.payment.amountAsset} ${data.payment.asset}`}
+              />
               <Row label="Network fee" value={`${data.payment.networkFeeXlm} XLM`} />
               {data.payment.stellarTxHash && (
                 <Row label="Stellar tx" value={data.payment.stellarTxHash} mono />

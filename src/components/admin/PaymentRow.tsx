@@ -17,7 +17,8 @@ export type PaymentRowData = {
   payerUsername: string;
   merchantName: string;
   amountPhp: string;
-  amountXlm: string;
+  asset: string;
+  amountAsset: string;
   failureReason: string | null;
   createdAt: string;
 };
@@ -75,7 +76,7 @@ export function PaymentRow({ row }: { row: PaymentRowData }) {
         </td>
         <td className="px-stack-md py-3">
           <div className="font-mono text-mono-data font-semibold text-on-surface">
-            {row.amountXlm} XLM
+            {row.amountAsset} {row.asset}
           </div>
           <div className="font-mono text-mono-data text-outline">₱{row.amountPhp}</div>
         </td>

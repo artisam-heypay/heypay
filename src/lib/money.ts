@@ -37,15 +37,31 @@ export function displayXlm(value: Decimal): string {
   return `${formatXlm(value)} XLM`;
 }
 
-/** Quote math: phpAmount / rate -> XLM needed (7dp, ROUND_UP so payer always covers). */
-export function phpToXlm(phpAmount: Decimal, rate: Decimal): Decimal {
+// Every Stellar asset — native and issued alike — is stored with 7 decimal places
+// (amounts are int64 stroops), so one formatter covers XLM, USDC and USDT.
+/** Format any Stellar asset amount with exactly 7 dp, half-up. */
+export const formatAsset = formatXlm;
+
+/** Display helper: "12.5000000 USDT". */
+export function displayAsset(value: Decimal, asset: string): string {
+  return `${formatAsset(value)} ${asset}`;
+}
+
+/** Quote math: phpAmount / rate -> asset units needed (7dp, ROUND_UP so payer always covers). */
+export function phpToAsset(phpAmount: Decimal, rate: Decimal): Decimal {
   const php = dec(phpAmount);
   const r = dec(rate);
   if (r.lte(0)) throw new Error("Rate must be a positive number");
   return php.div(r).toDecimalPlaces(7, Decimal.ROUND_UP);
 }
 
-/** availableXlm = cachedXlmBalance - reservedXlm */
-export function availableXlm(cached: Decimal, reserved: Decimal): Decimal {
+/** Back-compat alias of {@link phpToAsset} for the XLM leg. */
+export const phpToXlm = phpToAsset;
+
+/** available = cached - reserved (any asset) */
+export function availableAmount(cached: Decimal, reserved: Decimal): Decimal {
   return dec(cached).minus(dec(reserved));
 }
+
+/** Back-compat alias of {@link availableAmount} for the XLM leg. */
+export const availableXlm = availableAmount;

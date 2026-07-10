@@ -61,7 +61,8 @@ test("payer pays a QRPH merchant from XLM balance through to SETTLED", async ({
   expect(quoteRes.ok(), await quoteRes.text()).toBeTruthy();
   const quote = await quoteRes.json();
   expect(quote.paymentId).toBeTruthy();
-  expect(Number(quote.amountXlm)).toBeGreaterThan(0);
+  expect(Number(quote.amountAsset)).toBeGreaterThan(0);
+  expect(quote.asset).toBe("XLM");
   const paymentId: string = quote.paymentId;
 
   // --- Confirm via the UI confirm screen (headline flow) ---

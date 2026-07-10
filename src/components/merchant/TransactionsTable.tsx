@@ -29,7 +29,7 @@ export function TransactionsTable({ items }: { items: MerchantTxItem[] }) {
               </td>
               <td className="px-stack-md py-stack-md">
                 <p className="font-mono text-mono-data font-semibold text-on-surface">
-                  {t.amountXlm} XLM
+                  {t.amountAsset} {t.asset}
                 </p>
                 <p className="font-mono text-mono-data text-outline">≈ ₱{t.amountPhp}</p>
               </td>

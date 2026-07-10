@@ -26,7 +26,8 @@ export const GET = route(async (req) => {
   const items = (hasMore ? rows.slice(0, limit) : rows).map((t) => ({
     id: t.id,
     type: t.type,
-    amountXlm: t.amountXlm.toFixed(7),
+    asset: t.asset,
+    amount: t.amount.toFixed(7),
     balanceAfter: t.balanceAfter.toFixed(7),
     stellarTxHash: t.stellarTxHash,
     paymentId: t.paymentId,

@@ -68,7 +68,7 @@ describe("getMerchantEarnings", () => {
       netSettledPhp: "50.00",
       settledAt: new Date(),
     });
-    await seedPayment(merchant.id, { status: "PDAX_TRADING", amountXlm: "12.5000000" });
+    await seedPayment(merchant.id, { status: "PDAX_TRADING", amountAsset: "12.5000000" });
     const e = await getMerchantEarnings(merchant.id);
     expect(e.totalSettledPhp).toBe("150.00");
     expect(e.pendingXlm).toBe("12.5000000");

@@ -17,6 +17,8 @@ const bodySchema = z.object({
   asset: z.enum(["XLM", "USDC", "USDT"]).optional(),
 });
 
+const ZERO_XLM = "0.0000000";
+
 export const POST = route(async (req) => {
   assertSameOrigin(req);
   const user = await requireRole("PAYER");
@@ -27,9 +29,12 @@ export const POST = route(async (req) => {
   return json({
     paymentId: q.paymentId,
     reference: q.reference,
+    asset: q.asset,
     amountPhp: q.amountPhp.toFixed(2),
     rate: q.rate.toFixed(8),
-    amountXlm: q.amountXlm.toFixed(7),
+    amountAsset: q.amountAsset.toFixed(7),
+    // Legacy field: the XLM debited, which is zero when funding with another asset.
+    amountXlm: q.asset === "XLM" ? q.amountAsset.toFixed(7) : ZERO_XLM,
     networkFeeXlm: q.networkFeeXlm.toFixed(7),
     quoteExpiresAt: q.quoteExpiresAt.toISOString(),
   });

@@ -1,6 +1,8 @@
 // src/server/rails/mock.ts
 import "server-only";
-import { Decimal, dec, phpToXlm } from "@/lib/money";
+import { Decimal, dec, phpToAsset } from "@/lib/money";
+import type { PaymentAsset } from "@/lib/assets";
+import { badRequest } from "@/lib/errors";
 import type {
   BankPayout,
   PaymentRailProvider,
@@ -25,34 +27,64 @@ const failPhpAmount = process.env.MOCK_FAIL_PHP_AMOUNT
 const isFailAmount = (phpAmount: Decimal): boolean =>
   failPhpAmount !== null && phpAmount.equals(failPhpAmount);
 
-type TradeRecord = { ref: string; xlmAmount: Decimal; polls: number };
+type TradeRecord = { ref: string; asset: PaymentAsset; amount: Decimal; polls: number };
 type PayoutRecord = { ref: string; phpAmount: Decimal; polls: number };
 
+/** Deterministic per-asset PHP rates so dev/CI can exercise every enabled asset. */
+function defaultRates(): Record<PaymentAsset, Decimal> {
+  return {
+    XLM: dec(process.env.MOCK_XLM_PHP_RATE ?? "3.50"),
+    USDT: dec(process.env.MOCK_USDT_PHP_RATE ?? "58.00"),
+    USDC: dec(process.env.MOCK_USDC_PHP_RATE ?? "58.00"),
+  };
+}
+
 export function createMockProvider(
-  cfg: { rate?: Decimal; delayMs?: number; feeRate?: Decimal } = {},
+  cfg: {
+    rate?: Decimal;
+    rates?: Partial<Record<PaymentAsset, Decimal>>;
+    delayMs?: number;
+    feeRate?: Decimal;
+  } = {},
 ): PaymentRailProvider {
-  const rate = cfg.rate ?? dec(process.env.MOCK_XLM_PHP_RATE ?? "3.50");
+  // `rate` (legacy, XLM-only) still overrides the XLM leg so existing callers work.
+  const rates: Record<PaymentAsset, Decimal> = {
+    ...defaultRates(),
+    ...(cfg.rate ? { XLM: cfg.rate } : {}),
+    ...cfg.rates,
+  };
   const delayMs = cfg.delayMs ?? Number(process.env.MOCK_RAIL_DELAY_MS ?? "0");
   const feeRate = cfg.feeRate ?? dec(process.env.MOCK_RAIL_FEE_RATE ?? "0.01");
 
   const trades = new Map<string, TradeRecord>();
   const payouts = new Map<string, PayoutRecord>();
 
+  const rateFor = (asset: PaymentAsset): Decimal => {
+    const r = rates[asset];
+    if (!r) throw badRequest(`mock rail has no ${asset}PHP rate`);
+    return r;
+  };
+
   return {
-    async getQuote({ phpAmount }): Promise<Quote> {
+    // The mock rail trades every asset — that's the point of it.
+    supportsAsset: () => true,
+
+    async getQuote({ sell, phpAmount }): Promise<Quote> {
       await sleep(delayMs);
+      const rate = rateFor(sell);
       return {
+        asset: sell,
         rate,
         phpAmount,
-        xlmAmount: phpToXlm(phpAmount, rate),
+        assetAmount: phpToAsset(phpAmount, rate),
         expiresAt: new Date(Date.now() + QUOTE_TTL_MS),
       };
     },
 
-    async sellCryptoForPhp({ ref, xlmAmount }): Promise<TradeResult> {
+    async sellCryptoForPhp({ ref, asset, amount }): Promise<TradeResult> {
       await sleep(delayMs);
       const tradeRef = `MOCK-TRADE-${ref}`;
-      trades.set(tradeRef, { ref, xlmAmount, polls: 0 });
+      trades.set(tradeRef, { ref, asset, amount, polls: 0 });
       return { tradeRef };
     },
 
@@ -63,7 +95,9 @@ export function createMockProvider(
       if (isForcedFailure(rec.ref)) return { state: "FAILED" };
       rec.polls += 1;
       if (rec.polls < 2) return { state: "PENDING" };
-      const filledPhp = rec.xlmAmount.times(rate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const filledPhp = rec.amount
+        .times(rateFor(rec.asset))
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
       const feePhp = filledPhp.times(feeRate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
       return { state: "FILLED", filledPhp, feePhp };
     },

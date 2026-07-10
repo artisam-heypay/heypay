@@ -59,7 +59,7 @@ export async function seedPayment(
   data: Partial<{
     status: PaymentStatus;
     netSettledPhp: string;
-    amountXlm: string;
+    amountAsset: string;
     settledAt: Date;
   }>,
 ) {
@@ -74,7 +74,7 @@ export async function seedPayment(
       merchantId,
       amountPhp: "100.00",
       quotedRate: "8.00000000",
-      amountXlm: data.amountXlm ?? "12.5000000",
+      amountAsset: data.amountAsset ?? "12.5000000",
       netSettledPhp: data.netSettledPhp ?? null,
       status: data.status ?? "CREATED",
       settledAt: data.settledAt ?? null,

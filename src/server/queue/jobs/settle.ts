@@ -3,13 +3,17 @@ import "server-only";
 import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
+import { railDepositAddress } from "@/server/rails/provider";
 import { walletService } from "@/server/stellar/wallet";
-import { dec } from "@/lib/money";
+import { dec, type Decimal } from "@/lib/money";
+import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
+import { serverError } from "@/lib/errors";
 import { withRetry, pollUntil } from "@/lib/retry";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { audit } from "@/server/auth/audit";
 import { captureException } from "@/server/observability/error-tracking";
 import { enqueueSettle } from "@/server/queue/queues";
+import { creditAsset, debitAsset, releaseAsset } from "@/server/wallet/balances";
 import {
   applyTransition,
   isTerminal,
@@ -29,6 +33,36 @@ function loadPayment(id: string) {
 
 const TRADE_POLL = { attempts: 30, intervalMs: 1_000, label: "trade" };
 const PAYOUT_POLL = { attempts: 30, intervalMs: 1_000, label: "payout" };
+
+/**
+ * What a payment costs the payer, split by balance. The crypto leg is denominated
+ * in `payment.asset`; the Stellar fee is always XLM. When the asset *is* XLM the
+ * two collapse into one balance, and `xlmFee` is folded into `assetAmount` so the
+ * ledger keeps writing a single combined entry, exactly as it did pre-multi-asset.
+ */
+type PaymentLegs = { asset: PaymentAsset; assetAmount: Decimal; xlmFee: Decimal | null };
+
+function legs(p: {
+  asset: PaymentAsset;
+  amountAsset: { toString(): string };
+  networkFeeXlm: { toString(): string };
+}): PaymentLegs {
+  const amountAsset = dec(p.amountAsset.toString());
+  const networkFeeXlm = dec(p.networkFeeXlm.toString());
+  if (isIssuedAsset(p.asset)) {
+    return { asset: p.asset, assetAmount: amountAsset, xlmFee: networkFeeXlm };
+  }
+  return { asset: p.asset, assetAmount: amountAsset.plus(networkFeeXlm), xlmFee: null };
+}
+
+/** The rail's deposit address for this payment's asset. */
+function depositAddressFor(asset: PaymentAsset): string {
+  const address = railDepositAddress(asset);
+  if (!address) {
+    throw serverError(`No rail deposit address configured (PDAX_${asset}_DEPOSIT_ADDRESS).`);
+  }
+  return address;
+}
 
 export async function processSettleJob(job: { data: { paymentId: string } }): Promise<void> {
   const payment = await loadPayment(job.data.paymentId);
@@ -74,19 +108,21 @@ async function dispatch(p: PaymentWithRels): Promise<void> {
 // AUTHORIZED → STELLAR_SUBMITTED
 async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
-  const total = dec(p.amountXlm.toString()).plus(p.networkFeeXlm.toString());
+  const { asset, assetAmount } = legs(p);
   // Idempotency: if a tx was already submitted, just advance.
   let txHash = p.stellarTxHash;
   if (!txHash) {
+    const destination = depositAddressFor(asset);
     const res = await withRetry(
       () =>
-        walletService.sendXlm({
+        walletService.sendAsset({
           encryptedSecret: wallet.encryptedSecret,
-          destination: process.env.PDAX_XLM_DEPOSIT_ADDRESS!,
-          amountXlm: total,
+          destination,
+          asset,
+          amount: assetAmount,
           memo: p.reference,
         }),
-      { label: "sendXlm" },
+      { label: "sendAsset" },
     );
     txHash = res.txHash;
     await db.payment.update({ where: { id: p.id }, data: { stellarTxHash: txHash } });
@@ -97,15 +133,15 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
 // STELLAR_SUBMITTED → STELLAR_CONFIRMED (debit + release reservation) | FAILED (tx never landed)
 async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
-  const total = dec(p.amountXlm.toString()).plus(p.networkFeeXlm.toString());
+  const { asset, assetAmount, xlmFee } = legs(p);
   const ok = await withRetry(() => walletService.confirmTx(p.stellarTxHash!), {
     label: "confirmTx",
   });
 
   if (!ok) {
-    // Tx definitively failed → XLM never moved → release reservation, FAILED (no refund needed).
+    // Tx definitively failed → crypto never moved → release reservations, FAILED (no refund needed).
     await db.$transaction(async (tx) => {
-      await releaseReservation(tx, wallet.id, total);
+      await releaseReservations(tx, wallet.id, p);
       await applyTransition(tx, p, PaymentStatus.FAILED, {
         failureReason: "stellar tx failed to confirm",
       });
@@ -118,33 +154,47 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
   }
 
   await db.$transaction(async (tx) => {
-    const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     // Idempotency: skip if a debit already exists for this payment.
     const existing = await tx.walletTransaction.findFirst({
       where: { paymentId: p.id, type: "PAYMENT_DEBIT" },
     });
     if (!existing) {
-      const newBalance = dec(w.cachedXlmBalance.toString()).minus(total);
+      const balanceAfter = await debitAsset(tx, wallet.id, asset, assetAmount);
       await tx.walletTransaction.create({
         data: {
-          walletId: w.id,
+          walletId: wallet.id,
           type: "PAYMENT_DEBIT",
-          amountXlm: total.negated().toFixed(7),
-          balanceAfter: newBalance.toFixed(7),
+          asset,
+          amount: assetAmount.negated().toFixed(7),
+          balanceAfter: balanceAfter.toFixed(7),
           stellarTxHash: p.stellarTxHash,
           paymentId: p.id,
           memo: p.reference,
         },
       });
-      await tx.custodialWallet.update({
-        where: { id: w.id },
-        data: {
-          cachedXlmBalance: newBalance.toFixed(7),
-          reservedXlm: dec(w.reservedXlm.toString()).minus(total).toFixed(7),
-        },
-      });
+      if (xlmFee) {
+        // The Stellar fee for an issued-asset payment leaves the XLM balance, not
+        // the asset one. It shares the payment's tx hash, which is unique on
+        // WalletTransaction, so this entry carries none.
+        const xlmAfter = await debitAsset(tx, wallet.id, "XLM", xlmFee);
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: "PAYMENT_DEBIT",
+            asset: "XLM",
+            amount: xlmFee.negated().toFixed(7),
+            balanceAfter: xlmAfter.toFixed(7),
+            paymentId: p.id,
+            memo: `${p.reference} network fee`,
+          },
+        });
+      }
     }
-    await applyTransition(tx, p, PaymentStatus.STELLAR_CONFIRMED, { debitedXlm: total.toFixed(7) });
+    await applyTransition(tx, p, PaymentStatus.STELLAR_CONFIRMED, {
+      asset,
+      debitedAsset: assetAmount.toFixed(7),
+      debitedXlmFee: xlmFee?.toFixed(7),
+    });
   });
 }
 
@@ -152,8 +202,15 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
 async function stepRequestTrade(p: PaymentWithRels): Promise<void> {
   let tradeRef = p.pdaxTradeRef;
   if (!tradeRef) {
+    // Sell only the crypto the merchant is owed — the XLM network fee was spent
+    // on-chain and never reached the rail.
     const res = await withRetry(
-      () => rail.sellCryptoForPhp({ ref: p.reference, xlmAmount: dec(p.amountXlm.toString()) }),
+      () =>
+        rail.sellCryptoForPhp({
+          ref: p.reference,
+          asset: p.asset,
+          amount: dec(p.amountAsset.toString()),
+        }),
       { label: "sellCryptoForPhp" },
     );
     tradeRef = res.tradeRef;
@@ -227,38 +284,40 @@ async function stepPollPayout(p: PaymentWithRels): Promise<void> {
 // REFUND_PENDING → REFUNDED (credit payer wallet; alert admin)
 async function stepRefund(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
-  const total = dec(p.amountXlm.toString()).plus(p.networkFeeXlm.toString());
+  // Refund the asset that left the wallet. The XLM network fee was consumed by
+  // the Stellar network and is not recoverable, so it is not credited back.
+  const { asset, assetAmount } = legs(p);
   await db.$transaction(async (tx) => {
     const existing = await tx.walletTransaction.findFirst({
       where: { paymentId: p.id, type: "REFUND_CREDIT" },
     });
     if (!existing) {
-      const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
-      const newBalance = dec(w.cachedXlmBalance.toString()).plus(total);
+      const balanceAfter = await creditAsset(tx, wallet.id, asset, assetAmount);
       await tx.walletTransaction.create({
         data: {
-          walletId: w.id,
+          walletId: wallet.id,
           type: "REFUND_CREDIT",
-          amountXlm: total.toFixed(7),
-          balanceAfter: newBalance.toFixed(7),
+          asset,
+          amount: assetAmount.toFixed(7),
+          balanceAfter: balanceAfter.toFixed(7),
           paymentId: p.id,
           memo: `refund ${p.reference}`,
         },
       });
-      await tx.custodialWallet.update({
-        where: { id: w.id },
-        data: { cachedXlmBalance: newBalance.toFixed(7) },
-      });
     }
-    await applyTransition(tx, p, PaymentStatus.REFUNDED, { refundedXlm: total.toFixed(7) });
+    await applyTransition(tx, p, PaymentStatus.REFUNDED, {
+      asset,
+      refundedAsset: assetAmount.toFixed(7),
+    });
   });
   await audit({
     action: "payment.refunded",
     target: p.id,
     metadata: {
       reference: p.reference,
-      refundedXlm: total.toFixed(7),
-      reason: p.failureReason ?? "settlement failed after XLM moved",
+      asset,
+      refundedAsset: assetAmount.toFixed(7),
+      reason: p.failureReason ?? "settlement failed after crypto moved",
     },
   });
 }
@@ -270,7 +329,7 @@ async function handleFailure(p: PaymentWithRels, err: unknown): Promise<void> {
   if (isTerminal(current.status)) return;
 
   // Settlement failures are handled here (not rethrown), so report them explicitly.
-  // A failure after XLM moved routes to refund — flag it as money-at-risk.
+  // A failure after the crypto moved routes to refund — flag it as money-at-risk.
   captureException(err, {
     source: "settle",
     paymentId: p.id,
@@ -280,7 +339,7 @@ async function handleFailure(p: PaymentWithRels, err: unknown): Promise<void> {
   });
 
   if (XLM_MOVED.has(current.status)) {
-    // XLM already left the wallet → refund branch.
+    // Crypto already left the wallet → refund branch.
     await db.$transaction(async (tx) => {
       await tx.payment.update({ where: { id: p.id }, data: { failureReason: reason } });
       await applyTransition(tx, current, PaymentStatus.REFUND_PENDING, { failureReason: reason });
@@ -289,29 +348,26 @@ async function handleFailure(p: PaymentWithRels, err: unknown): Promise<void> {
     return;
   }
 
-  // Pre-XLM-move failure → FAILED; release any reservation still held.
-  const total = dec(p.amountXlm.toString()).plus(p.networkFeeXlm.toString());
+  // Pre-move failure → FAILED; release any reservation still held.
   await db.$transaction(async (tx) => {
     if (
       current.status === PaymentStatus.AUTHORIZED ||
       current.status === PaymentStatus.STELLAR_SUBMITTED
     ) {
-      await releaseReservation(tx, p.payer.wallet!.id, total);
+      await releaseReservations(tx, p.payer.wallet!.id, p);
     }
     await tx.payment.update({ where: { id: p.id }, data: { failureReason: reason } });
     await applyTransition(tx, current, PaymentStatus.FAILED, { failureReason: reason });
   });
 }
 
-async function releaseReservation(
+/** Undo the holds taken at confirm — the asset leg and, for issued assets, the XLM fee. */
+async function releaseReservations(
   tx: TxClient,
   walletId: string,
-  total: import("@/lib/money").Decimal,
+  p: Parameters<typeof legs>[0],
 ): Promise<void> {
-  const w = await tx.custodialWallet.findUniqueOrThrow({ where: { id: walletId } });
-  const next = dec(w.reservedXlm.toString()).minus(total);
-  await tx.custodialWallet.update({
-    where: { id: walletId },
-    data: { reservedXlm: (next.isNegative() ? dec("0") : next).toFixed(7) },
-  });
+  const { asset, assetAmount, xlmFee } = legs(p);
+  await releaseAsset(tx, walletId, asset, assetAmount);
+  if (xlmFee) await releaseAsset(tx, walletId, "XLM", xlmFee);
 }

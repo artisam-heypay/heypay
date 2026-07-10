@@ -1,18 +1,21 @@
 import { clsx } from "clsx";
-import { type Decimal, displayPhp, displayXlm } from "@/lib/money";
+import { type Decimal, displayAsset, displayPhp } from "@/lib/money";
 
 export function MoneyAmount({
   xlm,
+  asset = "XLM",
   php,
   size = "md",
   phpPrefix = "≈",
 }: {
+  /** Crypto amount, denominated in `asset`. */
   xlm: Decimal;
+  asset?: string;
   php: Decimal;
   size?: "display" | "md" | "row";
   phpPrefix?: string;
 }) {
-  const xlmCls =
+  const cryptoCls =
     size === "display"
       ? "text-display-lg text-primary"
       : size === "row"
@@ -24,7 +27,7 @@ export function MoneyAmount({
       : "text-body-sm text-on-surface-variant";
   return (
     <div className={clsx(size === "row" ? "flex flex-col items-end" : "flex flex-col")}>
-      <span className={clsx("font-mono", xlmCls)}>{displayXlm(xlm)}</span>
+      <span className={clsx("font-mono", cryptoCls)}>{displayAsset(xlm, asset)}</span>
       <span className={phpCls}>
         {phpPrefix} {displayPhp(php)}
       </span>

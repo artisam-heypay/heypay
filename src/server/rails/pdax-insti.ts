@@ -8,24 +8,35 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { Decimal, dec, phpToXlm } from "@/lib/money";
+import { Decimal, dec, phpToAsset } from "@/lib/money";
+import type { PaymentAsset } from "@/lib/assets";
 import { AppError, badRequest, serverError } from "@/lib/errors";
 import { withRetry } from "@/lib/retry";
-import type {
-  BankPayout,
-  PaymentRailProvider,
-  PayoutStatus,
-  Quote,
-  TradeStatus,
+import {
+  railSettlementAssets,
+  type BankPayout,
+  type PaymentRailProvider,
+  type PayoutStatus,
+  type Quote,
+  type TradeStatus,
 } from "@/server/rails/provider";
 
 const QUOTE_TTL_MS = 90_000;
 // Refresh JWTs when less than this remains (tokens live 600s).
 const TOKEN_SLACK_MS = 60_000;
-// PDAX OTC enforces a 0.5-XLM quantity step for XLM sell orders. Quantities that
-// aren't a whole multiple of 0.5 are rejected with "Invalid Quantity Step"
-// (e.g. 13.7 fails, 27.5 is accepted).
-const XLM_QTY_STEP = dec("0.5");
+// PDAX OTC enforces a per-asset quantity step for sell orders. Quantities that
+// aren't a whole multiple of it are rejected with "Invalid Quantity Step"
+// (XLM: 13.7 fails, 27.5 is accepted). The step is a property of the pair, not
+// of us, so it's overridable per asset via PDAX_INSTI_QTY_STEP_<ASSET>.
+const DEFAULT_QTY_STEP: Record<PaymentAsset, string> = {
+  XLM: "0.5",
+  USDT: "0.000001",
+  USDC: "0.000001",
+};
+
+function qtyStep(asset: PaymentAsset): Decimal {
+  return dec(process.env[`PDAX_INSTI_QTY_STEP_${asset}`] ?? DEFAULT_QTY_STEP[asset]);
+}
 
 // PDAX fiat-withdraw bank codes (docs "Bank Code" section). Merchant records
 // store human codes like "BPI"; unknown codes pass through unchanged.
@@ -219,11 +230,26 @@ export function createPdaxInstiProvider(
     );
   }
 
+  const settlementAssets = railSettlementAssets();
+  const assertSupported = (asset: PaymentAsset): void => {
+    if (!settlementAssets.includes(asset)) {
+      throw badRequest(`PDAX is not configured to settle ${asset}.`, {
+        asset,
+        supported: settlementAssets,
+      });
+    }
+  };
+
   return {
-    async getQuote({ phpAmount }): Promise<Quote> {
+    supportsAsset(asset) {
+      return settlementAssets.includes(asset);
+    },
+
+    async getQuote({ sell, phpAmount }): Promise<Quote> {
+      assertSupported(sell);
       const qs = new URLSearchParams({
         side: "sell",
-        quote_currency: "XLM",
+        quote_currency: sell,
         base_currency: "PHP",
         currency: "PHP",
         quantity: phpAmount.toFixed(2),
@@ -231,20 +257,23 @@ export function createPdaxInstiProvider(
       const r = await call("GET", `/pdax-institution/v2/trade/price?${qs}`, PriceV2Schema);
       const rate = dec(String(r.data.price));
       return {
+        asset: sell,
         rate,
         phpAmount,
-        xlmAmount: phpToXlm(phpAmount, rate),
+        assetAmount: phpToAsset(phpAmount, rate),
         expiresAt: new Date(cfg.now() + QUOTE_TTL_MS),
       };
     },
 
-    async sellCryptoForPhp({ xlmAmount }) {
-      // PDAX enforces a 0.5-XLM quantity step, so round DOWN to the nearest 0.5
+    async sellCryptoForPhp({ asset, amount }) {
+      assertSupported(asset);
+      // PDAX enforces a quantity step per pair, so round DOWN to the nearest one
       // (the sub-step remainder stays in the PDAX balance rather than
       // over-selling what was debited).
-      const qty = xlmAmount.dividedToIntegerBy(XLM_QTY_STEP).times(XLM_QTY_STEP);
+      const step = qtyStep(asset);
+      const qty = amount.dividedToIntegerBy(step).times(step);
       const q = await call("POST", "/pdax-institution/v1/trade/quote", FirmQuoteSchema, {
-        quote_currency: "XLM",
+        quote_currency: asset,
         base_currency: "PHP",
         side: "sell",
         base_quantity: qty.toString(),

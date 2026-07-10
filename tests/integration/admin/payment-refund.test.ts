@@ -14,7 +14,7 @@ describe("POST /api/admin/payments/[id]/refund", () => {
   it("transitions a STELLAR_CONFIRMED payment to REFUND_PENDING, records the event, enqueues the worker, and audits", async () => {
     const admin = await asAdmin();
     const spy = vi.spyOn(queues, "enqueueSettle").mockResolvedValue();
-    const p = await seedPayment({ status: "STELLAR_CONFIRMED", amountXlm: dec("10.0000000") });
+    const p = await seedPayment({ status: "STELLAR_CONFIRMED", amountAsset: dec("10.0000000") });
     const res = await POST(makeRequest("POST", `/api/admin/payments/${p.id}/refund`, {}), {
       params: Promise.resolve({ id: p.id }),
     });

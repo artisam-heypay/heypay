@@ -4,16 +4,18 @@ import type { Decimal } from "@/lib/money";
 
 export function WalletSourceRow({
   publicKey,
-  availableXlm,
+  availableAsset,
   approxPhp,
-  requiredXlm,
+  requiredAsset,
+  asset = "XLM",
 }: {
   publicKey: string;
-  availableXlm: Decimal;
+  availableAsset: Decimal;
   approxPhp: Decimal;
-  requiredXlm: Decimal;
+  requiredAsset: Decimal;
+  asset?: string;
 }) {
-  const insufficient = availableXlm.lessThan(requiredXlm);
+  const insufficient = availableAsset.lessThan(requiredAsset);
   return (
     <div className="rounded-lg bg-surface-container-highest p-stack-md">
       <div className="flex items-center justify-between gap-stack-md">
@@ -24,11 +26,11 @@ export function WalletSourceRow({
             <p className="truncate font-mono text-mono-data text-on-surface-variant">{publicKey}</p>
           </div>
         </div>
-        <MoneyAmount xlm={availableXlm} php={approxPhp} size="row" />
+        <MoneyAmount xlm={availableAsset} asset={asset} php={approxPhp} size="row" />
       </div>
       {insufficient && (
         <p className="mt-stack-sm text-body-sm text-error">
-          Insufficient balance.{" "}
+          Insufficient {asset} balance.{" "}
           <Link href="/payer/prefund" className="underline">
             Prefund your wallet
           </Link>

@@ -21,19 +21,19 @@ describe("GET /api/admin/overview", () => {
     await seedPayment({
       status: "SETTLED",
       amountPhp: dec("100.00"),
-      amountXlm: dec("10.0000000"),
+      amountAsset: dec("10.0000000"),
       netSettledPhp: dec("98.50"),
     });
     await seedPayment({
       status: "SETTLED",
       amountPhp: dec("50.00"),
-      amountXlm: dec("5.0000000"),
+      amountAsset: dec("5.0000000"),
       netSettledPhp: dec("49.00"),
     });
     await seedPayment({
       status: "FAILED",
       amountPhp: dec("20.00"),
-      amountXlm: dec("2.0000000"),
+      amountAsset: dec("2.0000000"),
       failureReason: "PDAX trade rejected",
     });
 

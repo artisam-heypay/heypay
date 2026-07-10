@@ -6,30 +6,72 @@ const make = () =>
   createMockProvider({ rate: new Decimal("3.50"), delayMs: 0, feeRate: new Decimal("0.01") });
 
 describe("MockProvider.getQuote", () => {
-  it("computes xlmAmount via phpToXlm with ROUND_UP at 7dp and a ~90s expiry", async () => {
+  it("computes assetAmount via phpToAsset with ROUND_UP at 7dp and a ~90s expiry", async () => {
     const p = make();
     const before = Date.now();
     const q = await p.getQuote({ sell: "XLM", buy: "PHP", phpAmount: new Decimal("100.00") });
     expect(q.rate.toString()).toBe("3.5");
     expect(q.phpAmount.toString()).toBe("100");
     // 100 / 3.5 = 28.571428571... -> ROUND_UP at 7dp
-    expect(q.xlmAmount.toFixed(7)).toBe("28.5714286");
+    expect(q.assetAmount.toFixed(7)).toBe("28.5714286");
     const ms = q.expiresAt.getTime() - before;
     expect(ms).toBeGreaterThanOrEqual(89_000);
     expect(ms).toBeLessThanOrEqual(91_000);
+  });
+
+  it("quotes USDT off its own rate, not the XLM one", async () => {
+    const p = createMockProvider({
+      rate: new Decimal("3.50"),
+      rates: { USDT: new Decimal("58.00") },
+      delayMs: 0,
+    });
+    const q = await p.getQuote({ sell: "USDT", buy: "PHP", phpAmount: new Decimal("100.00") });
+    expect(q.asset).toBe("USDT");
+    expect(q.rate.toString()).toBe("58");
+    // 100 / 58 = 1.7241379310... -> ROUND_UP at 7dp
+    expect(q.assetAmount.toFixed(7)).toBe("1.7241380");
+  });
+});
+
+describe("MockProvider USDT trade lifecycle", () => {
+  it("fills a USDT trade at the USDT rate", async () => {
+    const p = createMockProvider({
+      rates: { USDT: new Decimal("58.00") },
+      delayMs: 0,
+      feeRate: new Decimal("0.01"),
+    });
+    const r = await p.sellCryptoForPhp({
+      ref: "TXN-USDT",
+      asset: "USDT",
+      amount: new Decimal("1.7241380"),
+    });
+    expect((await p.getTradeStatus(r.tradeRef)).state).toBe("PENDING");
+    const filled = await p.getTradeStatus(r.tradeRef);
+    expect(filled.state).toBe("FILLED");
+    // 1.7241380 * 58 = 100.0000040 -> 2dp = 100.00
+    expect(filled.filledPhp?.toFixed(2)).toBe("100.00");
+    expect(filled.feePhp?.toFixed(2)).toBe("1.00");
   });
 });
 
 describe("MockProvider trade lifecycle", () => {
   it("returns a deterministic tradeRef derived from the input ref", async () => {
     const p = make();
-    const r = await p.sellCryptoForPhp({ ref: "TXN-ABC123", xlmAmount: new Decimal("28.5714286") });
+    const r = await p.sellCryptoForPhp({
+      ref: "TXN-ABC123",
+      asset: "XLM",
+      amount: new Decimal("28.5714286"),
+    });
     expect(r.tradeRef).toBe("MOCK-TRADE-TXN-ABC123");
   });
 
   it("transitions PENDING -> FILLED with feePhp on PHP", async () => {
     const p = make();
-    const r = await p.sellCryptoForPhp({ ref: "TXN-OK", xlmAmount: new Decimal("28.5714286") });
+    const r = await p.sellCryptoForPhp({
+      ref: "TXN-OK",
+      asset: "XLM",
+      amount: new Decimal("28.5714286"),
+    });
     const first = await p.getTradeStatus(r.tradeRef);
     expect(first.state).toBe("PENDING");
     const second = await p.getTradeStatus(r.tradeRef);
@@ -42,7 +84,11 @@ describe("MockProvider trade lifecycle", () => {
 
   it("forced-failure: ref containing FAIL yields FAILED trade", async () => {
     const p = make();
-    const r = await p.sellCryptoForPhp({ ref: "TXN-FAIL-1", xlmAmount: new Decimal("10") });
+    const r = await p.sellCryptoForPhp({
+      ref: "TXN-FAIL-1",
+      asset: "XLM",
+      amount: new Decimal("10"),
+    });
     expect(r.tradeRef).toBe("MOCK-TRADE-TXN-FAIL-1");
     const s = await p.getTradeStatus(r.tradeRef);
     expect(s.state).toBe("FAILED");

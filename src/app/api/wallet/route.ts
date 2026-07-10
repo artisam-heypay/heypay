@@ -1,9 +1,11 @@
-// src/app/api/wallet/route.ts
 import { route, json } from "@/lib/http";
 import { requireUser } from "@/server/auth/sessions";
 import { db } from "@/server/db";
-import { dec, availableXlm, displayPhp } from "@/lib/money";
-import { getXlmPhpRate } from "@/server/payments/rate";
+import { displayPhp } from "@/lib/money";
+import { enabledAssets } from "@/lib/assets";
+import { getAssetRate } from "@/server/payments/rate";
+import { getAssetBalances } from "@/server/wallet/balances";
+import { isAssetConfigured } from "@/server/stellar/assets";
 import { notFound } from "@/lib/errors";
 
 export const GET = route(async () => {
@@ -11,18 +13,33 @@ export const GET = route(async () => {
   const wallet = await db.custodialWallet.findUnique({ where: { userId: user.id } });
   if (!wallet) throw notFound("wallet not found");
 
-  const balance = dec(wallet.cachedXlmBalance.toString());
-  const reserved = dec(wallet.reservedXlm.toString());
-  const available = availableXlm(balance, reserved);
+  const assets = enabledAssets().filter(isAssetConfigured);
+  const balances = await getAssetBalances(db, wallet.id, assets);
 
-  const rate = await getXlmPhpRate();
-  const approxPhp = rate ? displayPhp(available.times(rate)) : "0.00";
+  const rows = await Promise.all(
+    balances.map(async (b) => {
+      const rate = await getAssetRate(b.asset);
+      return {
+        asset: b.asset,
+        balance: b.cached.toFixed(7),
+        reserved: b.reserved.toFixed(7),
+        available: b.available.toFixed(7),
+        approxPhp: rate ? displayPhp(b.available.times(rate)) : "0.00",
+        trustlineEstablishedAt: b.trustlineEstablishedAt?.toISOString() ?? null,
+        canReceive: b.canReceive,
+      };
+    }),
+  );
+
+  const xlm = rows.find((r) => r.asset === "XLM");
 
   return json({
     publicKey: wallet.stellarPublicKey,
-    balanceXlm: balance.toFixed(7),
-    reservedXlm: reserved.toFixed(7),
-    availableXlm: available.toFixed(7),
-    approxPhp,
+    assets: rows,
+    // Flat XLM fields kept for clients that predate multi-asset support.
+    balanceXlm: xlm?.balance ?? "0.0000000",
+    reservedXlm: xlm?.reserved ?? "0.0000000",
+    availableXlm: xlm?.available ?? "0.0000000",
+    approxPhp: xlm?.approxPhp ?? "0.00",
   });
 });

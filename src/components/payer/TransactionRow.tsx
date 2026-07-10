@@ -37,7 +37,7 @@ export function TransactionRow({
         </div>
       </div>
       <div className="flex flex-col items-end">
-        <span className="font-mono text-mono-data">{item.amountXlm}</span>
+        <span className="font-mono text-mono-data">{item.amountAsset}</span>
         <span className="text-body-sm text-on-surface-variant">≈ {item.amountPhp}</span>
       </div>
     </button>

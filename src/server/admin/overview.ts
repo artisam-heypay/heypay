@@ -32,7 +32,8 @@ export async function getOverview(): Promise<AdminOverview> {
     payments,
     settledPayments,
     failedPayments,
-    settledAgg,
+    settledXlmAgg,
+    settledPhpAgg,
     failures,
   ] = await Promise.all([
     prisma.user.count(),
@@ -42,9 +43,16 @@ export async function getOverview(): Promise<AdminOverview> {
     prisma.payment.count(),
     prisma.payment.count({ where: { status: "SETTLED" } }),
     prisma.payment.count({ where: { status: "FAILED" } }),
+    // `amountAsset` is denominated in the payment's asset, so an XLM total must
+    // filter to XLM-funded payments rather than summing USDT into it. PHP settled
+    // is asset-independent and stays a plain sum.
+    prisma.payment.aggregate({
+      where: { status: "SETTLED", asset: "XLM" },
+      _sum: { amountAsset: true },
+    }),
     prisma.payment.aggregate({
       where: { status: "SETTLED" },
-      _sum: { amountXlm: true, netSettledPhp: true },
+      _sum: { netSettledPhp: true },
     }),
     prisma.payment.findMany({
       where: { status: "FAILED" },
@@ -65,8 +73,8 @@ export async function getOverview(): Promise<AdminOverview> {
       failedPayments,
     },
     volume: {
-      totalXlm: dec(settledAgg._sum.amountXlm?.toString() ?? "0"),
-      totalPhpSettled: dec(settledAgg._sum.netSettledPhp?.toString() ?? "0"),
+      totalXlm: dec(settledXlmAgg._sum.amountAsset?.toString() ?? "0"),
+      totalPhpSettled: dec(settledPhpAgg._sum.netSettledPhp?.toString() ?? "0"),
     },
     recentFailures: failures.map((p) => ({
       id: p.id,

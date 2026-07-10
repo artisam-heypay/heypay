@@ -8,6 +8,9 @@ import { enqueueSettle } from "@/server/queue/queues";
 import { audit } from "@/server/auth/audit";
 import { captureException } from "@/server/observability/error-tracking";
 import { dec } from "@/lib/money";
+import { enabledAssets } from "@/lib/assets";
+import { isAssetConfigured } from "@/server/stellar/assets";
+import { getAssetBalances } from "@/server/wallet/balances";
 
 // A settle job advances an in-flight payment within seconds; a payment sitting in
 // a mid-settlement state longer than this means its worker job was lost, or the
@@ -47,36 +50,45 @@ export async function processReconcileJob(): Promise<ReconcileResult> {
   };
 }
 
-// XLM leg: diff each custodial wallet's cached balance against Horizon.
+// Crypto leg: diff each custodial wallet's cached balances against Horizon, for
+// every enabled asset — an untracked USDT balance is as much a discrepancy as an
+// untracked XLM one. A wallet with drift in two assets counts once.
 async function reconcileWallets(): Promise<{ checked: number; drift: number }> {
   const wallets = await db.custodialWallet.findMany();
+  const assets = enabledAssets().filter(isAssetConfigured);
   let drift = 0;
 
   for (const wallet of wallets) {
-    let horizon;
+    let onChain;
     try {
-      horizon = await walletService.getBalance(wallet.stellarPublicKey);
+      onChain = await walletService.getBalances(wallet.stellarPublicKey, assets);
     } catch (err) {
-      console.error("[reconcile] getBalance failed", {
+      console.error("[reconcile] getBalances failed", {
         walletId: wallet.id,
         error: (err as Error).message,
       });
       continue;
     }
-    const cached = dec(wallet.cachedXlmBalance.toString());
-    if (!cached.equals(horizon)) {
-      drift++;
+    const cachedBalances = await getAssetBalances(db, wallet.id, assets);
+    let walletDrifted = false;
+
+    for (const { asset, balance } of onChain) {
+      const cached = cachedBalances.find((b) => b.asset === asset)?.cached ?? dec("0");
+      if (cached.equals(balance)) continue;
+      walletDrifted = true;
       await audit({
         action: "reconcile.drift",
         target: wallet.id,
         metadata: {
           publicKey: wallet.stellarPublicKey,
-          cachedXlm: cached.toFixed(7),
-          horizonXlm: horizon.toFixed(7),
-          deltaXlm: horizon.minus(cached).toFixed(7),
+          asset,
+          cached: cached.toFixed(7),
+          horizon: balance.toFixed(7),
+          delta: balance.minus(cached).toFixed(7),
         },
       });
     }
+    if (walletDrifted) drift++;
   }
 
   return { checked: wallets.length, drift };

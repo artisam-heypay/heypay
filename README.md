@@ -41,6 +41,7 @@ Grounded in `src/`, all implemented and matching `SPEC.md`:
 **Payer**
 
 - Custodial Stellar wallet per payer, generated and envelope-encrypted at signup (`src/server/stellar/wallet.ts`, `src/server/crypto/envelope.ts` — AES-256-GCM).
+- Multi-asset wallets: hold and pay with XLM or, behind `PAYMENT_ASSETS`, an issued asset such as USDT — including idempotent trustline setup, per-asset balances, and asset-tagged settlement/refunds (`src/server/wallet/balances.ts`, `src/server/stellar/assets.ts`, [`docs/multi-asset.md`](docs/multi-asset.md)).
 - Prefund flow: deposit address + QR, background deposit detection (`src/app/(payer)/payer/prefund`, `src/server/queue/jobs/deposit-poller.ts`).
 - QRPH scanning via camera (`getUserMedia` + `jsQR`) or image upload, decoded server-side with a real EMVCo TLV parser and CRC-16 validation (`src/server/qrph/{tlv,crc,decode,resolve}.ts`).
 - Live rate quoting with a TTL-bound rate lock, funds-sufficiency checks, and idempotent payment confirmation (`src/server/payments/{quote,confirm,idempotency}.ts`).
