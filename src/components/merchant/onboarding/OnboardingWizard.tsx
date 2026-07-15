@@ -139,6 +139,24 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
               <p className="text-body-sm text-on-surface-variant">
                 PHP from each payment lands here.
               </p>
+              <div className="rounded-lg border border-primary/30 bg-primary-container/20 p-stack-md">
+                <p className="mb-stack-sm text-label-md uppercase text-primary">
+                  Test settlement account
+                </p>
+                <p className="text-body-sm text-on-surface-variant">
+                  For UAT, use this whitelisted payout account:
+                </p>
+                <dl className="mt-stack-sm flex flex-col gap-stack-sm font-mono text-mono-data">
+                  <div className="flex items-center justify-between gap-stack-md">
+                    <dt className="text-on-surface-variant">Bank</dt>
+                    <dd className="text-on-surface">Security Bank</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-stack-md">
+                    <dt className="text-on-surface-variant">Account</dt>
+                    <dd className="text-on-surface">0000042001461</dd>
+                  </div>
+                </dl>
+              </div>
               <fieldset className="grid grid-cols-2 gap-stack-md">
                 <legend className="mb-stack-sm text-label-md uppercase text-on-surface-variant">
                   Bank or wallet
