@@ -93,9 +93,64 @@ async function seedDemo(): Promise<void> {
   console.log(`[seed] demo merchant ready: ${merchantUser.username}`);
 }
 
+// Named UAT logins surfaced on the sign-in screen (see the login page's
+// TEST_ACCOUNTS). Payer5 mirrors a real signup — PAYER user + custodial testnet
+// wallet — so the app-wide invariant "every PAYER has a wallet" holds. merchant2
+// is a fresh MERCHANT with no profile yet, so first login lands on onboarding,
+// where the Security Bank settlement notice guides the whitelisted payout account.
+async function seedTestAccounts(): Promise<void> {
+  const testPassword = "12345678";
+
+  const payerHash = await hashPassword(testPassword);
+  const payer = await prisma.user.upsert({
+    where: { username: "Payer5" },
+    update: { role: Role.PAYER, isActive: true },
+    create: { username: "Payer5", passwordHash: payerHash, role: Role.PAYER },
+  });
+  const existingWallet = await prisma.custodialWallet.findUnique({
+    where: { userId: payer.id },
+  });
+  if (!existingWallet) {
+    // Server-only crypto (envelope) — import lazily so a demo-only dependency
+    // never blocks admin seeding, and only pay its cost when this block runs.
+    const { walletService } = await import("../src/server/stellar/wallet");
+    const wallet = walletService.generate();
+    await prisma.custodialWallet.create({
+      data: {
+        userId: payer.id,
+        stellarPublicKey: wallet.publicKey,
+        encryptedSecret: wallet.encryptedSecret,
+        secretKeyVersion: wallet.secretKeyVersion,
+      },
+    });
+  }
+  console.log(`[seed] test payer ready: ${payer.username}`);
+
+  const merchantHash = await hashPassword(testPassword);
+  const merchant = await prisma.user.upsert({
+    where: { username: "merchant2" },
+    update: { role: Role.MERCHANT, isActive: true },
+    create: { username: "merchant2", passwordHash: merchantHash, role: Role.MERCHANT },
+  });
+  console.log(`[seed] test merchant ready: ${merchant.username} (onboarding pending)`);
+}
+
 async function main(): Promise<void> {
-  await seedAdmin();
-  await seedDemo();
+  // Each step is isolated: a failure in one (e.g. admin vars absent on a deploy)
+  // must not stop the others. This runs as the release command's `db seed`, so it
+  // must never fail a deploy — errors are logged, the process still exits 0.
+  const steps: ReadonlyArray<[string, () => Promise<void>]> = [
+    ["admin", seedAdmin],
+    ["demo", seedDemo],
+    ["test-accounts", seedTestAccounts],
+  ];
+  for (const [name, run] of steps) {
+    try {
+      await run();
+    } catch (err) {
+      console.error(`[seed] ${name} failed (continuing):`, err);
+    }
+  }
 }
 
 main()

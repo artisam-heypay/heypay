@@ -13,7 +13,9 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
-    seed: "tsx prisma/seed.ts",
+    // react-server condition matches the worker's runner so the seed can import
+    // server-only modules (e.g. envelope crypto for custodial-wallet generation).
+    seed: "node --conditions=react-server --import tsx prisma/seed.ts",
   },
   datasource: {
     url: env("DATABASE_URL"),
