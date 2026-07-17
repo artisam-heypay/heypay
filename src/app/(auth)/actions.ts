@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { db } from "@/server/db";
 import { hashPassword, verifyPassword, DUMMY_PASSWORD_HASH } from "@/server/auth/password";
-import { createSession, destroySession } from "@/server/auth/sessions";
+import { createSession, destroySession, getSessionUser } from "@/server/auth/sessions";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { audit } from "@/server/auth/audit";
 import { walletService } from "@/server/stellar/wallet";
@@ -112,6 +112,11 @@ export async function signupAction(_prev: AuthState, formData: FormData): Promis
 }
 
 export async function logoutAction(): Promise<void> {
+  const user = await getSessionUser();
   await destroySession();
+  if (user) {
+    const { ip } = await requestMeta();
+    await audit({ actorId: user.id, action: "auth.logout", target: user.id, ip });
+  }
   redirect("/login");
 }

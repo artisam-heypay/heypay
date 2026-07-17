@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/server/auth/sessions";
 import { ChangePasswordForm } from "@/components/admin/ChangePasswordForm";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 
 // Deliberately outside the (admin) route group: that layout redirects here whenever the
 // force-change gate is unsatisfied, so inheriting it would redirect this page to itself.
@@ -21,9 +22,7 @@ export default async function AdminPasswordPage() {
         </p>
       </div>
       <ChangePasswordForm />
-      <a href="/logout" className="text-center text-body-sm text-error">
-        Log out
-      </a>
+      <LogoutButton className="text-center text-body-sm text-error">Log out</LogoutButton>
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 
 export const MERCHANT_NAV = [
   { href: "/merchant/dashboard", label: "Dashboard", icon: "dashboard" },
@@ -49,12 +50,9 @@ export function SideNav({ businessName, pathname }: { businessName: string; path
         >
           <span className="material-symbols-outlined">support_agent</span>Support
         </Link>
-        <a
-          href="/logout"
-          className="flex min-h-11 w-full items-center gap-stack-md px-stack-md py-stack-sm text-body-md text-error hover:bg-surface-container-high"
-        >
+        <LogoutButton className="flex min-h-11 w-full items-center gap-stack-md px-stack-md py-stack-sm text-body-md text-error hover:bg-surface-container-high">
           <span className="material-symbols-outlined">logout</span>Log out
-        </a>
+        </LogoutButton>
       </div>
     </aside>
   );
