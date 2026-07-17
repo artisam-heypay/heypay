@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ADMIN_NAV, activeAdminKey } from "./AdminSideNav";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 
 // The sidebar is lg-only, so on a phone the admin console had no navigation and no way
 // to log out. This is the mobile counterpart: a top bar carrying logout (the sidebar's
@@ -21,15 +22,12 @@ export function AdminMobileNav() {
             Admin
           </span>
         </span>
-        <a
-          href="/logout"
-          className="flex min-h-11 shrink-0 items-center gap-stack-sm rounded-lg px-stack-sm text-body-md text-error hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
-        >
+        <LogoutButton className="flex min-h-11 shrink-0 items-center gap-stack-sm rounded-lg px-stack-sm text-body-md text-error hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10">
           <span className="material-symbols-outlined" aria-hidden="true">
             logout
           </span>
           Log out
-        </a>
+        </LogoutButton>
       </header>
 
       <nav

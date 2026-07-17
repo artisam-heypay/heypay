@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/ui";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 import { PAYER_NAV_ITEMS } from "./nav-items";
 
 export function SideNav({ username }: { username: string }) {
@@ -58,13 +59,10 @@ export function SideNav({ username }: { username: string }) {
           <Icon name="support_agent" />
           Support
         </a>
-        <a
-          href="/logout"
-          className="flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-error hover:bg-error/5 focus:outline-none focus:ring-4 focus:ring-primary/10"
-        >
+        <LogoutButton className="flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-error hover:bg-error/5 focus:outline-none focus:ring-4 focus:ring-primary/10">
           <Icon name="logout" />
           Logout
-        </a>
+        </LogoutButton>
       </div>
     </aside>
   );
