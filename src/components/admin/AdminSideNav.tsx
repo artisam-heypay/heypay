@@ -2,9 +2,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type Key = "overview" | "users" | "merchants" | "payments" | "health";
+export type AdminNavKey = "overview" | "users" | "merchants" | "payments" | "health";
 
-const ITEMS: Array<{ key: Key; label: string; href: string; icon: string }> = [
+export const ADMIN_NAV: Array<{ key: AdminNavKey; label: string; href: string; icon: string }> = [
   { key: "overview", label: "Overview", href: "/admin", icon: "dashboard" },
   { key: "users", label: "Users", href: "/admin/users", icon: "group" },
   { key: "merchants", label: "Merchants", href: "/admin/merchants", icon: "storefront" },
@@ -12,14 +12,17 @@ const ITEMS: Array<{ key: Key; label: string; href: string; icon: string }> = [
   { key: "health", label: "Health", href: "/admin/health", icon: "monitor_heart" },
 ];
 
-export function AdminSideNav({ active }: { active?: Key }) {
+// "/admin" would prefix-match every route, so it only wins on an exact match.
+export function activeAdminKey(pathname: string | null): AdminNavKey {
+  if (pathname === "/admin") return "overview";
+  return (
+    ADMIN_NAV.find((i) => i.href !== "/admin" && pathname?.startsWith(i.href))?.key ?? "overview"
+  );
+}
+
+export function AdminSideNav({ active }: { active?: AdminNavKey }) {
   const pathname = usePathname();
-  const derived: Key =
-    active ??
-    (pathname === "/admin"
-      ? "overview"
-      : (ITEMS.find((i) => i.href !== "/admin" && pathname?.startsWith(i.href))?.key ??
-        "overview"));
+  const derived: AdminNavKey = active ?? activeAdminKey(pathname);
 
   return (
     <nav
@@ -36,7 +39,7 @@ export function AdminSideNav({ active }: { active?: Key }) {
         </span>
       </div>
       <ul className="mt-stack-md flex flex-1 flex-col gap-1">
-        {ITEMS.map((item) => {
+        {ADMIN_NAV.map((item) => {
           const isActive = item.key === derived;
           return (
             <li key={item.key}>

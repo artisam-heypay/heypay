@@ -48,38 +48,44 @@ export default async function AdminOverviewPage() {
         {o.recentFailures.length === 0 ? (
           <p className="mt-stack-md text-body-md text-on-surface-variant">No failed payments. 🎉</p>
         ) : (
-          <table className="mt-stack-md w-full text-left">
-            <thead>
-              <tr className="bg-surface-container-low">
-                <th className="px-stack-md py-3 text-label-md uppercase text-outline">Reference</th>
-                <th className="px-stack-md py-3 text-label-md uppercase text-outline">Merchant</th>
-                <th className="px-stack-md py-3 text-label-md uppercase text-outline">Amount</th>
-                <th className="px-stack-md py-3 text-label-md uppercase text-outline">Reason</th>
-                <th className="px-stack-md py-3 text-label-md uppercase text-outline">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {o.recentFailures.map((f) => (
-                <tr key={f.id} className="border-t border-outline-variant">
-                  <td className="px-stack-md py-3 font-mono text-mono-data text-on-surface">
-                    {f.reference}
-                  </td>
-                  <td className="px-stack-md py-3 text-body-md text-on-surface">
-                    {f.merchantName}
-                  </td>
-                  <td className="px-stack-md py-3 font-mono text-mono-data text-on-surface">
-                    {displayPhp(f.amountPhp)}
-                  </td>
-                  <td className="px-stack-md py-3 text-body-sm text-on-surface-variant">
-                    {f.failureReason ?? "—"}
-                  </td>
-                  <td className="px-stack-md py-3">
-                    <StatBadge tone="error">Failed</StatBadge>
-                  </td>
+          <div className="mt-stack-md overflow-x-auto">
+            <table className="w-full min-w-max text-left">
+              <thead>
+                <tr className="bg-surface-container-low">
+                  <th className="px-stack-md py-3 text-label-md uppercase text-outline">
+                    Reference
+                  </th>
+                  <th className="px-stack-md py-3 text-label-md uppercase text-outline">
+                    Merchant
+                  </th>
+                  <th className="px-stack-md py-3 text-label-md uppercase text-outline">Amount</th>
+                  <th className="px-stack-md py-3 text-label-md uppercase text-outline">Reason</th>
+                  <th className="px-stack-md py-3 text-label-md uppercase text-outline">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {o.recentFailures.map((f) => (
+                  <tr key={f.id} className="border-t border-outline-variant">
+                    <td className="px-stack-md py-3 font-mono text-mono-data text-on-surface">
+                      {f.reference}
+                    </td>
+                    <td className="px-stack-md py-3 text-body-md text-on-surface">
+                      {f.merchantName}
+                    </td>
+                    <td className="px-stack-md py-3 font-mono text-mono-data text-on-surface">
+                      {displayPhp(f.amountPhp)}
+                    </td>
+                    <td className="px-stack-md py-3 text-body-sm text-on-surface-variant">
+                      {f.failureReason ?? "—"}
+                    </td>
+                    <td className="px-stack-md py-3">
+                      <StatBadge tone="error">Failed</StatBadge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </section>
