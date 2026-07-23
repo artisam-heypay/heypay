@@ -4,7 +4,7 @@
 
 HeyPay is a fintech bridge between the Stellar network and the Philippines' national QR payment standard: a **Payer** prefunds a HeyPay-custodied Stellar wallet with XLM, scans any existing **QRPH** merchant code — the same code every BSP-regulated PH merchant already accepts — and pays. HeyPay submits the XLM payment on the Stellar network, converts it to PHP through the PDAX exchange, and settles the PHP directly into the **Merchant's** bank account, with no merchant-side integration work required. The hero flow: scan QRPH → confirm a live XLM→PHP quote → HeyPay moves the XLM on Stellar, sells it for PHP on PDAX, and pays out to the merchant's bank, with the payer watching a live status overlay track every step through to settlement. An **Admin** operator has full visibility and manual intervention (retry/refund) over the same pipeline.
 
-For the Stellar ecosystem, HeyPay is a concrete instance of "everyday spending utility" for XLM — the missing last mile that turns a held crypto balance into a real-world payment accepted by ordinary merchants, in one of Stellar's most active real-world corridors (Philippine remittance and payments, alongside partners like Coins.ph and MoneyGram already live on Stellar). As shipped today it is a **complete but narrow, single-rail application**: every payer, merchant, and admin flow is implemented end to end, but it relies on exactly one custodial asset (XLM only), one conversion counterparty (PDAX, integrated as a plain REST API rather than through any Stellar-native anchor protocol), and no on-chain settlement logic beyond a classic Horizon payment operation — no SEPs, no Stellar DEX, no Soroban. Its ecosystem impact today is real but local and demonstrative rather than structural; see [Ecosystem Roadmap](#ecosystem-roadmap--research) below for how SEP-based anchors, USDC, on-chain path payments, and Soroban escrow contracts could turn it into reusable Stellar infrastructure rather than a single app.
+For the Stellar ecosystem, HeyPay is a concrete instance of "everyday spending utility" for XLM — the missing last mile that turns a held crypto balance into a real-world payment accepted by ordinary merchants, in one of Stellar's most active real-world corridors (Philippine remittance and payments, alongside partners like Coins.ph and MoneyGram already live on Stellar). As shipped today it is a **complete but narrow, single-rail application**: every payer, merchant, and admin flow is implemented end to end, but it relies on one conversion counterparty (PDAX, integrated as a plain REST API rather than through any Stellar-native anchor protocol) and no on-chain settlement logic beyond classic Horizon payment and path-payment operations — no SEPs, no Soroban. XLM is the only production-active asset; multi-asset support and a Stellar DEX path-payment conversion route (`docs/multi-asset.md`) exist behind the `PAYMENT_ASSETS` flag but are not production-verified. Its ecosystem impact today is real but local and demonstrative rather than structural; see [Ecosystem Roadmap](#ecosystem-roadmap--research) below for how SEP-based anchors, USDC, on-chain path payments, and Soroban escrow contracts could turn it into reusable Stellar infrastructure rather than a single app.
 
 ## Status / License
 
@@ -280,7 +280,7 @@ The planned first contract is a **Soroban escrow**: hold the payer's XLM on-chai
 
 ## Ecosystem roadmap / research
 
-HeyPay currently touches Stellar only through a custodial wallet and classic Horizon payments — it does not yet use any Stellar Ecosystem Proposal (SEP), the Stellar DEX, or Soroban. A companion research report evaluates how integrating **SEP-6/24/31 anchors, USDC, on-chain path payments, and Soroban escrow contracts** could reduce single-counterparty (PDAX) dependence, cut FX/volatility risk, and turn HeyPay into real Stellar-ecosystem infrastructure rather than a single-app demo — see [issue #160](https://github.com/ronaldajusan0/HeyPay/issues/160) for the full report and feature roadmap.
+HeyPay currently touches Stellar only through a custodial wallet, classic Horizon payments, and — behind the `PAYMENT_ASSETS` flag, not yet production-verified — a Stellar DEX path-payment conversion route (`docs/multi-asset.md`); it does not yet use any Stellar Ecosystem Proposal (SEP) or Soroban. A companion research report evaluates how integrating **SEP-6/24/31 anchors, USDC, on-chain path payments, and Soroban escrow contracts** could reduce single-counterparty (PDAX) dependence, cut FX/volatility risk, and turn HeyPay into real Stellar-ecosystem infrastructure rather than a single-app demo — see [issue #160](https://github.com/artisam-heypay/heypay/issues/160) for the full report and feature roadmap.
 
 ## Tech Stack
 
@@ -342,8 +342,8 @@ Required tooling: **Node ≥22**, **pnpm 10.33.0** (`packageManager` field — u
 1. **Clone and install dependencies**
 
    ```bash
-   git clone https://github.com/ronaldajusan0/HeyPay.git
-   cd HeyPay
+   git clone https://github.com/artisam-heypay/heypay.git
+   cd heypay
    pnpm install
    ```
 
