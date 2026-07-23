@@ -4,33 +4,35 @@
 
 HeyPay is a fintech bridge between the Stellar network and the Philippines' national QR payment standard: a **Payer** prefunds a HeyPay-custodied Stellar wallet with XLM, scans any existing **QRPH** merchant code — the same code every BSP-regulated PH merchant already accepts — and pays. HeyPay submits the XLM payment on the Stellar network, converts it to PHP through the PDAX exchange, and settles the PHP directly into the **Merchant's** bank account, with no merchant-side integration work required. The hero flow: scan QRPH → confirm a live XLM→PHP quote → HeyPay moves the XLM on Stellar, sells it for PHP on PDAX, and pays out to the merchant's bank, with the payer watching a live status overlay track every step through to settlement. An **Admin** operator has full visibility and manual intervention (retry/refund) over the same pipeline.
 
-For the Stellar ecosystem, HeyPay is a concrete instance of "everyday spending utility" for XLM — the missing last mile that turns a held crypto balance into a real-world payment accepted by ordinary merchants, in one of Stellar's most active real-world corridors (Philippine remittance and payments, alongside partners like Coins.ph and MoneyGram already live on Stellar). As shipped today it is a **complete but narrow, single-rail application**: every payer/merchant/admin flow in `SPEC.md` is implemented end to end, but it relies on exactly one custodial asset (XLM only), one conversion counterparty (PDAX, integrated as a plain REST API rather than through any Stellar-native anchor protocol), and no on-chain settlement logic beyond a classic Horizon payment operation — no SEPs, no Stellar DEX, no Soroban. Its ecosystem impact today is real but local and demonstrative rather than structural; see [Ecosystem Roadmap](#ecosystem-roadmap--research) below for how SEP-based anchors, USDC, on-chain path payments, and Soroban escrow contracts could turn it into reusable Stellar infrastructure rather than a single app.
+For the Stellar ecosystem, HeyPay is a concrete instance of "everyday spending utility" for XLM — the missing last mile that turns a held crypto balance into a real-world payment accepted by ordinary merchants, in one of Stellar's most active real-world corridors (Philippine remittance and payments, alongside partners like Coins.ph and MoneyGram already live on Stellar). As shipped today it is a **complete but narrow, single-rail application**: every payer, merchant, and admin flow is implemented end to end, but it relies on exactly one custodial asset (XLM only), one conversion counterparty (PDAX, integrated as a plain REST API rather than through any Stellar-native anchor protocol), and no on-chain settlement logic beyond a classic Horizon payment operation — no SEPs, no Stellar DEX, no Soroban. Its ecosystem impact today is real but local and demonstrative rather than structural; see [Ecosystem Roadmap](#ecosystem-roadmap--research) below for how SEP-based anchors, USDC, on-chain path payments, and Soroban escrow contracts could turn it into reusable Stellar infrastructure rather than a single app.
 
 ## Status / License
 
-|         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Version | `0.1.0` (`package.json`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Status  | **Feature-complete against `SPEC.md`.** Auth, payer (prefund/scan/pay/history/settings), merchant (onboarding/dashboard/transactions/QR/settings), and admin (users/merchants/payments/health) surfaces are all implemented, backed by 56 unit/integration test files and a 4-spec Playwright e2e suite wired into CI, with a Railway deployment config (`railway.json` + `Dockerfile`). No Soroban/on-chain contract layer exists — see [Smart Contracts](#smart-contracts) and [Ecosystem Roadmap](#ecosystem-roadmap--research). |
-| License | MIT (see [`LICENSE`](LICENSE))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Version | `0.1.0` (`package.json`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Status  | **Feature-complete.** Auth, payer (prefund/scan/pay/history/settings), merchant (onboarding/dashboard/transactions/QR/settings), and admin (users/merchants/payments/health) surfaces are all implemented, backed by 56 unit/integration test files and a 4-spec Playwright e2e suite wired into CI, with a Railway deployment config (`railway.json` + `Dockerfile`). No Soroban/on-chain contract layer exists — see [Smart Contracts](#smart-contracts) and [Ecosystem Roadmap](#ecosystem-roadmap--research). |
+| License | MIT — see [`LICENSE`](LICENSE)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ## Problem
 
-Philippine merchants overwhelmingly accept payment through **QRPH**, the BSP's EMVCo-based national QR standard tied to PHP bank accounts (SPEC.md §1). Meanwhile, someone holding **XLM** has no direct way to pay at those merchants — they would need to off-ramp to PHP through a separate exchange before they could pay anyone. HeyPay closes that gap: it is a custodial bridge that lets a payer spend XLM at any merchant who already accepts QRPH, with no merchant-side integration work required (SPEC.md §1, "Happy path").
+Philippine merchants overwhelmingly accept payment through **QRPH**, the BSP's EMVCo-based national QR standard tied to PHP bank accounts. Meanwhile, someone holding **XLM** has no direct way to pay at those merchants — they would need to off-ramp to PHP through a separate exchange before they could pay anyone. HeyPay closes that gap: it is a custodial bridge that lets a payer spend XLM at any merchant who already accepts QRPH, with no merchant-side integration work required.
 
 ## Vision / Purpose
 
-Per `SPEC.md`, HeyPay's v1 scope is a **web-only production-shaped MVP**: custodial Stellar wallets, PDAX-mediated XLM→PHP conversion, PHP cash-out to a merchant's registered bank account, and an admin console for operational oversight — with `MOCK` and `PDAX` (staging) provider modes so the full flow can be demonstrated without real money movement (SPEC.md §1 "Explicitly out of scope"). The app ships with XLM as the only production-active asset; multi-asset support and an on-chain DEX conversion path exist behind the `PAYMENT_ASSETS` flag but are not production-verified. No Soroban contract layer exists. Real KYC/AML/OTP flows and mobile apps remain deferred per SPEC.md §1. `AGENT.md`/`auto-dev.md` and the `docs/superpowers/plans` directory show the project being built sprint-by-sprint by an AI coding agent against a fixed spec [inferred].
+HeyPay v1 is a **web-only, production-shaped MVP**: custodial Stellar wallets, PDAX-mediated XLM→PHP conversion, PHP cash-out to a merchant's registered bank account, and an admin console for operational oversight. Two provider modes — `MOCK` and `PDAX` (staging) — let the full flow be demonstrated without real money movement.
+
+The app ships with XLM as the only production-active asset; multi-asset support (USDT/USDC) and an on-chain DEX conversion path exist behind the `PAYMENT_ASSETS` flag but are not production-verified — see [Features](#features). Real KYC/AML/OTP flows and mobile apps remain deferred; no Soroban contract layer exists.
 
 ## Target Users
 
 - **Payers** — XLM holders who want to spend crypto at everyday PH merchants without manually off-ramping first.
 - **Merchants** — PH businesses that already accept QRPH and want to receive PHP from crypto-holding customers with zero extra integration (they just register their existing QR + bank account).
-- **Admins** — operators with full visibility into users, merchants, and payment health, plus manual retry/refund controls over stuck or failed settlements (SPEC.md §2, §5).
+- **Admins** — operators with full visibility into users, merchants, and payment health, plus manual retry/refund controls over stuck or failed settlements.
 
 ## Features
 
-Grounded in `src/`, all implemented and matching `SPEC.md`:
+Everything below is implemented and running:
 
 **Auth & accounts**
 
@@ -79,7 +81,7 @@ Grounded in `src/`, all implemented and matching `SPEC.md`:
 - 56 unit/integration/component test files (Vitest + Testing Library) plus a 4-spec Playwright e2e suite (`tests/e2e/{payer-happy-path,merchant-go-live,merchant-qr,admin-retry-refund}.spec.ts`) covering signup → prefund → scan → pay → settle, merchant onboarding → go-live, the business QR page, and admin retry/refund — all wired into `.github/workflows/ci.yml`.
 - Railway deployment config: `railway.json` (Dockerfile builder, `pnpm prisma migrate deploy` release command, separate `web`/`worker` service definitions with healthchecks) and a 3-stage `Dockerfile` supporting both `pnpm start` and `pnpm worker:start` from one image.
 
-Modeled but intentionally **not active** per `SPEC.md`'s explicit scope:
+Modeled but intentionally **not active** in v1:
 
 - USDT/USDC payment assets — implemented behind `PAYMENT_ASSETS` (`src/server/stellar/assets.ts`, [`docs/multi-asset.md`](docs/multi-asset.md)) but disabled in the deployed app; no production issuer configured.
 
@@ -272,13 +274,13 @@ sequenceDiagram
 
 ## Smart Contracts
 
-No Soroban contract crates exist in this repository (no `Cargo.toml` / `*.rs` files anywhere outside `node_modules`). Stellar interaction is limited to classic Horizon payment operations via `@stellar/stellar-sdk` (`src/server/stellar/wallet.ts`, `src/server/stellar/horizon.ts`) — there is no on-chain contract layer yet.
+HeyPay has no Soroban contracts, so there is **no smart contract testnet address** — Stellar interaction is limited to classic Horizon payment operations via `@stellar/stellar-sdk` (`src/server/stellar/wallet.ts`, `src/server/stellar/horizon.ts`).
 
-<!-- PLACEHOLDER: Soroban smart contracts — document each contract's purpose, public functions, parameters, and deployment/upload process here. -->
+The planned first contract is a **Soroban escrow**: hold the payer's XLM on-chain from confirmation until the merchant's PHP payout is acknowledged, moving refund logic off HeyPay's servers and onto the chain so the payer need not trust the operator mid-settlement. It is not implemented — see [Ecosystem roadmap / research](#ecosystem-roadmap--research).
 
 ## Ecosystem roadmap / research
 
-HeyPay currently touches Stellar only through a custodial wallet and classic Horizon payments — it does not yet use any Stellar Ecosystem Proposal (SEP), the Stellar DEX, or Soroban. A companion research report evaluates how integrating **SEP-6/24/31 anchors, USDC, on-chain path payments, and Soroban escrow contracts** could reduce single-counterparty (PDAX) dependence, cut FX/volatility risk, and turn HeyPay into real Stellar-ecosystem infrastructure rather than a single-app demo — see the tracking GitHub issue for the full report and feature roadmap.
+HeyPay currently touches Stellar only through a custodial wallet and classic Horizon payments — it does not yet use any Stellar Ecosystem Proposal (SEP), the Stellar DEX, or Soroban. A companion research report evaluates how integrating **SEP-6/24/31 anchors, USDC, on-chain path payments, and Soroban escrow contracts** could reduce single-counterparty (PDAX) dependence, cut FX/volatility risk, and turn HeyPay into real Stellar-ecosystem infrastructure rather than a single-app demo — see [issue #160](https://github.com/ronaldajusan0/HeyPay/issues/160) for the full report and feature roadmap.
 
 ## Tech Stack
 
@@ -340,8 +342,8 @@ Required tooling: **Node ≥22**, **pnpm 10.33.0** (`packageManager` field — u
 1. **Clone and install dependencies**
 
    ```bash
-   git clone <repo-url>
-   cd heypay
+   git clone https://github.com/ronaldajusan0/HeyPay.git
+   cd HeyPay
    pnpm install
    ```
 
@@ -417,23 +419,34 @@ HeyPay deploys to **Railway** via `railway.json` + a 3-stage `Dockerfile`: a `we
 
 CI (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull requests, gating on typecheck/lint/format/audit/Vitest/build/Playwright e2e; it does not itself deploy.
 
-- Live app URL: `[PLACEHOLDER: Live app URL]`
-- Web service: `[PLACEHOLDER: Railway web service URL]`
-- Worker service: `[PLACEHOLDER: Railway worker service URL]`
+Live app: **<https://heypayfi.xyz>**
 
 ## Demo
 
-- Live app: `[PLACEHOLDER: Live app URL]`
-- Demo video: `[PLACEHOLDER: Demo video URL]`
-- Screenshot: `[PLACEHOLDER: screenshot]`
+- **Live app** — <https://heypayfi.xyz>
+- **Demo video** — [full payer → merchant flow, prefund through settlement](https://drive.google.com/file/d/180WchiglLB2r86xSGTnYe4oCA0aw39xl/view?usp=drive_link)
+- **Pitch deck** — [HeyPay pitch deck (Google Slides)](https://docs.google.com/presentation/d/1DgvF_3rFOoeh-4ty3xClKzs5l2eVVQub/edit?usp=drive_link&ouid=105919425575897775501&rtpof=true&sd=true)
+
+### The hero flow, screen by screen
+
+| 1. Scan                                                                      | 2. Confirm                                                                                              |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| ![HeyPay scan screen pointed at a merchant's QRPH code.](homepage/step1.jpg) | ![HeyPay confirm screen: peso amount, live rate, network fee, rate-lock countdown.](homepage/step2.jpg) |
+
+| 3. Settle                                                                                                               | 4. Done                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| ![HeyPay processing screen tracking XLM on Stellar through conversion to the merchant bank payout.](homepage/step3.jpg) | ![HeyPay transactions screen showing a completed payment marked Settled.](homepage/step4.jpg) |
 
 ## Team
 
-| Name                  | Role                  | Contact                  |
-| --------------------- | --------------------- | ------------------------ |
-| `[PLACEHOLDER: name]` | `[PLACEHOLDER: role]` | `[PLACEHOLDER: contact]` |
-| `[PLACEHOLDER: name]` | `[PLACEHOLDER: role]` | `[PLACEHOLDER: contact]` |
+HeyPay is designed, built, and maintained by one person.
+
+| Name                                              | Role                                       | Contact                                                   |
+| ------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------- |
+| [Ronald Ajusan](https://github.com/ronaldajusan0) | Solo developer — full-stack, design, infra | [ronaldajusan0@gmail.com](mailto:ronaldajusan0@gmail.com) |
+
+Built under [Artisam Labs](https://artisam.xyz).
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT — see [`LICENSE`](LICENSE). Copyright © 2026 Ronald Ajusan (Artisam Labs).
