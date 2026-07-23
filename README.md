@@ -12,7 +12,7 @@ For the Stellar ecosystem, HeyPay is a concrete instance of "everyday spending u
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Version | `0.1.0` (`package.json`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Status  | **Feature-complete against `SPEC.md`.** Auth, payer (prefund/scan/pay/history/settings), merchant (onboarding/dashboard/transactions/QR/settings), and admin (users/merchants/payments/health) surfaces are all implemented, backed by 56 unit/integration test files and a 4-spec Playwright e2e suite wired into CI, with a Railway deployment config (`railway.json` + `Dockerfile`). No Soroban/on-chain contract layer exists — see [Smart Contracts](#smart-contracts) and [Ecosystem Roadmap](#ecosystem-roadmap--research). |
-| License | Not specified — no `LICENSE` file in the repo                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| License | MIT (see [`LICENSE`](LICENSE))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Problem
 
@@ -20,7 +20,7 @@ Philippine merchants overwhelmingly accept payment through **QRPH**, the BSP's E
 
 ## Vision / Purpose
 
-Per `SPEC.md`, HeyPay's v1 scope is a **web-only production-shaped MVP**: custodial Stellar wallets, PDAX-mediated XLM→PHP conversion, PHP cash-out to a merchant's registered bank account, and an admin console for operational oversight — with `MOCK` and `PDAX` (staging) provider modes so the full flow can be demonstrated without real money movement (SPEC.md §1 "Explicitly out of scope"). The long-term intent (per SPEC.md §1) is a foundation that can later add USDT/USDC as payment assets, real KYC/AML/OTP flows, and mobile apps — all currently modeled but explicitly deferred. `AGENT.md`/`auto-dev.md` and the `docs/superpowers/plans` directory show the project being built sprint-by-sprint by an AI coding agent against a fixed spec [inferred].
+Per `SPEC.md`, HeyPay's v1 scope is a **web-only production-shaped MVP**: custodial Stellar wallets, PDAX-mediated XLM→PHP conversion, PHP cash-out to a merchant's registered bank account, and an admin console for operational oversight — with `MOCK` and `PDAX` (staging) provider modes so the full flow can be demonstrated without real money movement (SPEC.md §1 "Explicitly out of scope"). The app ships with XLM as the only production-active asset; multi-asset support and an on-chain DEX conversion path exist behind the `PAYMENT_ASSETS` flag but are not production-verified. No Soroban contract layer exists. Real KYC/AML/OTP flows and mobile apps remain deferred per SPEC.md §1. `AGENT.md`/`auto-dev.md` and the `docs/superpowers/plans` directory show the project being built sprint-by-sprint by an AI coding agent against a fixed spec [inferred].
 
 ## Target Users
 
@@ -81,7 +81,7 @@ Grounded in `src/`, all implemented and matching `SPEC.md`:
 
 Modeled but intentionally **not active** per `SPEC.md`'s explicit scope:
 
-- USDT/USDC payment assets — present in the Prisma `PaymentAsset` enum, but no code path exercises anything but `XLM`.
+- USDT/USDC payment assets — implemented behind `PAYMENT_ASSETS` (`src/server/stellar/assets.ts`, [`docs/multi-asset.md`](docs/multi-asset.md)) but disabled in the deployed app; no production issuer configured.
 
 ## Architecture
 
@@ -436,4 +436,4 @@ CI (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull requests, g
 
 ## License
 
-No `LICENSE` file is present in this repository — license terms are undetermined. `[PLACEHOLDER: License]`
+MIT — see [`LICENSE`](LICENSE).
