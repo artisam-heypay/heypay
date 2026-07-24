@@ -195,9 +195,10 @@ Same variables. The two that need real answers before enabling USDT on mainnet:
   its probe (₱100 → ₱500 → ₱2000) instead of reporting a pair as unpriceable the
   moment a ₱100 quote is refused.
 
-The alternative settlement route considered in #164 — converting USDT→XLM on the
-Stellar DEX with a path payment, then running the existing XLM sell — is not
-implemented. `PaymentRailProvider.supportsAsset` is the seam where it would go.
+The DEX path-payment settlement route (strategy B from #164, described above
+under [Settling an asset the rail cannot take](#settling-an-asset-the-rail-cannot-take))
+is already implemented and covers this — mainnet needs the same route, real
+liquidity, and the guards in that section, not new code.
 
 ## Holdings
 
