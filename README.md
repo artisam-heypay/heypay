@@ -4,7 +4,7 @@
 
 HeyPay is a fintech bridge between the Stellar network and the Philippines' national QR payment standard: a **Payer** prefunds a HeyPay-custodied Stellar wallet with XLM, scans any existing **QRPH** merchant code — the same code every BSP-regulated PH merchant already accepts — and pays. HeyPay submits the XLM payment on the Stellar network, converts it to PHP through the PDAX exchange, and settles the PHP directly into the **Merchant's** bank account, with no merchant-side integration work required. The hero flow: scan QRPH → confirm a live XLM→PHP quote → HeyPay moves the XLM on Stellar, sells it for PHP on PDAX, and pays out to the merchant's bank, with the payer watching a live status overlay track every step through to settlement. An **Admin** operator has full visibility and manual intervention (retry/refund) over the same pipeline.
 
-For the Stellar ecosystem, HeyPay is a concrete instance of "everyday spending utility" for XLM — the missing last mile that turns a held crypto balance into a real-world payment accepted by ordinary merchants, in one of Stellar's most active real-world corridors (Philippine remittance and payments, alongside partners like Coins.ph and MoneyGram already live on Stellar). As shipped today it is a **complete but narrow, single-rail application**: every payer, merchant, and admin flow is implemented end to end, but it relies on one conversion counterparty (PDAX, integrated as a plain REST API rather than through any Stellar-native anchor protocol) and no on-chain settlement logic beyond classic Horizon payment and path-payment operations — no SEPs, no Soroban. XLM is the only production-active asset; multi-asset support and a Stellar DEX path-payment conversion route (`docs/multi-asset.md`) exist behind the `PAYMENT_ASSETS` flag but are not production-verified. Its ecosystem impact today is real but local and demonstrative rather than structural; see [Ecosystem Roadmap](#ecosystem-roadmap--research) below for how SEP-based anchors, USDC, on-chain path payments, and Soroban escrow contracts could turn it into reusable Stellar infrastructure rather than a single app.
+For the Stellar ecosystem, HeyPay is a concrete instance of "everyday spending utility" for XLM — the missing last mile that turns a held crypto balance into a real-world payment accepted by ordinary merchants, in one of Stellar's most active real-world corridors (Philippine remittance and payments, alongside partners like Coins.ph and MoneyGram already live on Stellar). As shipped today it is a **complete but narrow, single-rail application**: every payer, merchant, and admin flow is implemented end to end, but it relies on one conversion counterparty (PDAX, integrated as a plain REST API rather than through any Stellar-native anchor protocol) and no on-chain settlement logic beyond classic Horizon payment and path-payment operations — no SEPs, no Soroban. XLM is the primary payment asset; multi-asset support (USDC/USDT) and a Stellar DEX path-payment conversion route (`docs/multi-asset.md`) exist behind the `PAYMENT_ASSETS` flag, enabled on the Testnet deployment. Its ecosystem impact today is real but local and demonstrative rather than structural; see [Ecosystem Roadmap](#ecosystem-roadmap--research) below for how SEP-based anchors, USDC, on-chain path payments, and Soroban escrow contracts could turn it into reusable Stellar infrastructure rather than a single app.
 
 ## Status / License
 
@@ -20,9 +20,9 @@ Philippine merchants overwhelmingly accept payment through **QRPH**, the BSP's E
 
 ## Vision / Purpose
 
-HeyPay v1 is a **web-only, production-shaped MVP**: custodial Stellar wallets, PDAX-mediated XLM→PHP conversion, PHP cash-out to a merchant's registered bank account, and an admin console for operational oversight. Two provider modes — `MOCK` and `PDAX` (staging) — let the full flow be demonstrated without real money movement.
+HeyPay v1 is a **web-only, production-shaped MVP**: custodial Stellar wallets, PDAX-mediated XLM→PHP conversion, PHP cash-out to a merchant's registered bank account, and an admin console for operational oversight. Three provider modes — `MOCK`, `PDAX` (staging), and `PDAX-INSTI` (the PDAX Institution API against UAT — the mode running in the deployed app) — let the full flow be demonstrated without real money movement.
 
-The app ships with XLM as the only production-active asset; multi-asset support (USDT/USDC) and an on-chain DEX conversion path exist behind the `PAYMENT_ASSETS` flag but are not production-verified — see [Features](#features). Real KYC/AML/OTP flows and mobile apps remain deferred; no Soroban contract layer exists.
+The app ships with XLM as the primary payment asset; multi-asset support (USDT/USDC) and an on-chain DEX conversion path exist behind the `PAYMENT_ASSETS` flag, enabled on the Testnet deployment — see [Features](#features). Real KYC/AML/OTP flows and mobile apps remain deferred; no Soroban contract layer exists.
 
 ## Target Users
 
@@ -43,7 +43,7 @@ Everything below is implemented and running:
 **Payer**
 
 - Custodial Stellar wallet per payer, generated and envelope-encrypted at signup (`src/server/stellar/wallet.ts`, `src/server/crypto/envelope.ts` — AES-256-GCM).
-- Multi-asset wallets: hold and pay with XLM or, behind `PAYMENT_ASSETS`, an issued asset such as USDT — including idempotent trustline setup, per-asset balances, and asset-tagged settlement/refunds (`src/server/wallet/balances.ts`, `src/server/stellar/assets.ts`, [`docs/multi-asset.md`](docs/multi-asset.md)).
+- Multi-asset wallets: hold and pay with XLM or, behind the `PAYMENT_ASSETS` flag (enabled on the deployed Testnet app), an issued asset such as USDC — including idempotent trustline setup, per-asset balances, and asset-tagged settlement/refunds (`src/server/wallet/balances.ts`, `src/server/stellar/assets.ts`, [`docs/multi-asset.md`](docs/multi-asset.md)).
 - Prefund flow: deposit address + QR, background deposit detection (`src/app/(payer)/payer/prefund`, `src/server/queue/jobs/deposit-poller.ts`).
 - QRPH scanning via camera (`getUserMedia` + `jsQR`) or image upload, decoded server-side with a real EMVCo TLV parser and CRC-16 validation (`src/server/qrph/{tlv,crc,decode,resolve}.ts`).
 - Live rate quoting with a TTL-bound rate lock, funds-sufficiency checks, and idempotent payment confirmation (`src/server/payments/{quote,confirm,idempotency}.ts`).
@@ -81,9 +81,9 @@ Everything below is implemented and running:
 - 56 unit/integration/component test files (Vitest + Testing Library) plus a 4-spec Playwright e2e suite (`tests/e2e/{payer-happy-path,merchant-go-live,merchant-qr,admin-retry-refund}.spec.ts`) covering signup → prefund → scan → pay → settle, merchant onboarding → go-live, the business QR page, and admin retry/refund — all wired into `.github/workflows/ci.yml`.
 - Railway deployment config: `railway.json` (Dockerfile builder, `pnpm prisma migrate deploy` release command, separate `web`/`worker` service definitions with healthchecks) and a 3-stage `Dockerfile` supporting both `pnpm start` and `pnpm worker:start` from one image.
 
-Modeled but intentionally **not active** in v1:
+Testnet-only scope:
 
-- USDT/USDC payment assets — implemented behind `PAYMENT_ASSETS` (`src/server/stellar/assets.ts`, [`docs/multi-asset.md`](docs/multi-asset.md)) but disabled in the deployed app; no production issuer configured.
+- USDT/USDC payment assets — implemented behind `PAYMENT_ASSETS` (`src/server/stellar/assets.ts`, [`docs/multi-asset.md`](docs/multi-asset.md)); enabled on the Testnet deployment, no mainnet issuer configured.
 
 ## Architecture
 
@@ -274,13 +274,13 @@ sequenceDiagram
 
 ## Smart Contracts
 
-HeyPay has no Soroban contracts, so there is **no smart contract testnet address** — Stellar interaction is limited to classic Horizon payment operations via `@stellar/stellar-sdk` (`src/server/stellar/wallet.ts`, `src/server/stellar/horizon.ts`).
+HeyPay has no Soroban contracts, so there is **no smart contract testnet address** — Stellar interaction is limited to classic Horizon payment and path-payment operations via `@stellar/stellar-sdk` (`src/server/stellar/wallet.ts`, `src/server/stellar/horizon.ts`).
 
-The planned first contract is a **Soroban escrow**: hold the payer's XLM on-chain from confirmation until the merchant's PHP payout is acknowledged, moving refund logic off HeyPay's servers and onto the chain so the payer need not trust the operator mid-settlement. It is not implemented — see [Ecosystem roadmap / research](#ecosystem-roadmap--research).
+The planned first contract is a **Soroban escrow**: hold the payer's USDC on-chain from confirmation until the merchant's PHP payout is acknowledged, moving refund logic off HeyPay's servers and onto the chain so the payer need not trust the operator mid-settlement. It is not implemented — see [Ecosystem roadmap / research](#ecosystem-roadmap--research).
 
 ## Ecosystem roadmap / research
 
-HeyPay currently touches Stellar only through a custodial wallet, classic Horizon payments, and — behind the `PAYMENT_ASSETS` flag, not yet production-verified — a Stellar DEX path-payment conversion route (`docs/multi-asset.md`); it does not yet use any Stellar Ecosystem Proposal (SEP) or Soroban. A companion research report evaluates how integrating **SEP-6/24/31 anchors, USDC, on-chain path payments, and Soroban escrow contracts** could reduce single-counterparty (PDAX) dependence, cut FX/volatility risk, and turn HeyPay into real Stellar-ecosystem infrastructure rather than a single-app demo — see [issue #160](https://github.com/artisam-heypay/heypay/issues/160) for the full report and feature roadmap.
+HeyPay currently touches Stellar only through a custodial wallet, classic Horizon payments, and — behind the `PAYMENT_ASSETS` flag, enabled on the Testnet deployment — a Stellar DEX path-payment conversion route (`docs/multi-asset.md`); it does not yet use any Stellar Ecosystem Proposal (SEP) or Soroban. Ongoing research evaluates how integrating **SEP-6/24/31 anchors, USDC, on-chain path payments, and Soroban escrow contracts** could reduce single-counterparty (PDAX) dependence, cut FX/volatility risk, and turn HeyPay into real Stellar-ecosystem infrastructure rather than a single-app demo.
 
 ## Tech Stack
 
@@ -419,11 +419,11 @@ HeyPay deploys to **Railway** via `railway.json` + a 3-stage `Dockerfile`: a `we
 
 CI (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull requests, gating on typecheck/lint/format/audit/Vitest/build/Playwright e2e; it does not itself deploy.
 
-Live app: **<https://heypayfi.xyz>**
+Live app: **<https://heypayfi.xyz>** — runs on **Stellar Testnet** against the **PDAX institutional (UAT) sandbox**; no mainnet deployment.
 
 ## Demo
 
-- **Live app** — <https://heypayfi.xyz>
+- **Live app** — <https://heypayfi.xyz> (Stellar Testnet; PDAX institutional/UAT sandbox — no mainnet deployment)
 - **Demo video** — [full payer → merchant flow, prefund through settlement](https://drive.google.com/file/d/180WchiglLB2r86xSGTnYe4oCA0aw39xl/view?usp=drive_link)
 - **Pitch deck** — [HeyPay pitch deck (Google Slides)](https://docs.google.com/presentation/d/1DgvF_3rFOoeh-4ty3xClKzs5l2eVVQub/edit?usp=drive_link&ouid=105919425575897775501&rtpof=true&sd=true)
 
