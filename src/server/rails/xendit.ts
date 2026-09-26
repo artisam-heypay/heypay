@@ -62,6 +62,26 @@ function toPayoutStatus(p: z.infer<typeof payoutSchema>): PayoutStatus {
   }
 }
 
+/**
+ * Who gets Xendit's payout receipt: the merchant, with HeyPay cc'd. A merchant
+ * without a payout email must not cost HeyPay its own copy, so HeyPay's
+ * addresses become the recipients instead.
+ */
+function receiptNotification(
+  merchantEmail: string | null,
+  heypay: string[],
+): { receipt_notification?: { email_to: string[]; email_cc?: string[] } } {
+  if (merchantEmail) {
+    return {
+      receipt_notification: {
+        email_to: [merchantEmail],
+        ...(heypay.length > 0 ? { email_cc: heypay } : {}),
+      },
+    };
+  }
+  return heypay.length > 0 ? { receipt_notification: { email_to: heypay } } : {};
+}
+
 export function createXenditProvider(
   opts: {
     secretKey?: string;
@@ -140,14 +160,7 @@ export function createXenditProvider(
         amount: Number(phpAmount.toFixed(2)),
         currency: "PHP",
         description: `HeyPay payment ${ref}`,
-        ...(receiptEmail
-          ? {
-              receipt_notification: {
-                email_to: [receiptEmail],
-                ...(cc.length > 0 ? { email_cc: cc } : {}),
-              },
-            }
-          : {}),
+        ...receiptNotification(receiptEmail, cc),
       };
       const created = await withRetry(
         async () =>

@@ -66,7 +66,16 @@ describe("Xendit rail", () => {
     });
   });
 
-  it("omits the receipt when the merchant has no payout email", async () => {
+  it("still sends HeyPay its receipt when the merchant has no payout email", async () => {
+    const { fetchImpl, calls } = fakeFetch({ status: 200, body: { id: "disb-1", status: "ACCEPTED" } });
+    const rail = createXenditProvider({ secretKey: "k", fetchImpl, rates, receiptCc: "ops@heypay.test" });
+    await rail.createPayout({ ref: "TXN-1", phpAmount: new Decimal("10"), bank, receiptEmail: null });
+    expect(JSON.parse(calls[0]!.init.body as string).receipt_notification).toEqual({
+      email_to: ["ops@heypay.test"],
+    });
+  });
+
+  it("omits the receipt only when nobody at all would receive it", async () => {
     const { fetchImpl, calls } = fakeFetch({ status: 200, body: { id: "disb-1", status: "ACCEPTED" } });
     const rail = createXenditProvider({ secretKey: "k", fetchImpl, rates, receiptCc: "" });
     await rail.createPayout({ ref: "TXN-1", phpAmount: new Decimal("10"), bank, receiptEmail: null });
