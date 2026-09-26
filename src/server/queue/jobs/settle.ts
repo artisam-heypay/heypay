@@ -33,6 +33,9 @@ function loadPayment(id: string) {
  * Envelope-encrypted secret of the HeyPay treasury account, used only to send a
  * payer's crypto back when their payment is refunded.
  */
+/** How long to wait before re-checking a payout Xendit still reports as pending. */
+const PAYOUT_RECHECK_MS = Number(process.env.PAYOUT_RECHECK_MS ?? 30_000);
+
 function treasurySecret(): string {
   const value = process.env.HEYPAY_TREASURY_SECRET_ENC?.trim();
   if (!value) throw new Error("HEYPAY_TREASURY_SECRET_ENC is not set; refunds cannot be sent");
@@ -224,7 +227,12 @@ async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
 // PAYOUT_SUBMITTED → SETTLED | (FAILED payout throws → refund) | unchanged while pending
 async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
   const status = await rail.getPayoutStatus(p.payoutRef!);
-  if (status.state === "PENDING") return; // webhook / reconcile will bring it back
+  if (status.state === "PENDING") {
+    // Check again shortly. The Xendit webhook usually arrives first; this keeps a
+    // payout moving where no webhook can reach us (local dev) or one is missed.
+    await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+    return;
+  }
   if (status.state === "FAILED") {
     throw new Error(`Payout ${p.payoutRef} failed: ${status.failureCode ?? "unknown reason"}`);
   }
@@ -265,7 +273,13 @@ async function stepRefund(p: PaymentWithRels): Promise<void> {
       );
     }
     const encryptedSecret = treasurySecret();
-    await db.payment.update({ where: { id: p.id }, data: { refundSubmittedAt: new Date() } });
+    // Claim the send atomically. Two settle jobs can run for one payment (a webhook
+    // and a re-check); only the one that sets the marker may send the refund.
+    const claimed = await db.payment.updateMany({
+      where: { id: p.id, refundSubmittedAt: null, refundTxHash: null },
+      data: { refundSubmittedAt: new Date() },
+    });
+    if (claimed.count === 0) return; // another job is sending it
     try {
       const res = await walletService.sendAsset({
         encryptedSecret,

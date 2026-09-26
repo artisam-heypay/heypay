@@ -32,7 +32,9 @@ vi.mock("@/server/rails", () => ({
 }));
 
 // enqueueSettle is a no-op in tests; we drive steps manually.
-const { enqueueSettle } = vi.hoisted(() => ({ enqueueSettle: vi.fn(async () => {}) }));
+const { enqueueSettle } = vi.hoisted(() => ({
+  enqueueSettle: vi.fn(async (_id: string, _opts?: { delayMs?: number }) => {}),
+}));
 vi.mock("@/server/queue/queues", () => ({
   QUEUE_NAMES: { settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" },
   enqueueSettle,
@@ -194,8 +196,9 @@ describe("processSettleJob — payout still pending at Xendit", () => {
     await processSettleJob({ data: { paymentId: payment.id } });
     p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(p.status).toBe("PAYOUT_SUBMITTED");
-    // No tight loop against Xendit: the webhook / reconcile job re-drives it.
-    expect(enqueueSettle).not.toHaveBeenCalled();
+    // No tight loop against Xendit: only a delayed re-check is scheduled.
+    expect(enqueueSettle).toHaveBeenCalledOnce();
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id, { delayMs: 30_000 });
 
     // The Xendit webhook (or reconcile) nudges it once the payout succeeds.
     getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
@@ -355,6 +358,28 @@ describe("processSettleJob — payout fails → on-chain refund from the treasur
     expect(p.failureReason).toMatch(/HEYPAY_TREASURY_SECRET_ENC/);
     expect(p.refundSubmittedAt).toBeNull(); // nothing was attempted
     expect(sendAsset).not.toHaveBeenCalled();
+  });
+
+  it("never sends a second refund while one is already being sent", async () => {
+    const { payment } = await makeAuthorized();
+    await db.payment.update({ where: { id: payment.id }, data: { status: "REFUND_PENDING" } });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    sendAsset.mockImplementation(async () => {
+      await gate; // hold the first send open while the second job runs
+      return { txHash: "REFUNDHASH-RACE" };
+    });
+    confirmTx.mockResolvedValue(true);
+
+    const first = processSettleJob({ data: { paymentId: payment.id } });
+    await vi.waitFor(() => expect(sendAsset).toHaveBeenCalledTimes(1));
+    await processSettleJob({ data: { paymentId: payment.id } }); // the racing job
+    release();
+    await first;
+
+    expect(sendAsset).toHaveBeenCalledTimes(1);
+    const p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("REFUNDED");
   });
 
   it("allows a retry after Horizon rejects the refund outright", async () => {
