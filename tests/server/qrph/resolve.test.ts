@@ -67,4 +67,48 @@ describe("resolveMerchant", () => {
     const m = await resolveMerchant({ ...decoded, merchantId: undefined });
     expect(m?.businessName).toBe("Raw Match");
   });
+
+  async function merchant(name: string, data: { qrphRaw: string; qrphMerchantId?: string }) {
+    const user = await db.user.create({
+      data: { username: `u-${name}`, passwordHash: "x", role: "MERCHANT" },
+    });
+    return db.merchant.create({
+      data: {
+        userId: user.id,
+        businessName: name,
+        status: MerchantStatus.ACTIVE,
+        settlementBankCode: "BPI",
+        settlementBankName: "BPI",
+        accountName: name,
+        accountNumber: "encrypted",
+        accountNumberLast4: "1234",
+        ...data,
+      },
+    });
+  }
+
+  it("refuses to guess when two active merchants share the exact code", async () => {
+    await merchant("A", { qrphRaw: "RAW-STRING" });
+    await merchant("B", { qrphRaw: "RAW-STRING" });
+    await expect(resolveMerchant(decoded)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("refuses to guess when two active merchants share the QR merchant id", async () => {
+    await merchant("A", { qrphRaw: "OTHER-1", qrphMerchantId: "HEYPAY12345" });
+    await merchant("B", { qrphRaw: "OTHER-2", qrphMerchantId: "HEYPAY12345" });
+    await expect(resolveMerchant(decoded)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("prefers the exact code over a merchant-id match on someone else", async () => {
+    await merchant("Owner", { qrphRaw: "RAW-STRING", qrphMerchantId: "HEYPAY12345" });
+    await merchant("Lookalike", { qrphRaw: "OTHER", qrphMerchantId: "HEYPAY12345" });
+    expect((await resolveMerchant(decoded))?.businessName).toBe("Owner");
+  });
+
+  it("ignores inactive merchants when deciding", async () => {
+    await merchant("Live", { qrphRaw: "RAW-STRING" });
+    const old = await merchant("Suspended", { qrphRaw: "RAW-STRING" });
+    await db.merchant.update({ where: { id: old.id }, data: { status: MerchantStatus.SUSPENDED } });
+    expect((await resolveMerchant(decoded))?.businessName).toBe("Live");
+  });
 });
