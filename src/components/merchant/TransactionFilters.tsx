@@ -1,7 +1,7 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
 
-const STATUSES = ["", "SETTLED", "PDAX_TRADING", "PAYOUT_SUBMITTED", "FAILED", "REFUNDED"];
+const STATUSES = ["", "SETTLED", "PAYOUT_SUBMITTED", "FAILED", "REFUNDED"];
 
 export function TransactionFilters({
   status,

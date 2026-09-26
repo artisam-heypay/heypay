@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { E2E_PDAX_XLM_DEPOSIT_ADDRESS } from "./fixtures";
+import { E2E_TREASURY_ADDRESS } from "./fixtures";
 
 // Truncate every public table except Prisma's migration ledger, in one statement.
 // Run through `prisma db execute` (no client import — Playwright's ESM loader can't
@@ -52,9 +52,9 @@ export default async function globalSetup(): Promise<void> {
   // time, 400 "already funded" thereafter — both fine). Without it, the settlement's
   // real custodial→deposit XLM payment fails and every payment ends FAILED.
   const res = await fetch(
-    `https://friendbot.stellar.org/?addr=${encodeURIComponent(E2E_PDAX_XLM_DEPOSIT_ADDRESS)}`,
+    `https://friendbot.stellar.org/?addr=${encodeURIComponent(E2E_TREASURY_ADDRESS)}`,
   );
   if (![200, 400].includes(res.status)) {
-    throw new Error(`friendbot funding of PDAX deposit sink failed: ${res.status}`);
+    throw new Error(`friendbot funding of the treasury sink failed: ${res.status}`);
   }
 }

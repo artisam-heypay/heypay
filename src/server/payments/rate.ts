@@ -5,18 +5,14 @@ import type { PaymentAsset } from "@/lib/assets";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
 
-// Amounts tried, in order, for the live probe. Rails enforce a minimum trade
-// size *per pair*: PDAX prices XLMPHP and USDCPHP at ₱100 but rejects USDTPHP
-// below roughly ₱500 ("Order quantity is less than minimum required quantity").
-// Escalating means a pair with a higher floor still yields a rate instead of
-// silently reporting none, while cheap pairs still cost one call.
-const RATE_PROBE_PHP = [dec("100"), dec("500"), dec("2000")];
+// Any amount prices the pair; the rate is per unit.
+const RATE_PROBE_PHP = dec("100");
 
 /** How long a persisted rate is served before we ask the rail again. */
 const RATE_TTL_MS = Number(process.env.RATE_SNAPSHOT_TTL_MS ?? 300_000);
 
 /** Marks snapshots written by a display probe rather than by a real quote. */
-const PROBE_SOURCE = "PDAX:probe";
+const PROBE_SUFFIX = ":probe";
 
 type Snapshot = { rate: Decimal; fetchedAt: Date };
 
@@ -29,16 +25,13 @@ async function latestSnapshot(asset: PaymentAsset): Promise<Snapshot | null> {
   return row ? { rate: dec(row.rate.toString()), fetchedAt: row.fetchedAt } : null;
 }
 
-async function probeRail(asset: PaymentAsset): Promise<Decimal | null> {
-  for (const phpAmount of RATE_PROBE_PHP) {
-    try {
-      const quote = await rail.getQuote({ sell: asset, buy: "PHP", phpAmount });
-      return quote.rate;
-    } catch {
-      // Below this pair's minimum (or a transient rail error) — try a larger probe.
-    }
+async function probeRail(asset: PaymentAsset): Promise<{ rate: Decimal; source: string } | null> {
+  try {
+    const quote = await rail.getQuote({ sell: asset, buy: "PHP", phpAmount: RATE_PROBE_PHP });
+    return { rate: quote.rate, source: quote.source };
+  } catch {
+    return null; // price source down or refusing; the caller falls back to the snapshot
   }
-  return null;
 }
 
 /**
@@ -66,11 +59,17 @@ export async function getAssetRate(asset: PaymentAsset): Promise<Decimal | null>
   if (probed === null) return snapshot?.rate ?? null;
 
   await db.exchangeRateSnapshot
-    .create({ data: { pair: `${asset}PHP`, rate: probed.toFixed(8), source: PROBE_SOURCE } })
+    .create({
+      data: {
+        pair: `${asset}PHP`,
+        rate: probed.rate.toFixed(8),
+        source: `${probed.source}${PROBE_SUFFIX}`,
+      },
+    })
     .catch(() => {
       // Caching is best-effort; a failed write must not fail the page.
     });
-  return probed;
+  return probed.rate;
 }
 
 /** Back-compat helper for the XLM leg. */

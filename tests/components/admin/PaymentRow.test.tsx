@@ -44,8 +44,8 @@ beforeEach(() => {
             },
           ],
           stellarTxHash: null,
-          pdaxTradeRef: null,
-          pdaxCashoutRef: null,
+          payoutRef: null,
+          refundTxHash: null,
         }),
         { status: 200 },
       );

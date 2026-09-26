@@ -18,10 +18,10 @@ export const DEMO_QRPH_RAW =
   "00020101021126330011ph.ppmi.p2m0114HEYPAYDEMO00015204581453036085802PH5920HEYPAY DEMO MERCHANT6006MANILA63042556";
 export const DEMO_QRPH_MERCHANT_NAME = "HEYPAY DEMO MERCHANT";
 
-// Dedicated testnet account that stands in for HeyPay's PDAX XLM deposit address.
+// Dedicated testnet account that stands in for the HeyPay treasury.
 // Even with PAYMENT_RAIL=mock the settlement's Stellar leg is real (SPEC §8.2), so the
-// custodial→deposit payment needs a funded, existing destination. globalSetup friendbot-funds it.
-export const E2E_PDAX_XLM_DEPOSIT_ADDRESS =
+// custodial→treasury payment needs a funded, existing destination. globalSetup friendbot-funds it.
+export const E2E_TREASURY_ADDRESS =
   "GBXGSQS3DVUWJVM4BA247MGKNCVRKNO72ONTILJK3DRI2IIPMSDGKACQ";
 
 const CRC_POLY = 0x1021;

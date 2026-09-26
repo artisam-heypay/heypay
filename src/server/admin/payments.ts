@@ -31,8 +31,8 @@ export type AdminPaymentEvent = {
 export type AdminPaymentDetail = AdminPaymentRow & {
   events: AdminPaymentEvent[];
   stellarTxHash: string | null;
-  pdaxTradeRef: string | null;
-  pdaxCashoutRef: string | null;
+  payoutRef: string | null;
+  refundTxHash: string | null;
 };
 
 const ROW_INCLUDE = {
@@ -108,8 +108,8 @@ export async function getAdminPayment(id: string): Promise<AdminPaymentDetail | 
   return {
     ...toRow(p),
     stellarTxHash: p.stellarTxHash,
-    pdaxTradeRef: p.pdaxTradeRef,
-    pdaxCashoutRef: p.pdaxCashoutRef,
+    payoutRef: p.payoutRef,
+    refundTxHash: p.refundTxHash,
     events: p.events.map((e) => ({
       id: e.id,
       fromStatus: e.fromStatus,
@@ -155,16 +155,11 @@ export async function retryPayment(input: {
   return { id: p.id, status: p.status };
 }
 
-// Refund only makes sense once XLM has actually left the custodial wallet (>= STELLAR_SUBMITTED)
-// and the payment has not already reached a terminal refund/settled state.
-const REFUNDABLE: PaymentStatus[] = [
-  "STELLAR_SUBMITTED",
-  "STELLAR_CONFIRMED",
-  "PDAX_TRADING",
-  "PDAX_TRADED",
-  "PAYOUT_SUBMITTED",
-  "FAILED",
-];
+// A refund sends real crypto out of the HeyPay treasury, so it is only allowed
+// once the payer's crypto is confirmed there and before any payout has started.
+// Earlier, the crypto may never have arrived; later, the merchant may already be
+// paid — a failed payout routes itself to refund automatically.
+const REFUNDABLE: PaymentStatus[] = ["STELLAR_CONFIRMED"];
 
 export async function refundPayment(input: {
   id: string;

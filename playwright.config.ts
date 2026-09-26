@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { E2E_PDAX_XLM_DEPOSIT_ADDRESS } from "./tests/e2e/fixtures";
+import { E2E_TREASURY_ADDRESS } from "./tests/e2e/fixtures";
 
 const PORT = process.env.E2E_PORT ?? "3100";
 const BASE_URL = `http://localhost:${PORT}`;
@@ -40,7 +40,7 @@ export default defineConfig({
       PAYMENT_RAIL: "mock",
       // Real testnet Stellar leg needs a funded destination even under the mock rail;
       // globalSetup friendbot-funds this account so custodial→deposit payments land.
-      PDAX_XLM_DEPOSIT_ADDRESS: E2E_PDAX_XLM_DEPOSIT_ADDRESS,
+      HEYPAY_TREASURY_PUBLIC_KEY: E2E_TREASURY_ADDRESS,
       // e2e creates ~6 accounts from one IP; lift the per-IP signup cap so it doesn't 429.
       SIGNUP_RATE_LIMIT: "1000",
       // Magic PHP amount the admin-retry-refund spec uses to force a settlement failure.

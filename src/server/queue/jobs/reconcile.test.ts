@@ -12,15 +12,9 @@ vi.mock("@/server/stellar/wallet", () => ({
 /** Horizon reporting a single native-XLM balance line. */
 const horizonXlm = (balance: string) => [{ asset: "XLM", balance: dec(balance), trustline: true }];
 
-const { getTradeStatus, getPayoutStatus } = vi.hoisted(() => ({
-  getTradeStatus: vi.fn(),
-  getPayoutStatus: vi.fn(),
-}));
+const { getPayoutStatus } = vi.hoisted(() => ({ getPayoutStatus: vi.fn() }));
 vi.mock("@/server/rails", () => ({
-  rail: {
-    getTradeStatus: (r: string) => getTradeStatus(r),
-    getPayoutStatus: (r: string) => getPayoutStatus(r),
-  },
+  rail: { getPayoutStatus: (r: string) => getPayoutStatus(r) },
 }));
 
 const { enqueueSettle } = vi.hoisted(() => ({
@@ -34,9 +28,8 @@ vi.mock("@/server/queue/queues", () => ({
 import { processReconcileJob } from "./reconcile";
 
 async function makeInFlightPayment(opts: {
-  status: "PDAX_TRADING" | "PAYOUT_SUBMITTED" | "PDAX_TRADED";
-  pdaxTradeRef?: string;
-  pdaxCashoutRef?: string;
+  status: "PAYOUT_SUBMITTED" | "STELLAR_CONFIRMED" | "REFUND_PENDING";
+  payoutRef?: string;
   ageMs?: number; // how far in the past updatedAt sits (default: fresh)
 }) {
   const { user } = await makePayer();
@@ -51,8 +44,7 @@ async function makeInFlightPayment(opts: {
       amountAsset: "8.3333334",
       networkFeeXlm: "0.0000100",
       status: opts.status,
-      pdaxTradeRef: opts.pdaxTradeRef ?? null,
-      pdaxCashoutRef: opts.pdaxCashoutRef ?? null,
+      payoutRef: opts.payoutRef ?? null,
       ...(opts.ageMs ? { updatedAt: new Date(Date.now() - opts.ageMs) } : {}),
     },
   });
@@ -121,18 +113,18 @@ describe("processReconcileJob — wallet (XLM) leg", () => {
   });
 });
 
-describe("processReconcileJob — payment (PDAX) leg", () => {
+describe("processReconcileJob — payout leg (missed-webhook fallback)", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await resetDb();
     getBalances.mockResolvedValue(horizonXlm("1000")); // makePayer default cache → no wallet drift
   });
 
-  it("re-drives a stale PDAX_TRADING payment the rail has already filled", async () => {
-    getTradeStatus.mockResolvedValue({ state: "FILLED", feePhp: dec("1"), filledPhp: dec("100") });
+  it("re-drives a stale PAYOUT_SUBMITTED payment Xendit has already paid", async () => {
+    getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
     const payment = await makeInFlightPayment({
-      status: "PDAX_TRADING",
-      pdaxTradeRef: "TRADE-STALE",
+      status: "PAYOUT_SUBMITTED",
+      payoutRef: "disb-stale",
       ageMs: 5 * 60_000,
     });
 
@@ -140,66 +132,65 @@ describe("processReconcileJob — payment (PDAX) leg", () => {
 
     expect(res.paymentsChecked).toBe(1);
     expect(res.paymentDrift).toBe(1);
-    expect(getTradeStatus).toHaveBeenCalledWith("TRADE-STALE");
+    expect(getPayoutStatus).toHaveBeenCalledWith("disb-stale");
     expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
     const logs = await db.auditLog.findMany({
       where: { action: "reconcile.payment_drift", target: payment.id },
     });
     expect(logs).toHaveLength(1);
     expect(logs[0]!.metadata).toMatchObject({
-      localStatus: "PDAX_TRADING",
-      railKind: "trade",
-      railState: "FILLED",
+      localStatus: "PAYOUT_SUBMITTED",
+      railKind: "payout",
+      railState: "SETTLED",
     });
   });
 
-  it("re-drives a stale PAYOUT_SUBMITTED payment the rail has failed", async () => {
-    getPayoutStatus.mockResolvedValue({ state: "FAILED" });
+  it("re-drives a stale PAYOUT_SUBMITTED payment whose payout failed", async () => {
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "INVALID_DESTINATION" });
     const payment = await makeInFlightPayment({
       status: "PAYOUT_SUBMITTED",
-      pdaxCashoutRef: "PAYOUT-STALE",
+      payoutRef: "disb-failed",
       ageMs: 5 * 60_000,
     });
 
     const res = await processReconcileJob();
 
     expect(res.paymentDrift).toBe(1);
-    expect(getPayoutStatus).toHaveBeenCalledWith("PAYOUT-STALE");
     expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
   });
 
-  it("re-enqueues a stale stuck payment with no rail ref to poll", async () => {
-    const payment = await makeInFlightPayment({ status: "PDAX_TRADED", ageMs: 5 * 60_000 });
+  it.each(["STELLAR_CONFIRMED", "REFUND_PENDING"] as const)(
+    "re-enqueues a stale %s payment with no payout to poll",
+    async (status) => {
+      const payment = await makeInFlightPayment({ status, ageMs: 5 * 60_000 });
 
-    const res = await processReconcileJob();
+      const res = await processReconcileJob();
 
-    expect(res.paymentDrift).toBe(1);
-    expect(getTradeStatus).not.toHaveBeenCalled();
-    expect(getPayoutStatus).not.toHaveBeenCalled();
-    expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
-    const logs = await db.auditLog.findMany({
-      where: { action: "reconcile.payment_drift", target: payment.id },
-    });
-    expect(logs[0]!.metadata).toMatchObject({ railKind: "none", railState: "stuck" });
-  });
+      expect(res.paymentDrift).toBe(1);
+      expect(getPayoutStatus).not.toHaveBeenCalled();
+      expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
+      const logs = await db.auditLog.findMany({
+        where: { action: "reconcile.payment_drift", target: payment.id },
+      });
+      expect(logs[0]!.metadata).toMatchObject({ railKind: "none", railState: "stuck" });
+    },
+  );
 
-  it("leaves a recently-updated in-flight payment alone (rail still pending)", async () => {
-    getTradeStatus.mockResolvedValue({ state: "PENDING" });
-    await makeInFlightPayment({ status: "PDAX_TRADING", pdaxTradeRef: "TRADE-FRESH" });
+  it("leaves a recently-updated payout alone", async () => {
+    await makeInFlightPayment({ status: "PAYOUT_SUBMITTED", payoutRef: "disb-fresh" });
 
     const res = await processReconcileJob();
 
     expect(res.paymentsChecked).toBe(0); // not yet stale
-    expect(res.paymentDrift).toBe(0);
-    expect(getTradeStatus).not.toHaveBeenCalled();
+    expect(getPayoutStatus).not.toHaveBeenCalled();
     expect(enqueueSettle).not.toHaveBeenCalled();
   });
 
-  it("does not act when a stale payment's rail leg is still pending", async () => {
-    getTradeStatus.mockResolvedValue({ state: "PENDING" });
+  it("does not act while a stale payout is still pending at Xendit", async () => {
+    getPayoutStatus.mockResolvedValue({ state: "PENDING" });
     await makeInFlightPayment({
-      status: "PDAX_TRADING",
-      pdaxTradeRef: "TRADE-PENDING",
+      status: "PAYOUT_SUBMITTED",
+      payoutRef: "disb-pending",
       ageMs: 5 * 60_000,
     });
 
@@ -207,7 +198,7 @@ describe("processReconcileJob — payment (PDAX) leg", () => {
 
     expect(res.paymentsChecked).toBe(1);
     expect(res.paymentDrift).toBe(0);
-    expect(getTradeStatus).toHaveBeenCalledWith("TRADE-PENDING");
+    expect(getPayoutStatus).toHaveBeenCalledWith("disb-pending");
     expect(enqueueSettle).not.toHaveBeenCalled();
   });
 });

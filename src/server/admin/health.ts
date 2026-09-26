@@ -4,7 +4,7 @@ import { redis } from "@/server/redis";
 import { QUEUE_NAMES } from "@/server/queue/queues";
 
 export type ComponentHealth = {
-  name: "stellar" | "pdax" | "redis" | "queue";
+  name: "stellar" | "payouts" | "rates" | "redis" | "queue";
   status: "ok" | "degraded" | "down";
   detail: string;
   latencyMs?: number;
@@ -46,22 +46,50 @@ async function checkStellar(): Promise<ComponentHealth> {
   }
 }
 
-async function checkPdax(): Promise<ComponentHealth> {
-  if ((process.env.PAYMENT_RAIL ?? "mock") === "mock") {
-    return { name: "pdax", status: "ok", detail: "mock rail" };
+async function checkPayouts(): Promise<ComponentHealth> {
+  if ((process.env.PAYMENT_RAIL ?? "mock").trim().toLowerCase() !== "xendit") {
+    return { name: "payouts", status: "ok", detail: "mock rail" };
   }
-  const url = process.env.PDAX_BASE_URL ?? "";
-  if (!url) return { name: "pdax", status: "down", detail: "PDAX_BASE_URL unset" };
+  const key = process.env.XENDIT_SECRET_KEY?.trim();
+  if (!key) return { name: "payouts", status: "down", detail: "XENDIT_SECRET_KEY unset" };
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 3000);
   try {
-    const { value: res, ms } = await timed(() => fetchWithTimeout(url, 3000));
+    // The PHP balance is what every merchant payout is paid from, so it is the
+    // number worth watching here, not just reachability.
+    const { value: res, ms } = await timed(() =>
+      fetch("https://api.xendit.co/balance", {
+        signal: ctrl.signal,
+        headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}` },
+      }),
+    );
+    if (!res.ok) {
+      return { name: "payouts", status: "degraded", detail: `Xendit ${res.status}`, latencyMs: ms };
+    }
+    const body = (await res.json()) as { balance?: number };
     return {
-      name: "pdax",
-      status: res.status < 500 ? "ok" : "degraded",
-      detail: `PDAX ${res.status}`,
+      name: "payouts",
+      status: "ok",
+      detail: `Xendit balance ₱${Number(body.balance ?? 0).toLocaleString("en-PH")}`,
       latencyMs: ms,
     };
   } catch {
-    return { name: "pdax", status: "down", detail: "PDAX unreachable" };
+    return { name: "payouts", status: "down", detail: "Xendit unreachable" };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function checkRates(): Promise<ComponentHealth> {
+  const url = "https://api.pro.coins.ph/openapi/quote/v1/ticker/bookTicker?symbol=XLMPHP";
+  try {
+    const { value: res, ms } = await timed(() => fetchWithTimeout(url, 3000));
+    return res.ok
+      ? { name: "rates", status: "ok", detail: `Coins.ph ${res.status}`, latencyMs: ms }
+      : { name: "rates", status: "degraded", detail: `Coins.ph ${res.status}`, latencyMs: ms };
+  } catch {
+    // CoinMarketCap still backs quotes when Coins.ph is down.
+    return { name: "rates", status: "degraded", detail: "Coins.ph unreachable" };
   }
 }
 
@@ -98,7 +126,13 @@ async function checkQueue(): Promise<ComponentHealth> {
 }
 
 export async function checkHealth(): Promise<SystemHealth> {
-  const components = await Promise.all([checkStellar(), checkPdax(), checkRedis(), checkQueue()]);
+  const components = await Promise.all([
+    checkStellar(),
+    checkPayouts(),
+    checkRates(),
+    checkRedis(),
+    checkQueue(),
+  ]);
   const anyDown = components.some((c) => c.status === "down");
   const anyDegraded = components.some((c) => c.status === "degraded");
   const status: SystemHealth["status"] = anyDown ? "down" : anyDegraded ? "degraded" : "ok";

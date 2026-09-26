@@ -91,8 +91,5 @@ console.log(`\n${code} issuer created.\n`);
 console.log("Add to .env:");
 console.log(`  PAYMENT_ASSETS=XLM,${code}`);
 console.log(`  ${code}_ASSET_ISSUER=${issuer.publicKey()}`);
-console.log(`  PDAX_${code}_DEPOSIT_ADDRESS=<a testnet account you control>`);
-console.log(
-  `  PDAX_SETTLEMENT_ASSETS=XLM,${code}   # mock rail ignores this; it trades everything`,
-);
+console.log(`  # and add a ${code} trustline to the HeyPay treasury (HEYPAY_TREASURY_PUBLIC_KEY)`);
 console.log(`\nIssuer secret (testnet only, keep for funding payers): ${issuer.secret()}`);

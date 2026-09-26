@@ -2,11 +2,9 @@ import type { PaymentStatus } from "@/generated/prisma/client";
 
 export const PAYMENT_STEPS: { key: PaymentStatus; label: string }[] = [
   { key: "AUTHORIZED", label: "Payment authorized" },
-  { key: "STELLAR_SUBMITTED", label: "Sending XLM on Stellar" },
-  { key: "STELLAR_CONFIRMED", label: "XLM confirmed on-chain" },
-  { key: "PDAX_TRADING", label: "Converting XLM → PHP" },
-  { key: "PDAX_TRADED", label: "PHP received" },
-  { key: "PAYOUT_SUBMITTED", label: "Paying out to merchant bank" },
+  { key: "STELLAR_SUBMITTED", label: "Sending crypto to HeyPay" },
+  { key: "STELLAR_CONFIRMED", label: "Confirmed on Stellar" },
+  { key: "PAYOUT_SUBMITTED", label: "Paying the merchant in PHP" },
   { key: "SETTLED", label: "Settled" },
 ];
 

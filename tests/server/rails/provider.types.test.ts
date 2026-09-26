@@ -2,8 +2,6 @@ import { describe, it, expect, expectTypeOf } from "vitest";
 import { Decimal } from "@/lib/money";
 import type {
   Quote,
-  TradeResult,
-  TradeStatus,
   BankPayout,
   PayoutResult,
   PayoutStatus,
@@ -11,25 +9,17 @@ import type {
 } from "@/server/rails/provider";
 
 describe("provider contract", () => {
-  it("Quote carries Decimal amounts + Date expiry", () => {
+  it("Quote carries Decimal amounts, a Date expiry and its rate source", () => {
     const q: Quote = {
       asset: "XLM",
       rate: new Decimal("3.50"),
       phpAmount: new Decimal("100.00"),
       assetAmount: new Decimal("28.5714286"),
       expiresAt: new Date("2026-06-28T00:00:00.000Z"),
+      source: "COINSPH",
     };
     expect(q.rate).toBeInstanceOf(Decimal);
     expect(q.expiresAt).toBeInstanceOf(Date);
-  });
-
-  it("TradeStatus.state is the locked union", () => {
-    const s: TradeStatus = {
-      state: "FILLED",
-      feePhp: new Decimal("1.00"),
-      filledPhp: new Decimal("99.00"),
-    };
-    expectTypeOf(s.state).toEqualTypeOf<"PENDING" | "FILLED" | "FAILED">();
   });
 
   it("PayoutStatus.state is the locked union", () => {
@@ -37,28 +27,13 @@ describe("provider contract", () => {
     expectTypeOf(s.state).toEqualTypeOf<"PENDING" | "SETTLED" | "FAILED">();
   });
 
-  it("PaymentRailProvider has exactly the eight locked methods", () => {
+  it("PaymentRailProvider has exactly the five methods of a collect-then-pay-out rail", () => {
     expectTypeOf<keyof PaymentRailProvider>().toEqualTypeOf<
-      | "supportsAsset"
-      | "minSellAmount"
-      | "getDepositAddress"
-      | "getQuote"
-      | "sellCryptoForPhp"
-      | "getTradeStatus"
-      | "cashOutPhpToBank"
-      | "getPayoutStatus"
+      "supportsAsset" | "getDepositAddress" | "getQuote" | "createPayout" | "getPayoutStatus"
     >();
     // structural use of the remaining types so unused-import lint stays clean
-    const r: TradeResult = { tradeRef: "x" };
     const p: PayoutResult = { payoutRef: "y" };
     const b: BankPayout = { bankCode: "BDO", accountName: "A", accountNumber: "1" };
-    const q: Quote = {
-      asset: "XLM",
-      rate: new Decimal(1),
-      phpAmount: new Decimal(1),
-      assetAmount: new Decimal(1),
-      expiresAt: new Date(),
-    };
-    expect([r.tradeRef, p.payoutRef, b.bankCode, q.rate.toString()]).toHaveLength(4);
+    expect([p.payoutRef, b.bankCode]).toHaveLength(2);
   });
 });

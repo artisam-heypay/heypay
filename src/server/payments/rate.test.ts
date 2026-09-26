@@ -19,7 +19,7 @@ import { getAssetRate } from "./rate";
 /** Write a snapshot aged `ageMs` into the past. */
 async function seedSnapshot(pair: string, rate: string, ageMs = 0) {
   await db.exchangeRateSnapshot.create({
-    data: { pair, rate, source: "PDAX", fetchedAt: new Date(Date.now() - ageMs) },
+    data: { pair, rate, source: "COINSPH", fetchedAt: new Date(Date.now() - ageMs) },
   });
 }
 
@@ -40,7 +40,7 @@ describe("getAssetRate", () => {
 
   it("re-probes once the snapshot is stale, and persists the new rate", async () => {
     await seedSnapshot("USDCPHP", "50.00000000", STALE);
-    getQuote.mockResolvedValue({ rate: dec("61.677") });
+    getQuote.mockResolvedValue({ rate: dec("61.677"), source: "CMC" });
 
     expect((await getAssetRate("USDC"))?.toFixed(3)).toBe("61.677");
     expect(getQuote).toHaveBeenCalled();
@@ -51,6 +51,7 @@ describe("getAssetRate", () => {
       orderBy: { fetchedAt: "desc" },
     });
     expect(latest.rate.toFixed(3)).toBe("61.677");
+    expect(latest.source).toBe("CMC:probe"); // tagged with the source that priced it
 
     getQuote.mockClear();
     expect((await getAssetRate("USDC"))?.toFixed(3)).toBe("61.677");
@@ -61,37 +62,21 @@ describe("getAssetRate", () => {
     // A null rate blanks the token's value and drops it from the portfolio
     // total; a rate from ten minutes ago is a far better answer.
     await seedSnapshot("USDCPHP", "61.00000000", STALE);
-    getQuote.mockRejectedValue(new Error("PDAX 500"));
+    getQuote.mockRejectedValue(new Error("rates unavailable"));
 
     expect((await getAssetRate("USDC"))?.toFixed(2)).toBe("61.00");
   });
 
-  it("escalates the probe when the pair's minimum trade size rejects ₱100", async () => {
-    // PDAX prices USDTPHP only above ~₱500; a single ₱100 probe would report no
-    // rate at all and the wallet would show the token as unpriced.
-    getQuote.mockImplementation(
-      async ({ phpAmount }: { phpAmount: import("@/lib/money").Decimal }) => {
-        if (phpAmount.lessThan(dec("500"))) {
-          throw new Error("Order quantity is less than minimum required quantity");
-        }
-        return { rate: dec("61.34") };
-      },
-    );
-
-    expect((await getAssetRate("USDT"))?.toFixed(2)).toBe("61.34");
-    expect(getQuote).toHaveBeenCalledTimes(2);
-  });
-
   it("costs a single call for a pair that prices at the first probe", async () => {
-    getQuote.mockResolvedValue({ rate: dec("7.299") });
+    getQuote.mockResolvedValue({ rate: dec("7.299"), source: "COINSPH" });
     expect((await getAssetRate("XLM"))?.toString()).toBe("7.299");
     expect(getQuote).toHaveBeenCalledOnce();
   });
 
-  it("returns null when a never-priced asset fails every probe", async () => {
+  it("returns null when a never-priced asset cannot be priced", async () => {
     getQuote.mockRejectedValue(new Error("Asset unavailable"));
     expect(await getAssetRate("USDT")).toBeNull();
-    expect(getQuote).toHaveBeenCalledTimes(3);
+    expect(getQuote).toHaveBeenCalledOnce();
   });
 
   it("returns null for an asset the rail no longer trades, even with a snapshot", async () => {
