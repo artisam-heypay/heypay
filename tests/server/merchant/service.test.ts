@@ -53,6 +53,10 @@ describe("merchantSetupState", () => {
     const { merchant } = await seedMerchantUser({});
     expect(merchantSetupState(merchant).isComplete).toBe(true);
   });
+  it("does not count a settlement account without a payout receipt email", async () => {
+    const { merchant } = await seedMerchantUser({ payoutEmail: null });
+    expect(merchantSetupState(merchant)).toMatchObject({ hasSettlement: false, isComplete: false });
+  });
 });
 
 describe("getMerchantEarnings", () => {
@@ -68,11 +72,12 @@ describe("getMerchantEarnings", () => {
       netSettledPhp: "50.00",
       settledAt: new Date(),
     });
-    await seedPayment(merchant.id, { status: "PDAX_TRADING", amountAsset: "12.5000000" });
+    await seedPayment(merchant.id, { status: "PAYOUT_SUBMITTED", amountAsset: "12.5000000" });
     const e = await getMerchantEarnings(merchant.id);
     expect(e.totalSettledPhp).toBe("150.00");
     expect(e.pendingXlm).toBe("12.5000000");
-    expect(PENDING_STATUSES).toContain("PDAX_TRADING");
+    expect(PENDING_STATUSES).toContain("PAYOUT_SUBMITTED");
+    expect(PENDING_STATUSES).not.toContain("PDAX_TRADING");
   });
 });
 

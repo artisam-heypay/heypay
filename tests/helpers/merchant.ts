@@ -48,6 +48,7 @@ export async function seedMerchantUser(overrides: Partial<Merchant> = {}) {
       accountName: "Maria Cruz",
       accountNumber: encryptSecret("1234567890"),
       accountNumberLast4: "7890",
+      payoutEmail: "cafe@example.com",
       ...overrides,
     },
   });

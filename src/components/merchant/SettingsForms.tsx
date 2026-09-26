@@ -47,6 +47,7 @@ export function SettingsForms({ merchant }: { merchant: MerchantDto }) {
   const [bankCode, setBankCode] = useState(merchant.settlementBankCode);
   const [accountName, setAccountName] = useState(merchant.accountName);
   const [accountNumber, setAccountNumber] = useState("");
+  const [payoutEmail, setPayoutEmail] = useState(merchant.payoutEmail ?? "");
   const [pw, setPw] = useState({ currentPassword: "", newPassword: "" });
   const [qrName, setQrName] = useState(merchant.qrphMerchantName ?? "");
   const [busy, setBusy] = useState<Record<string, boolean>>({});
@@ -76,7 +77,12 @@ export function SettingsForms({ merchant }: { merchant: MerchantDto }) {
       await call("/api/merchant/me", "PATCH", { logoKey: key });
     })();
   const saveBank = guard("bank", async () => {
-    await call("/api/merchant/settlement", "POST", { bankCode, accountName, accountNumber });
+    await call("/api/merchant/settlement", "POST", {
+      bankCode,
+      accountName,
+      accountNumber,
+      payoutEmail,
+    });
   });
   const onQr = (f: File) => {
     const run = guard("qr", async () => {
@@ -157,6 +163,13 @@ export function SettingsForms({ merchant }: { merchant: MerchantDto }) {
           inputMode="numeric"
           value={accountNumber}
           onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
+        />
+        <FloatingInput
+          id="settPayoutEmail"
+          label="Payout receipt email"
+          type="email"
+          value={payoutEmail}
+          onChange={(e) => setPayoutEmail(e.target.value)}
         />
         <Note msg={note.bank ?? null} />
         <button

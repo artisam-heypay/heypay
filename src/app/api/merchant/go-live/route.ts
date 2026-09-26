@@ -18,7 +18,9 @@ export const POST = route(async (req) => {
 
   const setup = merchantSetupState(existing);
   if (!setup.hasBusiness) throw badRequest("Business name is required");
-  if (!setup.hasSettlement) throw badRequest("A settlement bank account is required");
+  if (!setup.hasSettlement) {
+    throw badRequest("A settlement account and payout receipt email are required");
+  }
   if (!setup.hasQrph) throw badRequest("A linked QRPH is required");
 
   // Re-validate the stored QRPH CRC at go-live (defense in depth).

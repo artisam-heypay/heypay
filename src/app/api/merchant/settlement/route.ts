@@ -13,7 +13,10 @@ export const POST = route(async (req) => {
   assertSameOrigin(req);
   const user = await requireRole("MERCHANT");
   const existing = await getMerchantForUser(user.id);
-  const { bankCode, accountName, accountNumber } = await parseBody(req, settlementSchema);
+  const { bankCode, accountName, accountNumber, payoutEmail } = await parseBody(
+    req,
+    settlementSchema,
+  );
 
   const bankName = getBankName(bankCode);
   if (!bankName) throw badRequest("Unsupported bank code");
@@ -26,6 +29,7 @@ export const POST = route(async (req) => {
       accountName,
       accountNumber: encryptSecret(accountNumber),
       accountNumberLast4: accountNumber.slice(-4),
+      payoutEmail,
     },
   });
   await audit({ actorId: user.id, action: "merchant.settlement.set", target: merchant.id });

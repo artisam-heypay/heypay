@@ -56,6 +56,7 @@ it("walks create → settlement → qrph → go-live to ACTIVE", async () => {
           bankCode: "BPI",
           accountName: "Maria Cruz",
           accountNumber: "1234567890",
+          payoutEmail: "cafe@example.com",
         }),
         ctx,
       )

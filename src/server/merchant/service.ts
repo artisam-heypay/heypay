@@ -24,6 +24,7 @@ export type MerchantDto = {
   settlementBankName: string;
   accountName: string;
   accountNumberLast4: string;
+  payoutEmail: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -57,8 +58,6 @@ export const PENDING_STATUSES: PaymentStatus[] = [
   "AUTHORIZED",
   "STELLAR_SUBMITTED",
   "STELLAR_CONFIRMED",
-  "PDAX_TRADING",
-  "PDAX_TRADED",
   "PAYOUT_SUBMITTED",
 ];
 
@@ -79,6 +78,7 @@ export function serializeMerchant(m: Merchant): MerchantDto {
     settlementBankName: m.settlementBankName,
     accountName: m.accountName,
     accountNumberLast4: m.accountNumberLast4,
+    payoutEmail: m.payoutEmail,
     createdAt: m.createdAt.toISOString(),
     updatedAt: m.updatedAt.toISOString(),
   };
@@ -86,7 +86,11 @@ export function serializeMerchant(m: Merchant): MerchantDto {
 
 export function merchantSetupState(m: Merchant): SetupState {
   const hasBusiness = m.businessName.trim().length > 0;
-  const hasSettlement = m.settlementBankCode.length > 0 && m.accountNumberLast4.length > 0;
+  // Settlement is only usable with somewhere to send the payout receipt.
+  const hasSettlement =
+    m.settlementBankCode.length > 0 &&
+    m.accountNumberLast4.length > 0 &&
+    Boolean(m.payoutEmail);
   const hasQrph = m.qrphRaw.length > 0;
   return {
     hasBusiness,
