@@ -7,6 +7,7 @@ import type { PaymentAsset } from "@/lib/assets";
 import type { Merchant, Payment, PaymentStatus } from "@/generated/prisma/client";
 import { MerchantStatus } from "@/generated/prisma/client";
 import type { TxQuery } from "@/lib/schemas/merchant";
+import { stellarTxUrl } from "@/lib/stellar-explorer";
 
 export type MerchantDto = {
   id: string;
@@ -44,6 +45,8 @@ export type MerchantTxItem = {
   amountPhp: string;
   netSettledPhp: string | null;
   status: PaymentStatus;
+  /** Public explorer link for the payer's on-chain payment, once it has been sent. */
+  stellarTxUrl: string | null;
   createdAt: string;
 };
 export type MerchantTxPage = { items: MerchantTxItem[]; nextCursor: string | null };
@@ -260,6 +263,7 @@ function mapTx(p: Payment & { payer: { username: string } }): MerchantTxItem {
     amountPhp: formatPhp(dec(p.amountPhp.toString())),
     netSettledPhp: p.netSettledPhp ? formatPhp(dec(p.netSettledPhp.toString())) : null,
     status: p.status,
+    stellarTxUrl: p.stellarTxHash ? stellarTxUrl(p.stellarTxHash) : null,
     createdAt: p.createdAt.toISOString(),
   };
 }

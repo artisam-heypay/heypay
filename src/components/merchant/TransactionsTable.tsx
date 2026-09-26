@@ -22,10 +22,35 @@ export function TransactionsTable({ items }: { items: MerchantTxItem[] }) {
         </thead>
         <tbody>
           {items.map((t) => (
-            <tr key={t.id} className="border-t border-outline-variant">
+            <tr
+              key={t.id}
+              className={`relative border-t border-outline-variant ${
+                t.stellarTxUrl
+                  ? "cursor-pointer transition-colors hover:bg-surface-container-low focus-within:bg-surface-container-low"
+                  : ""
+              }`}
+            >
               <td className="px-stack-md py-stack-md">
                 <p className="text-body-md text-on-surface">{t.customer}</p>
                 <p className="font-mono text-mono-data text-outline">{t.reference}</p>
+                {t.stellarTxUrl && (
+                  // The link's ::after covers the whole row, so any click on the row
+                  // opens the payment in the public Stellar explorer.
+                  <a
+                    href={t.stellarTxUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 rounded text-body-sm text-primary after:absolute after:inset-0 focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
+                  >
+                    View on Stellar
+                    <span className="material-symbols-outlined text-base" aria-hidden>
+                      open_in_new
+                    </span>
+                    <span className="sr-only">
+                      {` — payment ${t.reference} in the Stellar explorer (opens in a new tab)`}
+                    </span>
+                  </a>
+                )}
               </td>
               <td className="px-stack-md py-stack-md">
                 <p className="font-mono text-mono-data font-semibold text-on-surface">

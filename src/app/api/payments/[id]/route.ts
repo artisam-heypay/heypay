@@ -3,6 +3,7 @@ import { route, json } from "@/lib/http";
 import { requireUser } from "@/server/auth/sessions";
 import { db } from "@/server/db";
 import { notFound, forbidden } from "@/lib/errors";
+import { stellarTxUrl } from "@/lib/stellar-explorer";
 
 export const GET = route(async (_req, ctx) => {
   const user = await requireUser();
@@ -29,6 +30,9 @@ export const GET = route(async (_req, ctx) => {
       netSettledPhp: payment.netSettledPhp?.toFixed(2) ?? null,
       merchantName: payment.merchant.businessName,
       stellarTxHash: payment.stellarTxHash,
+      stellarTxUrl: payment.stellarTxHash ? stellarTxUrl(payment.stellarTxHash) : null,
+      refundTxHash: payment.refundTxHash,
+      refundTxUrl: payment.refundTxHash ? stellarTxUrl(payment.refundTxHash) : null,
       failureReason: payment.failureReason,
       quoteExpiresAt: payment.quoteExpiresAt?.toISOString() ?? null,
       settledAt: payment.settledAt?.toISOString() ?? null,

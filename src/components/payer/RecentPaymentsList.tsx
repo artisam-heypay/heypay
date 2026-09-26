@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card, Icon, MoneyAmount, StatusBadge } from "@/components/ui";
 import type { RecentPayment } from "@/server/payer/data";
+import { PaymentDetailButton } from "./PaymentDetailButton";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -38,18 +39,24 @@ export function RecentPaymentsList({ payments }: { payments: RecentPayment[] }) 
       ) : (
         <ul className="mt-stack-md divide-y divide-outline-variant">
           {payments.map((p) => (
-            <li key={p.id} className="flex items-center justify-between gap-stack-md py-stack-md">
-              <div className="min-w-0">
-                <p className="truncate font-display text-body-md">{p.merchantName}</p>
-                <p className="text-body-sm text-on-surface-variant">
-                  {p.merchantCity ? `${p.merchantCity} · ` : ""}
-                  {formatDate(p.createdAt)}
-                </p>
-                <div className="mt-1">
-                  <StatusBadge status={p.status} />
+            <li key={p.id}>
+              <PaymentDetailButton
+                paymentId={p.id}
+                label={`Payment to ${p.merchantName}, view details`}
+                className="flex w-full min-h-11 items-center justify-between gap-stack-md py-stack-md text-left hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-display text-body-md">{p.merchantName}</p>
+                  <p className="text-body-sm text-on-surface-variant">
+                    {p.merchantCity ? `${p.merchantCity} · ` : ""}
+                    {formatDate(p.createdAt)}
+                  </p>
+                  <div className="mt-1">
+                    <StatusBadge status={p.status} />
+                  </div>
                 </div>
-              </div>
-              <MoneyAmount xlm={p.amountAsset} asset={p.asset} php={p.amountPhp} size="row" />
+                <MoneyAmount xlm={p.amountAsset} asset={p.asset} php={p.amountPhp} size="row" />
+              </PaymentDetailButton>
             </li>
           ))}
         </ul>

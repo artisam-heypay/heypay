@@ -24,7 +24,7 @@ const rows: RecentPayment[] = [
     asset: "XLM" as const,
     amountAsset: dec("4"),
     amountPhp: dec("48"),
-    status: "PDAX_TRADING",
+    status: "PAYOUT_SUBMITTED",
     createdAt: new Date("2026-06-29T00:00:00Z").toISOString(),
   },
 ];
@@ -35,8 +35,15 @@ describe("RecentPaymentsList", () => {
     expect(screen.getByText("Sari Store")).toBeInTheDocument();
     expect(screen.getByText("Cafe Luna")).toBeInTheDocument();
     expect(screen.getByText("Settled")).toBeInTheDocument();
-    expect(screen.getByText("Pending Trade")).toBeInTheDocument();
+    expect(screen.getByText("Paying Out")).toBeInTheDocument();
     expect(screen.getByText("8.3300000 XLM")).toBeInTheDocument();
+  });
+
+  it("makes every row a button that opens the payment detail", () => {
+    render(<RecentPaymentsList payments={rows} />);
+    expect(
+      screen.getByRole("button", { name: "Payment to Sari Store, view details" }),
+    ).toHaveAttribute("aria-haspopup", "dialog");
   });
 
   it("renders an empty state with a Scan CTA", () => {
