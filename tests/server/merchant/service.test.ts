@@ -5,6 +5,7 @@ import {
   serializeMerchant,
   merchantSetupState,
   getMerchantEarnings,
+  parseEarningsRange,
   listMerchantTransactions,
   PENDING_STATUSES,
 } from "@/server/merchant/service";
@@ -60,24 +61,91 @@ describe("merchantSetupState", () => {
 });
 
 describe("getMerchantEarnings", () => {
-  it("sums SETTLED netSettledPhp, in-flight XLM, and computes MoM", async () => {
+  // 2026-09-26 14:00 in Manila (UTC+8).
+  const NOW = new Date("2026-09-26T06:00:00Z");
+  const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
+  const settled = (merchantId: string, php: string, at: Date) =>
+    seedPayment(merchantId, { status: "SETTLED", netSettledPhp: php, settledAt: at });
+
+  it("totals only payouts inside the range and zero-fills daily buckets", async () => {
+    const { merchant } = await seedMerchantUser({});
+    await settled(merchant.id, "100.00", hoursAgo(1));
+    await settled(merchant.id, "50.00", hoursAgo(72));
+    await settled(merchant.id, "999.00", hoursAgo(24 * 10)); // outside the week
+
+    const e = await getMerchantEarnings(merchant.id, "1w", NOW);
+    expect(e.totalSettledPhp).toBe("150.00");
+    expect(e.settledCount).toBe(2);
+    expect(e.bucket).toBe("day");
+    expect(e.series).toHaveLength(7);
+    expect(e.series.at(-1)!.php).toBe("100.00"); // today
+    expect(e.series.at(-4)!.php).toBe("50.00"); // three days ago
+    expect(e.series.filter((p) => p.php === "0.00")).toHaveLength(5);
+  });
+
+  it("uses 24 hourly buckets for the last day", async () => {
+    const { merchant } = await seedMerchantUser({});
+    await settled(merchant.id, "20.00", hoursAgo(2));
+    const e = await getMerchantEarnings(merchant.id, "1d", NOW);
+    expect(e.bucket).toBe("hour");
+    expect(e.series).toHaveLength(24);
+    expect(e.totalSettledPhp).toBe("20.00");
+  });
+
+  it("buckets by Philippine day, not UTC day", async () => {
+    const { merchant } = await seedMerchantUser({});
+    // 2026-09-25 17:30 UTC is 2026-09-26 01:30 in Manila — today, not yesterday.
+    await settled(merchant.id, "75.00", new Date("2026-09-25T17:30:00Z"));
+    const e = await getMerchantEarnings(merchant.id, "1w", NOW);
+    expect(e.series.at(-1)!.php).toBe("75.00");
+    expect(e.series.at(-1)!.t).toBe("2026-09-25T16:00:00.000Z"); // Manila midnight
+  });
+
+  it("compares against the equally long period before", async () => {
+    const { merchant } = await seedMerchantUser({});
+    await settled(merchant.id, "150.00", hoursAgo(1));
+    await settled(merchant.id, "100.00", hoursAgo(24 * 8)); // previous week
+    const e = await getMerchantEarnings(merchant.id, "1w", NOW);
+    expect(e.changePct).toBe(50);
+    expect((await getMerchantEarnings(merchant.id, "all", NOW)).changePct).toBeNull();
+  });
+
+  it("counts pending payouts in PHP whatever coin paid them", async () => {
     const { merchant } = await seedMerchantUser({});
     await seedPayment(merchant.id, {
-      status: "SETTLED",
-      netSettledPhp: "100.00",
-      settledAt: new Date(),
+      status: "PAYOUT_SUBMITTED",
+      asset: "XLM",
+      amountPhp: "120.00",
+    });
+    await seedPayment(merchant.id, {
+      status: "STELLAR_CONFIRMED",
+      asset: "USDC",
+      amountPhp: "80.00",
     });
     await seedPayment(merchant.id, {
       status: "SETTLED",
-      netSettledPhp: "50.00",
-      settledAt: new Date(),
+      netSettledPhp: "5.00",
+      settledAt: hoursAgo(1),
     });
-    await seedPayment(merchant.id, { status: "PAYOUT_SUBMITTED", amountAsset: "12.5000000" });
-    const e = await getMerchantEarnings(merchant.id);
-    expect(e.totalSettledPhp).toBe("150.00");
-    expect(e.pendingXlm).toBe("12.5000000");
+    const e = await getMerchantEarnings(merchant.id, "1m", NOW);
+    expect(e.pendingPhp).toBe("200.00");
+    expect(e.pendingCount).toBe(2);
     expect(PENDING_STATUSES).toContain("PAYOUT_SUBMITTED");
     expect(PENDING_STATUSES).not.toContain("PDAX_TRADING");
+  });
+
+  it("sizes 'all' from the first payout", async () => {
+    const { merchant } = await seedMerchantUser({});
+    await settled(merchant.id, "10.00", hoursAgo(24 * 5));
+    const e = await getMerchantEarnings(merchant.id, "all", NOW);
+    expect(e.bucket).toBe("day");
+    expect(e.series.length).toBeGreaterThanOrEqual(6);
+    expect(e.totalSettledPhp).toBe("10.00");
+  });
+
+  it("falls back to 1M for an unknown range value", () => {
+    expect(parseEarningsRange("nonsense")).toBe("1m");
+    expect(parseEarningsRange("1d")).toBe("1d");
   });
 });
 
