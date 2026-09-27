@@ -2,6 +2,7 @@ import { route, json, parseBody } from "@/lib/http";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { requireRole } from "@/server/auth/sessions";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 import { badRequest, conflict } from "@/lib/errors";
 import { prisma } from "@/server/db";
 import { decodeQrph } from "@/server/qrph/decode";
@@ -50,5 +51,10 @@ export const POST = route(async (req) => {
     },
   });
   await audit({ actorId: user.id, action: "merchant.qrph.set", target: merchant.id });
+  captureUserEvent("merchant_qrph_linked", user, {
+    merchant_id: merchant.id,
+    from_image: Boolean(imageKey),
+    first_time: !existing.qrphRaw,
+  });
   return json({ merchant: serializeMerchant(merchant), decoded });
 });

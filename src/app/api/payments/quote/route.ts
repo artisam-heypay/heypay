@@ -6,6 +6,7 @@ import { assertSameOrigin } from "@/server/auth/csrf";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { dec } from "@/lib/money";
 import { createQuote } from "@/server/payments/quote";
+import { captureUserEvent } from "@/server/observability/analytics";
 
 const bodySchema = z.object({
   merchantId: z.string().min(1),
@@ -25,7 +26,27 @@ export const POST = route(async (req) => {
   await rateLimit(`quote:user:${user.id}`, { limit: 30, windowSec: 60 });
   const { merchantId, amountPhp, asset } = await parseBody(req, bodySchema);
 
-  const q = await createQuote({ payerId: user.id, merchantId, amountPhp, asset });
+  let q: Awaited<ReturnType<typeof createQuote>>;
+  try {
+    q = await createQuote({ payerId: user.id, merchantId, amountPhp, asset });
+  } catch (err) {
+    // Refused quotes (low balance, disabled asset, rate unavailable) are the
+    // first place a payer drops out, so they are tracked with the reason.
+    captureUserEvent("payment_quote_failed", user, {
+      merchant_id: merchantId,
+      asset: asset ?? "XLM",
+      amount_php: amountPhp.toNumber(),
+      error: (err as Error).message.slice(0, 200),
+    });
+    throw err;
+  }
+  captureUserEvent("payment_quoted", user, {
+    payment_id: q.paymentId,
+    merchant_id: merchantId,
+    asset: q.asset,
+    settlement_asset: q.settlementAsset ?? null,
+    amount_php: q.amountPhp.toNumber(),
+  });
   return json({
     paymentId: q.paymentId,
     reference: q.reference,

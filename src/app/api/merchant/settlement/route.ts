@@ -2,6 +2,7 @@ import { route, json, parseBody } from "@/lib/http";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { requireRole } from "@/server/auth/sessions";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 import { badRequest } from "@/lib/errors";
 import { prisma } from "@/server/db";
 import { encryptSecret } from "@/server/crypto/envelope";
@@ -33,5 +34,11 @@ export const POST = route(async (req) => {
     },
   });
   await audit({ actorId: user.id, action: "merchant.settlement.set", target: merchant.id });
+  // Bank code only: never the account name, number or payout email.
+  captureUserEvent("merchant_settlement_saved", user, {
+    merchant_id: merchant.id,
+    bank_code: bankCode,
+    first_time: !existing.settlementBankCode,
+  });
   return json({ merchant: serializeMerchant(merchant) });
 });

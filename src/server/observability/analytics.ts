@@ -45,6 +45,31 @@ export function captureEvent(event: string, distinctId: string, properties: Prop
   });
 }
 
+/** The signed-in user an event is about. */
+export type AnalyticsActor = { id: string; role: string };
+
+/**
+ * Record an event for a payer or merchant. Only those two roles are monitored:
+ * admin activity is never sent. Adds `role` to every event so PostHog can split
+ * payer and merchant behavior.
+ */
+export function captureUserEvent(
+  event: string,
+  actor: AnalyticsActor,
+  properties: Properties = {},
+): void {
+  if (actor.role !== "PAYER" && actor.role !== "MERCHANT") return;
+  captureEvent(event, actor.id, { ...properties, role: actor.role });
+}
+
+/** Replace id-like path segments so API paths group together in PostHog. */
+export function normalizeApiPath(pathname: string): string {
+  return pathname
+    .split("/")
+    .map((seg) => (/^[a-z0-9]{20,}$/i.test(seg) || /^[0-9a-f-]{32,36}$/i.test(seg) ? ":id" : seg))
+    .join("/");
+}
+
 /** True when a PostHog key is configured. */
 export function analyticsEnabled(): boolean {
   return Boolean(KEY);

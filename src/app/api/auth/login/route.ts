@@ -9,6 +9,7 @@ import { createSession } from "@/server/auth/sessions";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 
 const loginSchema = z.object({
   username: z.string().min(1).max(64),
@@ -43,12 +44,18 @@ export const POST = route(async (req) => {
       await redis.set(lockKey, "1", "EX", LOCK_SEC);
     }
     await audit({ actorId: user?.id ?? null, action: "auth.login.failed", target: username, ip });
+    if (user)
+      captureUserEvent("user_login_failed", user, {
+        active: user.isActive,
+        locked: fails >= MAX_FAILS,
+      });
     throw unauthorized("Invalid username or password");
   }
 
   await redis.del(`fails:${username}`);
   await createSession(user.id, { ip, userAgent: req.headers.get("user-agent") ?? undefined });
   await audit({ actorId: user.id, action: "auth.login", target: user.id, ip });
+  captureUserEvent("user_logged_in", user);
 
   return json({ user: { id: user.id, username: user.username, role: user.role } });
 });

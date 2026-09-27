@@ -27,6 +27,13 @@ export function replayAllowed(pathname: string): boolean {
   return !NO_REPLAY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+// Only payers and merchants are monitored: nothing from the admin console is sent.
+export function isAdminPath(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
+
+const MONITORED_ROLES = new Set(["PAYER", "MERCHANT"]);
+
 // Idempotent. Called from every effect rather than once in the provider because
 // React runs child effects first, so AnalyticsIdentify can fire before the
 // provider's own effect would have initialized PostHog.
@@ -41,6 +48,7 @@ function ensureAnalytics(): boolean {
       // Session replay starts only once the path check below allows it.
       disable_session_recording: true,
       session_recording: { maskAllInputs: true },
+      before_send: (event) => (event && isAdminPath(window.location.pathname) ? null : event),
     });
   }
   return true;
@@ -58,10 +66,20 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
   return children;
 }
 
-/** Links events to the signed-in user by internal id only (no username/email). */
+/**
+ * Links events to the signed-in payer or merchant by internal id only (no
+ * username/email). Any other role (admin) is never identified, and an identity
+ * left over in this browser is cleared.
+ */
 export function AnalyticsIdentify({ userId, role }: { userId: string; role: string }) {
   useEffect(() => {
     if (!ensureAnalytics()) return;
+    if (!MONITORED_ROLES.has(role)) {
+      const identified = posthog.get_property("role") || posthog.get_distinct_id() === userId;
+      if (identified) posthog.reset();
+      return;
+    }
+    posthog.register({ role });
     if (posthog.get_distinct_id() !== userId) posthog.identify(userId, { role });
   }, [userId, role]);
   return null;

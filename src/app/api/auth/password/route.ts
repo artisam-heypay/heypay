@@ -9,6 +9,7 @@ import { verifyPassword, hashPassword } from "@/server/auth/password";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(1).max(200),
@@ -35,6 +36,7 @@ export const POST = route(async (req) => {
   await db.session.deleteMany({ where: { userId: user.id } });
   await createSession(user.id, { ip, userAgent: req.headers.get("user-agent") ?? undefined });
   await audit({ actorId: user.id, action: "auth.password.change", target: user.id, ip });
+  captureUserEvent("password_changed", user);
 
   return new NextResponse(null, { status: 204 });
 });

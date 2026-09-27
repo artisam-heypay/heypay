@@ -3,6 +3,7 @@ import { route, json } from "@/lib/http";
 import { badRequest } from "@/lib/errors";
 import { requireRole } from "@/server/auth/sessions";
 import { getMerchantForUser } from "@/server/merchant/service";
+import { captureUserEvent } from "@/server/observability/analytics";
 
 export const GET = route(async () => {
   const user = await requireRole("MERCHANT");
@@ -16,5 +17,6 @@ export const GET = route(async () => {
   });
   const base = process.env.APP_URL ?? "";
   const paymentLink = `${base}/pay?m=${merchant.id}`;
+  captureUserEvent("merchant_qr_viewed", user, { merchant_id: merchant.id });
   return json({ qrphRaw: merchant.qrphRaw, qrSvg, paymentLink });
 });

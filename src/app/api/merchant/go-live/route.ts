@@ -2,6 +2,7 @@ import { route, json } from "@/lib/http";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { requireRole } from "@/server/auth/sessions";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 import { badRequest } from "@/lib/errors";
 import { prisma } from "@/server/db";
 import { decodeQrph } from "@/server/qrph/decode";
@@ -42,6 +43,10 @@ export const POST = route(async (req) => {
     action: "merchant.go-live",
     target: merchant.id,
     metadata: { status: merchant.status },
+  });
+  captureUserEvent("merchant_went_live", user, {
+    merchant_id: merchant.id,
+    status: merchant.status,
   });
   return json({ merchant: serializeMerchant(merchant) });
 });

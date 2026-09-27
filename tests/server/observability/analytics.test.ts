@@ -65,3 +65,52 @@ describe("captureEvent", () => {
     );
   });
 });
+
+describe("captureUserEvent", () => {
+  it("sends payer and merchant events with their role", async () => {
+    const { captureUserEvent } = await loadFresh("phc_test");
+    const fetchSpy = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    captureUserEvent("payment_quoted", { id: "payer-1", role: "PAYER" }, { amount_php: 10 });
+    captureUserEvent("merchant_went_live", { id: "merchant-1", role: "MERCHANT" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const bodies = fetchSpy.mock.calls.map(([, init]) =>
+      JSON.parse((init as RequestInit).body as string),
+    );
+    expect(bodies[0]).toMatchObject({
+      distinct_id: "payer-1",
+      properties: { role: "PAYER", amount_php: 10 },
+    });
+    expect(bodies[1]).toMatchObject({
+      distinct_id: "merchant-1",
+      properties: { role: "MERCHANT" },
+    });
+  });
+
+  it("never sends admin activity", async () => {
+    const { captureUserEvent } = await loadFresh("phc_test");
+    const fetchSpy = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    captureUserEvent("user_logged_in", { id: "admin-1", role: "ADMIN" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("normalizeApiPath", () => {
+  it("replaces id segments so paths group together", async () => {
+    const { normalizeApiPath } = await loadFresh();
+    expect(normalizeApiPath("/api/payments/cmg1abcdefghijklmnopqrst/confirm")).toBe(
+      "/api/payments/:id/confirm",
+    );
+    expect(normalizeApiPath("/api/payments/0b6f1c2e-3d4a-4b5c-8d9e-0f1a2b3c4d5e")).toBe(
+      "/api/payments/:id",
+    );
+    expect(normalizeApiPath("/api/wallet/deposit-address")).toBe("/api/wallet/deposit-address");
+  });
+});

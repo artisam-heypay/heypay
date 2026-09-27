@@ -2,7 +2,7 @@
 import "server-only";
 import { PaymentStatus, type Payment, type Prisma } from "@/generated/prisma/client";
 import { conflict } from "@/lib/errors";
-import { captureEvent } from "@/server/observability/analytics";
+import { analyticsEnabled, captureUserEvent } from "@/server/observability/analytics";
 
 export type TxClient = Prisma.TransactionClient;
 
@@ -75,16 +75,40 @@ export async function applyTransition(
       detail: detail ?? undefined,
     },
   });
-  // Every status change passes through here, so this one event is the whole
-  // payment funnel. It is sent before the surrounding transaction commits; a
-  // rollback (rare) leaves an extra event, and payment_event stays the record.
-  captureEvent("payment_status_changed", updated.payerId, {
-    payment_id: updated.id,
-    merchant_id: updated.merchantId,
-    from_status: payment.status,
-    to_status: toStatus,
-    asset: updated.asset,
-    amount_php: Number(updated.amountPhp),
-  });
+  // Every status change passes through here, so these two events are the whole
+  // payment funnel, once from the payer's side and once from the merchant's.
+  // They are sent before the surrounding transaction commits; a rollback (rare)
+  // leaves an extra event, and payment_event stays the record.
+  if (analyticsEnabled()) {
+    const props = {
+      payment_id: updated.id,
+      merchant_id: updated.merchantId,
+      from_status: payment.status,
+      to_status: toStatus,
+      asset: updated.asset,
+      amount_php: Number(updated.amountPhp),
+      failure_reason: failureReason(detail),
+    };
+    captureUserEvent("payment_status_changed", { id: updated.payerId, role: "PAYER" }, props);
+    // Analytics must never fail the transition, so a failed lookup is ignored.
+    const merchant = await client.merchant
+      .findUnique({ where: { id: updated.merchantId }, select: { userId: true } })
+      .catch(() => null);
+    if (merchant) {
+      captureUserEvent(
+        "merchant_payment_status_changed",
+        { id: merchant.userId, role: "MERCHANT" },
+        props,
+      );
+    }
+  }
   return updated;
+}
+
+/** The reason a payment failed or is being refunded, if the transition says. */
+function failureReason(detail?: Prisma.InputJsonValue): string | undefined {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return undefined;
+  const d = detail as Record<string, unknown>;
+  const reason = d.failureReason ?? d.reason;
+  return typeof reason === "string" ? reason.slice(0, 200) : undefined;
 }

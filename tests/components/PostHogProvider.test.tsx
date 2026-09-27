@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { replayAllowed } from "@/components/analytics/PostHogProvider";
+import { isAdminPath, replayAllowed } from "@/components/analytics/PostHogProvider";
 
 describe("replayAllowed", () => {
   it("records ordinary pages", () => {
@@ -25,5 +25,15 @@ describe("replayAllowed", () => {
 
   it("matches whole path segments only", () => {
     expect(replayAllowed("/payer/prefunding-guide")).toBe(true);
+  });
+});
+
+describe("isAdminPath", () => {
+  it("flags only the admin console", () => {
+    expect(isAdminPath("/admin")).toBe(true);
+    expect(isAdminPath("/admin/settings/password")).toBe(true);
+    expect(isAdminPath("/administrator")).toBe(false);
+    expect(isAdminPath("/payer/dashboard")).toBe(false);
+    expect(isAdminPath("/merchant/qr")).toBe(false);
   });
 });
