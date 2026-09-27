@@ -2,6 +2,7 @@
 import "server-only";
 import { PaymentStatus, type Payment, type Prisma } from "@/generated/prisma/client";
 import { conflict } from "@/lib/errors";
+import { captureEvent } from "@/server/observability/analytics";
 
 export type TxClient = Prisma.TransactionClient;
 
@@ -73,6 +74,17 @@ export async function applyTransition(
       toStatus,
       detail: detail ?? undefined,
     },
+  });
+  // Every status change passes through here, so this one event is the whole
+  // payment funnel. It is sent before the surrounding transaction commits; a
+  // rollback (rare) leaves an extra event, and payment_event stays the record.
+  captureEvent("payment_status_changed", updated.payerId, {
+    payment_id: updated.id,
+    merchant_id: updated.merchantId,
+    from_status: payment.status,
+    to_status: toStatus,
+    asset: updated.asset,
+    amount_php: Number(updated.amountPhp),
   });
   return updated;
 }

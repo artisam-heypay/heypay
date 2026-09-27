@@ -1,0 +1,73 @@
+"use client";
+import { useEffect, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import posthog from "posthog-js";
+
+// Browser analytics (pageviews, autocapture, session replay). With no
+// NEXT_PUBLIC_POSTHOG_KEY nothing is initialized, so dev/CI send nothing.
+//
+// Requests go to /ingest on our own origin (rewritten to PostHog in
+// next.config.ts), so the CSP keeps connect-src 'self' and ad blockers that
+// block posthog.com do not drop events.
+const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim();
+const UI_HOST = process.env.NEXT_PUBLIC_POSTHOG_UI_HOST?.trim() || "https://us.posthog.com";
+
+// Pages that show wallet funding details, account or bank settings, the camera
+// feed, or other users' data (admin) are never recorded.
+const NO_REPLAY_PREFIXES = [
+  "/payer/prefund",
+  "/payer/settings",
+  "/payer/scan",
+  "/merchant/settings",
+  "/merchant/onboarding",
+  "/admin",
+];
+
+export function replayAllowed(pathname: string): boolean {
+  return !NO_REPLAY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+// Idempotent. Called from every effect rather than once in the provider because
+// React runs child effects first, so AnalyticsIdentify can fire before the
+// provider's own effect would have initialized PostHog.
+function ensureAnalytics(): boolean {
+  if (!KEY) return false;
+  if (!posthog.__loaded) {
+    posthog.init(KEY, {
+      api_host: "/ingest",
+      ui_host: UI_HOST,
+      defaults: "2026-08-30",
+      person_profiles: "identified_only",
+      // Session replay starts only once the path check below allows it.
+      disable_session_recording: true,
+      session_recording: { maskAllInputs: true },
+    });
+  }
+  return true;
+}
+
+export function PostHogProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!ensureAnalytics()) return;
+    if (replayAllowed(pathname)) posthog.startSessionRecording();
+    else posthog.stopSessionRecording();
+  }, [pathname]);
+
+  return children;
+}
+
+/** Links events to the signed-in user by internal id only (no username/email). */
+export function AnalyticsIdentify({ userId, role }: { userId: string; role: string }) {
+  useEffect(() => {
+    if (!ensureAnalytics()) return;
+    if (posthog.get_distinct_id() !== userId) posthog.identify(userId, { role });
+  }, [userId, role]);
+  return null;
+}
+
+/** Clears the identity so the next person on this browser is not merged in. */
+export function resetAnalytics(): void {
+  if (KEY && posthog.__loaded) posthog.reset();
+}

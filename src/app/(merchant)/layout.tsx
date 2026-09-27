@@ -4,6 +4,7 @@ import { getMerchantForUserOrNull, merchantSetupState } from "@/server/merchant/
 import { SideNav } from "@/components/merchant/SideNav";
 import { MobileNav } from "@/components/merchant/MobileNav";
 import { SetupBanner } from "@/components/merchant/SetupBanner";
+import { AnalyticsIdentify } from "@/components/analytics/PostHogProvider";
 
 export default async function MerchantLayout({ children }: { children: React.ReactNode }) {
   const user = await requireRole("MERCHANT");
@@ -15,6 +16,7 @@ export default async function MerchantLayout({ children }: { children: React.Rea
 
   return (
     <div className="min-h-screen bg-background text-on-background">
+      <AnalyticsIdentify userId={user.id} role={user.role} />
       <SideNav businessName={merchant?.businessName || "Your business"} pathname={pathname} />
       <main className="px-margin-mobile pb-24 pt-stack-lg lg:ml-64 lg:px-margin-desktop lg:pb-stack-lg">
         <div className="mx-auto max-w-7xl">
