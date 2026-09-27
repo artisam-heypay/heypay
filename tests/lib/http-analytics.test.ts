@@ -50,10 +50,22 @@ describe("route api_error reporting", () => {
     );
   });
 
-  it("ignores admin APIs, unauthenticated calls and signed-out users", async () => {
+  it("reports a failed admin call", async () => {
+    sessionUser.mockResolvedValue({ id: "admin-1", role: "ADMIN" });
+
+    await call("/api/admin/payments/cmg1abcdefghijklmnopqrst/refund", conflict("not refundable"));
+
+    expect(captureUserEvent).toHaveBeenCalledWith(
+      "api_error",
+      { id: "admin-1", role: "ADMIN" },
+      expect.objectContaining({ path: "/api/admin/payments/:id/refund", status: 409 }),
+    );
+  });
+
+  it("ignores webhooks, unauthenticated calls and signed-out users", async () => {
     sessionUser.mockResolvedValue(null);
 
-    await call("/api/admin/payments", conflict("x"));
+    await call("/api/webhooks/xendit", conflict("x"));
     await call("/api/wallet", unauthorized());
     await call("/api/wallet", conflict("x"));
 

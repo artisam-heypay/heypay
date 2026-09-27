@@ -27,12 +27,7 @@ export function replayAllowed(pathname: string): boolean {
   return !NO_REPLAY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-// Only payers and merchants are monitored: nothing from the admin console is sent.
-export function isAdminPath(pathname: string): boolean {
-  return pathname === "/admin" || pathname.startsWith("/admin/");
-}
-
-const MONITORED_ROLES = new Set(["PAYER", "MERCHANT"]);
+const MONITORED_ROLES = new Set(["PAYER", "MERCHANT", "ADMIN"]);
 
 // Idempotent. Called from every effect rather than once in the provider because
 // React runs child effects first, so AnalyticsIdentify can fire before the
@@ -48,7 +43,6 @@ function ensureAnalytics(): boolean {
       // Session replay starts only once the path check below allows it.
       disable_session_recording: true,
       session_recording: { maskAllInputs: true },
-      before_send: (event) => (event && isAdminPath(window.location.pathname) ? null : event),
     });
   }
   return true;
@@ -67,8 +61,8 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Links events to the signed-in payer or merchant by internal id only (no
- * username/email). Any other role (admin) is never identified, and an identity
+ * Links events to the signed-in payer, merchant or admin by internal id only
+ * (no username/email). An unknown role is never identified, and an identity
  * left over in this browser is cleared.
  */
 export function AnalyticsIdentify({ userId, role }: { userId: string; role: string }) {

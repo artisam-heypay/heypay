@@ -90,12 +90,25 @@ describe("captureUserEvent", () => {
     });
   });
 
-  it("never sends admin activity", async () => {
+  it("sends admin activity with the admin role", async () => {
     const { captureUserEvent } = await loadFresh("phc_test");
     const fetchSpy = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
 
-    captureUserEvent("user_logged_in", { id: "admin-1", role: "ADMIN" });
+    captureUserEvent("admin_payment_retried", { id: "admin-1", role: "ADMIN" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body).toMatchObject({ distinct_id: "admin-1", properties: { role: "ADMIN" } });
+  });
+
+  it("drops an unknown role", async () => {
+    const { captureUserEvent } = await loadFresh("phc_test");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    captureUserEvent("user_logged_in", { id: "x", role: "SUPPORT" });
     await new Promise((r) => setTimeout(r, 0));
 
     expect(fetchSpy).not.toHaveBeenCalled();

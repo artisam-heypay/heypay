@@ -60,12 +60,18 @@ export function route(
   };
 }
 
-// Payer and merchant APIs only; admin, auth (no user yet) and webhooks are not
+// Payer, merchant and admin APIs; auth (no user yet) and webhooks are not
 // monitored here.
-const MONITORED_API_PREFIXES = ["/api/payments", "/api/wallet", "/api/qrph", "/api/merchant"];
+const MONITORED_API_PREFIXES = [
+  "/api/payments",
+  "/api/wallet",
+  "/api/qrph",
+  "/api/merchant",
+  "/api/admin",
+];
 
 /**
- * Send a failed payer/merchant API call to analytics as `api_error`, so errors
+ * Send a failed payer/merchant/admin API call to analytics as `api_error`, so errors
  * testers hit show up even when nobody reports them. Never throws.
  */
 async function reportApiError(req: NextRequest, err: AppError): Promise<void> {

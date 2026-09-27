@@ -4,6 +4,7 @@ import { requireRole } from "@/server/auth/sessions";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { MerchantStatus } from "@/generated/prisma/client";
 import { setMerchantStatus } from "@/server/admin/merchants";
+import { captureUserEvent } from "@/server/observability/analytics";
 
 const bodySchema = z.object({ status: z.nativeEnum(MerchantStatus) });
 
@@ -15,5 +16,6 @@ export const PATCH = route(async (req, ctx) => {
   if (!id) throw new Error("Missing id");
   const ip = req.headers.get("x-forwarded-for") ?? undefined;
   const merchant = await setMerchantStatus({ id, status, actorId: admin.id, ip });
+  captureUserEvent("admin_merchant_status_changed", admin, { merchant_id: id, status });
   return json({ ...merchant, createdAt: merchant.createdAt.toISOString() });
 });

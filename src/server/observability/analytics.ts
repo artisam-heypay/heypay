@@ -48,17 +48,18 @@ export function captureEvent(event: string, distinctId: string, properties: Prop
 /** The signed-in user an event is about. */
 export type AnalyticsActor = { id: string; role: string };
 
+const MONITORED_ROLES = new Set(["PAYER", "MERCHANT", "ADMIN"]);
+
 /**
- * Record an event for a payer or merchant. Only those two roles are monitored:
- * admin activity is never sent. Adds `role` to every event so PostHog can split
- * payer and merchant behavior.
+ * Record an event for a signed-in payer, merchant or admin. Adds `role` to every
+ * event so PostHog can split behavior by role; any other role is dropped.
  */
 export function captureUserEvent(
   event: string,
   actor: AnalyticsActor,
   properties: Properties = {},
 ): void {
-  if (actor.role !== "PAYER" && actor.role !== "MERCHANT") return;
+  if (!MONITORED_ROLES.has(actor.role)) return;
   captureEvent(event, actor.id, { ...properties, role: actor.role });
 }
 
