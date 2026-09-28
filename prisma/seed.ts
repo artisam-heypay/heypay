@@ -94,7 +94,7 @@ async function seedDemo(): Promise<void> {
 }
 
 // Named UAT logins surfaced on the sign-in screen (see the login page's
-// TEST_ACCOUNTS). Payer5 mirrors a real signup — PAYER user + custodial testnet
+// TEST_ACCOUNTS, since removed). Payer5 mirrors a real signup — PAYER user + custodial testnet
 // wallet — so the app-wide invariant "every PAYER has a wallet" holds. merchant2
 // is a fresh MERCHANT with no profile yet, so first login lands on onboarding,
 // where the Security Bank settlement notice guides the whitelisted payout account.

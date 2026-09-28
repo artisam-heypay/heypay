@@ -82,7 +82,8 @@ export async function signupAction(_prev: AuthState, formData: FormData): Promis
 
   const { ip, userAgent } = await requestMeta();
   try {
-    await rateLimit(`signup:ip:${ip}`, { limit: 5, windowSec: 3600 });
+    const signupLimit = Number(process.env.SIGNUP_RATE_LIMIT ?? "5");
+    await rateLimit(`signup:ip:${ip}`, { limit: signupLimit, windowSec: 3600 });
   } catch {
     return { error: "Too many sign-up attempts. Please try again later." };
   }
