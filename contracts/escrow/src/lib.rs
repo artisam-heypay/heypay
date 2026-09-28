@@ -65,7 +65,7 @@ impl Escrow {
         storage::set_job(&env, &job_id, &job);
         storage::bump_instance(&env);
 
-        token::Client::new(&env, &token).transfer(&from, &env.current_contract_address(), &amount);
+        token::Client::new(&env, &token).transfer(&from, env.current_contract_address(), &amount);
 
         events::Deposit {
             job_id,
@@ -101,6 +101,27 @@ impl Escrow {
         events::Refund {
             job_id,
             to: from,
+            amount: job.amount,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Payer-only: reclaims a held job once the ledger reaches its deadline,
+    /// so funds never depend on HeyPay acting.
+    pub fn refund_after_timeout(env: Env, job_id: BytesN<32>) -> Result<(), Error> {
+        let job = storage::get_job(&env, &job_id)?;
+        job.from.require_auth();
+        if job.status != JobStatus::Held {
+            return Err(Error::NotHeld);
+        }
+        if env.ledger().sequence() < job.deadline_ledger {
+            return Err(Error::DeadlineNotReached);
+        }
+        let job = close_job(&env, &job_id, &job.from, JobStatus::Refunded)?;
+        events::RefundTimeout {
+            job_id,
+            to: job.from,
             amount: job.amount,
         }
         .publish(&env);

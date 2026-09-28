@@ -257,3 +257,68 @@ fn release_and_refund_require_the_admin() {
     assert!(s.escrow.try_refund(&id).is_err());
     assert_eq!(s.escrow.get_job(&id).status, JobStatus::Held);
 }
+
+#[test]
+fn payer_can_self_refund_only_after_the_deadline() {
+    let s = setup();
+    let payer = s.with_payer(1_000);
+    s.escrow.set_timeout(&50);
+    s.env.ledger().set_sequence_number(100);
+    let id = job_id(&s.env, 1);
+    s.escrow.deposit(&id, &payer, &400);
+
+    s.env.ledger().set_sequence_number(149);
+    assert_eq!(
+        s.escrow.try_refund_after_timeout(&id),
+        Err(Ok(Error::DeadlineNotReached))
+    );
+    assert_eq!(s.balance(&payer), 600);
+
+    s.env.ledger().set_sequence_number(150);
+    s.escrow.refund_after_timeout(&id);
+
+    let auths = s.env.auths();
+    assert_eq!(auths.len(), 1);
+    assert_eq!(auths[0].0, payer);
+    assert_eq!(s.balance(&payer), 1_000);
+    assert_eq!(s.balance(&s.escrow.address), 0);
+    assert_eq!(s.escrow.get_job(&id).status, JobStatus::Refunded);
+}
+
+#[test]
+fn timeout_refund_needs_a_held_job() {
+    let s = setup();
+    let payer = s.with_payer(1_000);
+    s.escrow.set_timeout(&10);
+    let id = job_id(&s.env, 1);
+    s.escrow.deposit(&id, &payer, &400);
+    s.escrow.release(&id);
+    s.env
+        .ledger()
+        .set_sequence_number(s.env.ledger().sequence() + 10);
+
+    assert_eq!(
+        s.escrow.try_refund_after_timeout(&id),
+        Err(Ok(Error::NotHeld))
+    );
+    assert_eq!(
+        s.escrow.try_refund_after_timeout(&job_id(&s.env, 2)),
+        Err(Ok(Error::JobNotFound))
+    );
+}
+
+#[test]
+fn timeout_refund_requires_the_payer() {
+    let s = setup();
+    let payer = s.with_payer(1_000);
+    s.escrow.set_timeout(&10);
+    let id = job_id(&s.env, 1);
+    s.escrow.deposit(&id, &payer, &400);
+    s.env
+        .ledger()
+        .set_sequence_number(s.env.ledger().sequence() + 10);
+    s.env.set_auths(&[]);
+
+    assert!(s.escrow.try_refund_after_timeout(&id).is_err());
+    assert_eq!(s.escrow.get_job(&id).status, JobStatus::Held);
+}
