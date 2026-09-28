@@ -77,6 +77,36 @@ impl Escrow {
         Ok(())
     }
 
+    /// Admin-only: sends a held job's funds to the admin (HeyPay treasury)
+    /// once the payout has succeeded.
+    pub fn release(env: Env, job_id: BytesN<32>) -> Result<(), Error> {
+        let admin = storage::get_admin(&env)?;
+        admin.require_auth();
+        let job = close_job(&env, &job_id, &admin, JobStatus::Released)?;
+        events::Release {
+            job_id,
+            to: admin,
+            amount: job.amount,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Admin-only: returns a held job's funds to the payer after a failed
+    /// payout.
+    pub fn refund(env: Env, job_id: BytesN<32>) -> Result<(), Error> {
+        storage::get_admin(&env)?.require_auth();
+        let from = storage::get_job(&env, &job_id)?.from;
+        let job = close_job(&env, &job_id, &from, JobStatus::Refunded)?;
+        events::Refund {
+            job_id,
+            to: from,
+            amount: job.amount,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
     pub fn get_job(env: Env, job_id: BytesN<32>) -> Result<Job, Error> {
         storage::get_job(&env, &job_id)
     }
@@ -92,6 +122,27 @@ impl Escrow {
     pub fn timeout(env: Env) -> u32 {
         storage::get_timeout(&env)
     }
+}
+
+/// Moves a `Held` job's funds to `to` and marks it `status`. Any other state
+/// fails with `NotHeld`, so each job settles exactly once.
+fn close_job(
+    env: &Env,
+    job_id: &BytesN<32>,
+    to: &Address,
+    status: JobStatus,
+) -> Result<Job, Error> {
+    let mut job = storage::get_job(env, job_id)?;
+    if job.status != JobStatus::Held {
+        return Err(Error::NotHeld);
+    }
+    job.status = status;
+    storage::set_job(env, job_id, &job);
+    storage::bump_instance(env);
+
+    let token = storage::get_token(env)?;
+    token::Client::new(env, &token).transfer(&env.current_contract_address(), to, &job.amount);
+    Ok(job)
 }
 
 #[cfg(test)]
