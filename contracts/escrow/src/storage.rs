@@ -83,7 +83,9 @@ pub fn bump_instance(env: &Env) {
 }
 
 pub fn has_job(env: &Env, job_id: &BytesN<32>) -> bool {
-    env.storage().persistent().has(&DataKey::Job(job_id.clone()))
+    env.storage()
+        .persistent()
+        .has(&DataKey::Job(job_id.clone()))
 }
 
 pub fn get_job(env: &Env, job_id: &BytesN<32>) -> Result<Job, Error> {
