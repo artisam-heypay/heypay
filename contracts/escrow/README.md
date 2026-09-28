@@ -15,6 +15,20 @@ pnpm contract:test    # cargo test -p escrow
 Requires the Stellar CLI (`brew install stellar-cli`) and the `wasm32v1-none`
 Rust target (`rustup target add wasm32v1-none`).
 
+## Interface
+
+| Function | Caller | Effect |
+| --- | --- | --- |
+| `initialize(admin, token)` | admin | One-time setup |
+| `deposit(job_id, from, amount)` | payer | Locks funds; deadline = now + timeout |
+| `release(job_id)` | admin | Held funds to the admin (treasury) |
+| `refund(job_id)` | admin | Held funds back to the payer |
+| `refund_after_timeout(job_id)` | payer | Held funds back to the payer, once the deadline ledger is reached |
+| `get_job(job_id)` | anyone | The job's `from`, `amount`, `deadline_ledger`, `status` |
+
+A job settles exactly once: `release`, `refund` and `refund_after_timeout`
+fail with `NotHeld` unless the job is still `Held`.
+
 ## Setup
 
 `initialize(admin, token)` runs once. `admin` is the HeyPay operator account
