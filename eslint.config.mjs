@@ -58,4 +58,11 @@ export default tseslint.config(
       },
     },
   },
+  {
+    // Landing-page scripts are plain browser JS served as-is (no bundler).
+    files: ["homepage/**/*.js"],
+    languageOptions: {
+      globals: { window: "readonly", document: "readonly", localStorage: "readonly" },
+    },
+  },
 );
