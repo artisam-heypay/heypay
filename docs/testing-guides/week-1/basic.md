@@ -100,6 +100,8 @@ This is the first round. Every task is new.
 - [ ] You see **Total Balance** with an amount in pesos (₱).
 - [ ] You see a card called **Scan QRPH**.
 
+![The HeyPay payer dashboard](img/b2-dashboard.png)
+
 **If it doesn't match:** check _Known issues_, then [report it]({{BUG_FORM_URL}}).
 
 > Answer survey section **B2**: How much money do you have? What do you think you can do here?
@@ -116,7 +118,9 @@ This task has no step-by-step instructions on purpose.
 
 **Your goal:** pay the test shop **₱50** with the QR code picture we sent you (`heypay-test-shop.png`). Use your HeyPay account. Your camera will not work for a picture on the same screen, so look for another way to give HeyPay the QR code.
 
-- [ ] At the end you see the words **sent to** and the shop's name, with a **Done** button.
+- [ ] At the end you see **₱50.00 sent to HeyPay Test Shop** and a **Done** button.
+
+![Payment sent screen](img/t2-done.png)
 
 The last step, "Paying the merchant in PHP", can take a few minutes. That is normal. Wait up to 5 minutes before you report it.
 
@@ -135,6 +139,9 @@ The last step, "Paying the merchant in PHP", can take a few minutes. That is nor
 1. Click **History** in the menu.
 2. Click your ₱50 payment.
 3. Under **Payment on Stellar**, click the small arrow icon next to the code. A new tab opens on the Stellar Expert website.
+
+   ![Payment detail with the Payment on Stellar link](img/t3-detail.png)
+
 4. Compare the new tab with HeyPay. Do they show the same payment?
 5. **On your phone:** open **heypayfi.xyz**, tap **Open HeyPay**, sign in, and tap the round scan button at the bottom. Do not pay anything.
 
@@ -151,6 +158,8 @@ The last step, "Paying the merchant in PHP", can take a few minutes. That is nor
 <div class="page-break"></div>
 
 ## Known issues
+
+- The last step, **Paying the merchant in PHP**, took about 5 minutes in our own test. That is normal.
 
 - The page title says **Transactions**, but the menu item says **History**. They are the same page.
 - The **Support** link in the menu does not open a page yet.
