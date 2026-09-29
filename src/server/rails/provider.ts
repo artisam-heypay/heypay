@@ -13,13 +13,21 @@ export type Quote = {
   source: string;
 };
 export type BankPayout = { bankCode: string; accountName: string; accountNumber: string };
-export type PayoutResult = { payoutRef: string };
+/**
+ * The rail's own response, unredacted (full account number and receipt emails
+ * included), kept for logs and analytics. Never used to decide anything.
+ */
+export type RailPayload = Record<string, unknown>;
+export type PayoutResult = { payoutRef: string; raw?: RailPayload };
 export type PayoutStatus = {
   state: "PENDING" | "SETTLED" | "FAILED";
   netPhp?: Decimal;
   feePhp?: Decimal;
   /** The rail's reason when `state` is FAILED, e.g. Xendit's `failure_code`. */
   failureCode?: string;
+  /** The rail's own status string, e.g. Xendit's `ACCEPTED` or `SUCCEEDED`. */
+  railStatus?: string;
+  raw?: RailPayload;
 };
 
 /**
