@@ -15,7 +15,11 @@ const HOST = (process.env.POSTHOG_HOST?.trim() || "https://us.i.posthog.com").re
 const ENVIRONMENT = process.env.NODE_ENV ?? "development";
 const SEND_TIMEOUT_MS = 3_000;
 
-async function send(event: string, distinctId: string, properties: Properties): Promise<void> {
+async function send(
+  event: string,
+  distinctId: string,
+  properties: Record<string, unknown>,
+): Promise<void> {
   const res = await fetch(`${HOST}/i/v0/e/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -36,6 +40,18 @@ async function send(event: string, distinctId: string, properties: Properties): 
  * email, wallet address or bank detail). Fire-and-forget.
  */
 export function captureEvent(event: string, distinctId: string, properties: Properties = {}): void {
+  captureRawEvent(event, distinctId, properties);
+}
+
+/**
+ * Like captureEvent, but properties may be nested (PostHog's `$exception_list`).
+ * Only error-tracking should need this. Fire-and-forget.
+ */
+export function captureRawEvent(
+  event: string,
+  distinctId: string,
+  properties: Record<string, unknown>,
+): void {
   if (!KEY) return;
   void send(event, distinctId, properties).catch((err) => {
     console.error("[analytics] failed to ship to posthog", {
