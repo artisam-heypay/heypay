@@ -14,7 +14,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
   return (
     <div className="min-h-screen bg-background">
-      <AnalyticsIdentify userId={user.id} role={user.role} />
+      <AnalyticsIdentify userId={user.id} role={user.role} username={user.username} />
       <AdminSideNav />
       <AdminMobileNav />
       <main className="px-margin-mobile pb-24 pt-stack-lg lg:ml-64 lg:px-margin-desktop lg:pb-stack-lg">

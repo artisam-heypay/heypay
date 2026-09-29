@@ -65,11 +65,20 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Links events to the signed-in payer, merchant or admin by internal id only
- * (no username/email). An unknown role is never identified, and an identity
- * left over in this browser is cleared.
+ * Links events to the signed-in payer, merchant or admin. The distinct id is the
+ * internal user id; the username is stored as a person property so PostHog can
+ * show it as the display name (never email, wallet or bank details). An unknown
+ * role is never identified, and an identity left over in this browser is cleared.
  */
-export function AnalyticsIdentify({ userId, role }: { userId: string; role: string }) {
+export function AnalyticsIdentify({
+  userId,
+  role,
+  username,
+}: {
+  userId: string;
+  role: string;
+  username: string;
+}) {
   useEffect(() => {
     if (!ensureAnalytics()) return;
     if (!MONITORED_ROLES.has(role)) {
@@ -78,8 +87,11 @@ export function AnalyticsIdentify({ userId, role }: { userId: string; role: stri
       return;
     }
     posthog.register({ role });
-    if (posthog.get_distinct_id() !== userId) posthog.identify(userId, { role });
-  }, [userId, role]);
+    if (posthog.get_distinct_id() !== userId) posthog.identify(userId, { role, username });
+    // Also covers users identified before the username was sent; posthog-js
+    // skips the request when the properties have not changed.
+    else posthog.setPersonProperties({ role, username });
+  }, [userId, role, username]);
   return null;
 }
 
