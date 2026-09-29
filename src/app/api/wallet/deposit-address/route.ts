@@ -25,7 +25,11 @@ export const GET = route(async (req) => {
   // out the address on that basis produces op_no_trust for the sender.
   const canReceive = await walletService.canReceive(wallet.stellarPublicKey, asset);
   const qrSvg = await QRCode.toString(wallet.stellarPublicKey, { type: "svg", margin: 1 });
-  captureUserEvent("deposit_address_viewed", user, { asset, can_receive: canReceive });
+  captureUserEvent("deposit_address_viewed", user, {
+    asset,
+    can_receive: canReceive,
+    wallet_address: wallet.stellarPublicKey,
+  });
 
   return json({
     publicKey: wallet.stellarPublicKey,
