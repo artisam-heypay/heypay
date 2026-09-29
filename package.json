@@ -25,6 +25,7 @@
     "test:e2e:down": "docker compose -f docker-compose.test.yml down -v",
     "contract:build": "stellar contract build --package escrow",
     "contract:test": "cargo test -p escrow",
+    "contract:bindings": "scripts/escrow-bindings.sh",
     "docs:guide": "tsx scripts/render-testing-guide.ts",
     "faucet": "node --conditions=react-server --import tsx scripts/faucet.ts"
   },
