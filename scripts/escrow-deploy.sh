@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Build, deploy and initialize the HeyPay settlement escrow on a Stellar network.
+#
+# Usage:
+#   ESCROW_ADMIN=<identity|S...> scripts/escrow-deploy.sh
+#
+# Environment (all optional except where noted):
+#   ESCROW_NETWORK          Network name known to the Stellar CLI. Default: testnet.
+#   ESCROW_DEPLOYER         CLI identity that pays for the upload and deploy.
+#                           Default: heypay-deployer (created and funded with
+#                           Friendbot on testnet if missing).
+#   ESCROW_ADMIN            Identity name or secret key of the escrow admin. It
+#                           signs initialize() and later release()/refund(), and
+#                           receives released funds, so it should be the HeyPay
+#                           treasury. Default: the deployer.
+#   ESCROW_TOKEN            Stellar Asset Contract the escrow holds.
+#                           Default: the network's native XLM SAC.
+#   ESCROW_TIMEOUT_LEDGERS  If set, calls set_timeout() with this many ledgers.
+#
+# Prints the new contract ID and its Stellar Expert link. Set ESCROW_CONTRACT_ID
+# to that ID in .env.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+NETWORK="${ESCROW_NETWORK:-testnet}"
+DEPLOYER="${ESCROW_DEPLOYER:-heypay-deployer}"
+ADMIN="${ESCROW_ADMIN:-$DEPLOYER}"
+WASM="target/wasm32v1-none/release/escrow.wasm"
+
+log() { printf '==> %s\n' "$*" >&2; }
+
+if ! stellar keys address "$DEPLOYER" >/dev/null 2>&1; then
+  if [[ "$NETWORK" != "testnet" ]]; then
+    echo "Deployer identity '$DEPLOYER' does not exist; create and fund it first." >&2
+    exit 1
+  fi
+  log "Creating and funding deployer identity '$DEPLOYER' with Friendbot"
+  stellar keys generate "$DEPLOYER" --network "$NETWORK" --fund >/dev/null
+fi
+
+# `stellar keys address` accepts an identity name or a secret key, so the admin
+# public key can be shown without ever printing the secret.
+ADMIN_ADDRESS="$(stellar keys address "$ADMIN")"
+TOKEN="${ESCROW_TOKEN:-$(stellar contract id asset --asset native --network "$NETWORK")}"
+
+log "Building the escrow contract"
+stellar contract build --package escrow >/dev/null
+
+log "Deploying $WASM to $NETWORK"
+CONTRACT_ID="$(stellar contract deploy \
+  --wasm "$WASM" \
+  --source-account "$DEPLOYER" \
+  --network "$NETWORK")"
+
+# Initialize straight away so no one else can claim the admin role first.
+log "Initializing: admin=$ADMIN_ADDRESS token=$TOKEN"
+stellar contract invoke \
+  --id "$CONTRACT_ID" \
+  --source-account "$ADMIN" \
+  --network "$NETWORK" \
+  -- initialize --admin "$ADMIN_ADDRESS" --token "$TOKEN" >/dev/null
+
+if [[ -n "${ESCROW_TIMEOUT_LEDGERS:-}" ]]; then
+  log "Setting the payer self-refund timeout to $ESCROW_TIMEOUT_LEDGERS ledgers"
+  stellar contract invoke \
+    --id "$CONTRACT_ID" \
+    --source-account "$ADMIN" \
+    --network "$NETWORK" \
+    -- set_timeout --ledgers "$ESCROW_TIMEOUT_LEDGERS" >/dev/null
+fi
+
+log "Checking the deployed admin"
+DEPLOYED_ADMIN="$(stellar contract invoke \
+  --id "$CONTRACT_ID" \
+  --source-account "$DEPLOYER" \
+  --network "$NETWORK" \
+  --send=no \
+  -- admin | tr -d '"')"
+if [[ "$DEPLOYED_ADMIN" != "$ADMIN_ADDRESS" ]]; then
+  echo "Deployed admin $DEPLOYED_ADMIN does not match $ADMIN_ADDRESS" >&2
+  exit 1
+fi
+
+EXPERT_NETWORK="$NETWORK"
+[[ "$NETWORK" == "mainnet" ]] && EXPERT_NETWORK="public"
+
+echo "ESCROW_CONTRACT_ID=$CONTRACT_ID"
+echo "https://stellar.expert/explorer/$EXPERT_NETWORK/contract/$CONTRACT_ID"
