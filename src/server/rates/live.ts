@@ -56,9 +56,9 @@ export function createLiveRates(
 ) {
   const fetchImpl = opts.fetchImpl ?? ((url, init) => fetch(url, init));
   const cmcApiKey = opts.cmcApiKey ?? process.env.CMC_API_KEY?.trim() ?? "";
-  const maxDivergence = dec(opts.maxDivergenceBps ?? Number(process.env.RATE_MAX_DIVERGENCE_BPS ?? 200)).div(
-    10_000,
-  );
+  const maxDivergence = dec(
+    opts.maxDivergenceBps ?? Number(process.env.RATE_MAX_DIVERGENCE_BPS ?? 200),
+  ).div(10_000);
   const timeoutMs = opts.timeoutMs ?? 5_000;
   const cmcCacheMs = opts.cmcCacheMs ?? Number(process.env.CMC_CACHE_MS ?? 60_000);
   const now = opts.now ?? Date.now;
@@ -83,7 +83,8 @@ export function createLiveRates(
         headers: { "X-CMC_PRO_API_KEY": cmcApiKey, Accept: "application/json" },
       }),
     );
-    if (body.status.error_code !== 0) throw new Error(`CoinMarketCap error ${body.status.error_code}`);
+    if (body.status.error_code !== 0)
+      throw new Error(`CoinMarketCap error ${body.status.error_code}`);
     const entry = body.data[asset]?.[0];
     if (!entry) throw new Error(`CoinMarketCap has no ${asset} quote`);
     const rate = positive(dec(entry.quote.PHP.price), "CoinMarketCap price");
