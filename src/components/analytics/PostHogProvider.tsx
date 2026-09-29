@@ -3,7 +3,7 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import posthog from "posthog-js";
 
-// Browser analytics (pageviews, autocapture, session replay). With no
+// Browser analytics (pageviews, autocapture, session replay, error tracking). With no
 // NEXT_PUBLIC_POSTHOG_KEY nothing is initialized, so dev/CI send nothing.
 //
 // Requests go to /ingest on our own origin (rewritten to PostHog in
@@ -40,6 +40,10 @@ function ensureAnalytics(): boolean {
       ui_host: UI_HOST,
       defaults: "2026-08-30",
       person_profiles: "identified_only",
+      // Uncaught errors and unhandled promise rejections become $exception
+      // events. Errors React catches in an error boundary are reported by
+      // captureClientException from app/error.tsx and app/global-error.tsx.
+      capture_exceptions: true,
       // Session replay starts only once the path check below allows it.
       disable_session_recording: true,
       session_recording: { maskAllInputs: true },
@@ -77,6 +81,12 @@ export function AnalyticsIdentify({ userId, role }: { userId: string; role: stri
     if (posthog.get_distinct_id() !== userId) posthog.identify(userId, { role });
   }, [userId, role]);
   return null;
+}
+
+/** Report an error caught by a React error boundary to PostHog error tracking. */
+export function captureClientException(error: Error & { digest?: string }): void {
+  if (!ensureAnalytics()) return;
+  posthog.captureException(error, { source: "error-boundary", digest: error.digest });
 }
 
 /** Clears the identity so the next person on this browser is not merged in. */

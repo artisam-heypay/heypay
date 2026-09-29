@@ -1,12 +1,15 @@
 // src/server/observability/error-tracking.ts
 //
 // Error tracking (SPEC §10 "error tracking (e.g. Sentry)"). Dependency-free:
-// every capture is structured-logged; if SENTRY_DSN is set, the event is also
-// shipped to Sentry's ingest endpoint (envelope protocol) on a best-effort
-// basis. With no DSN it degrades to logging only, so dev/CI need no Sentry.
+// every capture is structured-logged; if NEXT_PUBLIC_POSTHOG_KEY is set it is
+// also sent to PostHog error tracking as an `$exception`, and if SENTRY_DSN is
+// set, to Sentry's ingest endpoint (envelope protocol), both best-effort. With
+// neither it degrades to logging only, so dev/CI need no external service.
 //
 // captureException never throws and never blocks the caller on the network —
 // failures to report must not turn into failures of the thing being reported.
+
+import { analyticsEnabled, captureRawEvent } from "./analytics";
 
 type Context = Record<string, unknown>;
 
@@ -81,8 +84,65 @@ async function sendToSentry(err: Error, context: Context, id: string): Promise<v
   }
 }
 
+type StackFrame = {
+  platform: "node:javascript";
+  filename: string;
+  abs_path: string;
+  function: string;
+  lineno: number;
+  colno: number;
+  in_app: boolean;
+};
+
+// "    at fn (/app/src/x.ts:10:5)" or "    at /app/src/x.ts:10:5"
+const V8_FRAME = /^\s*at (?:(.+?) \()?(.+?):(\d+):(\d+)\)?$/;
+
+/** Parse a V8 stack into PostHog raw frames, oldest call first (PostHog's order). */
+export function parseStack(stack: string | undefined): StackFrame[] {
+  if (!stack) return [];
+  const frames: StackFrame[] = [];
+  for (const line of stack.split("\n")) {
+    const m = V8_FRAME.exec(line);
+    if (!m) continue;
+    const filename = m[2]!.replace(/^file:\/\//, "");
+    frames.push({
+      platform: "node:javascript",
+      filename,
+      abs_path: filename,
+      function: m[1] ?? "<anonymous>",
+      lineno: Number(m[3]),
+      colno: Number(m[4]),
+      in_app: !filename.includes("node_modules") && !filename.startsWith("node:"),
+    });
+  }
+  return frames.reverse();
+}
+
 /**
- * Report an exception. Always logs; forwards to Sentry when SENTRY_DSN is set.
+ * Send to PostHog error tracking. Server exceptions have no signed-in user in
+ * scope, so each one gets its own distinct id and no person profile rather
+ * than a shared id that would pool unrelated failures onto one fake person.
+ */
+function sendToPostHog(err: Error, context: Context, id: string): void {
+  captureRawEvent("$exception", id, {
+    ...context,
+    $exception_list: [
+      {
+        type: err.name,
+        value: err.message,
+        mechanism: { handled: true, synthetic: false, type: "generic" },
+        stacktrace: { type: "raw", frames: parseStack(err.stack) },
+      },
+    ],
+    $exception_level: "error",
+    $process_person_profile: false,
+    service: process.env.RAILWAY_SERVICE_NAME ?? "heypay",
+  });
+}
+
+/**
+ * Report an exception. Always logs; forwards to PostHog when
+ * NEXT_PUBLIC_POSTHOG_KEY is set and to Sentry when SENTRY_DSN is set.
  * Fire-and-forget on the network — safe to `void captureException(...)`.
  */
 export function captureException(err: unknown, context: Context = {}): string {
@@ -95,6 +155,7 @@ export function captureException(err: unknown, context: Context = {}): string {
     message: error.message,
     ...context,
   });
+  sendToPostHog(error, context, id);
   if (parsedDsn) {
     void sendToSentry(error, context, id).catch((sendErr) => {
       console.error("[error-tracking] failed to ship to sentry", {
@@ -106,7 +167,7 @@ export function captureException(err: unknown, context: Context = {}): string {
   return id;
 }
 
-/** True when a real Sentry DSN is configured (useful for health/status). */
+/** True when PostHog or a real Sentry DSN is configured (useful for health/status). */
 export function errorTrackingEnabled(): boolean {
-  return parsedDsn !== null;
+  return parsedDsn !== null || analyticsEnabled();
 }
