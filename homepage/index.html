@@ -1257,6 +1257,7 @@
         border-radius: 4px;
       }
     </style>
+    <script src="./analytics.js"></script>
   </head>
   <body>
     <!-- ============================================================ NAVBAR ============================================================ -->
@@ -1885,6 +1886,7 @@
         });
         document.getElementById("cookieAccept").addEventListener("click", function () {
           set("accepted");
+          window.heypayAnalytics && window.heypayAnalytics.load();
         });
         document.getElementById("cookieDecline").addEventListener("click", function () {
           set("declined");
