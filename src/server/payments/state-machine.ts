@@ -3,6 +3,7 @@ import "server-only";
 import { PaymentStatus, type Payment, type Prisma } from "@/generated/prisma/client";
 import { conflict } from "@/lib/errors";
 import { analyticsEnabled, captureUserEvent } from "@/server/observability/analytics";
+import { assetContract } from "@/server/observability/payment-trail";
 
 export type TxClient = Prisma.TransactionClient;
 
@@ -80,17 +81,26 @@ export async function applyTransition(
   // They are sent before the surrounding transaction commits; a rollback (rare)
   // leaves an extra event, and payment_event stays the record.
   if (analyticsEnabled()) {
+    // Analytics must never fail the transition, so a failed lookup is ignored.
+    const wallet = await client.custodialWallet
+      .findUnique({ where: { userId: updated.payerId }, select: { stellarPublicKey: true } })
+      .catch(() => null);
     const props = {
       payment_id: updated.id,
+      reference: updated.reference,
       merchant_id: updated.merchantId,
       from_status: payment.status,
       to_status: toStatus,
       asset: updated.asset,
+      ...assetContract(updated.asset),
       amount_php: Number(updated.amountPhp),
+      payer_wallet_address: wallet?.stellarPublicKey,
+      stellar_tx_hash: updated.stellarTxHash,
+      payout_ref: updated.payoutRef,
+      refund_tx_hash: updated.refundTxHash,
       failure_reason: failureReason(detail),
     };
     captureUserEvent("payment_status_changed", { id: updated.payerId, role: "PAYER" }, props);
-    // Analytics must never fail the transition, so a failed lookup is ignored.
     const merchant = await client.merchant
       .findUnique({ where: { id: updated.merchantId }, select: { userId: true } })
       .catch(() => null);

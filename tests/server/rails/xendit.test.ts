@@ -18,7 +18,11 @@ function fakeFetch(...responses: Array<{ status: number; body: unknown }>) {
 }
 
 const rates: LiveRates = {
-  getRate: vi.fn(async () => ({ asset: "XLM" as const, rate: new Decimal("13.5"), source: "COINSPH" as const })),
+  getRate: vi.fn(async () => ({
+    asset: "XLM" as const,
+    rate: new Decimal("13.5"),
+    source: "COINSPH" as const,
+  })),
 };
 
 const bank = { bankCode: "GCASH", accountName: "Juan Dela Cruz", accountNumber: "09171234567" };
@@ -67,18 +71,39 @@ describe("Xendit rail", () => {
   });
 
   it("still sends HeyPay its receipt when the merchant has no payout email", async () => {
-    const { fetchImpl, calls } = fakeFetch({ status: 200, body: { id: "disb-1", status: "ACCEPTED" } });
-    const rail = createXenditProvider({ secretKey: "k", fetchImpl, rates, receiptCc: "ops@heypay.test" });
-    await rail.createPayout({ ref: "TXN-1", phpAmount: new Decimal("10"), bank, receiptEmail: null });
+    const { fetchImpl, calls } = fakeFetch({
+      status: 200,
+      body: { id: "disb-1", status: "ACCEPTED" },
+    });
+    const rail = createXenditProvider({
+      secretKey: "k",
+      fetchImpl,
+      rates,
+      receiptCc: "ops@heypay.test",
+    });
+    await rail.createPayout({
+      ref: "TXN-1",
+      phpAmount: new Decimal("10"),
+      bank,
+      receiptEmail: null,
+    });
     expect(JSON.parse(calls[0]!.init.body as string).receipt_notification).toEqual({
       email_to: ["ops@heypay.test"],
     });
   });
 
   it("omits the receipt only when nobody at all would receive it", async () => {
-    const { fetchImpl, calls } = fakeFetch({ status: 200, body: { id: "disb-1", status: "ACCEPTED" } });
+    const { fetchImpl, calls } = fakeFetch({
+      status: 200,
+      body: { id: "disb-1", status: "ACCEPTED" },
+    });
     const rail = createXenditProvider({ secretKey: "k", fetchImpl, rates, receiptCc: "" });
-    await rail.createPayout({ ref: "TXN-1", phpAmount: new Decimal("10"), bank, receiptEmail: null });
+    await rail.createPayout({
+      ref: "TXN-1",
+      phpAmount: new Decimal("10"),
+      bank,
+      receiptEmail: null,
+    });
     expect(JSON.parse(calls[0]!.init.body as string)).not.toHaveProperty("receipt_notification");
   });
 
@@ -102,10 +127,17 @@ describe("Xendit rail", () => {
       { status: 200, body: { id: "disb-9", status: "ACCEPTED" } },
     );
     const ok = createXenditProvider({ secretKey: "k", fetchImpl: retrying.fetchImpl, rates });
-    const res = await ok.createPayout({ ref: "TXN-9", phpAmount: new Decimal("5"), bank, receiptEmail: null });
+    const res = await ok.createPayout({
+      ref: "TXN-9",
+      phpAmount: new Decimal("5"),
+      bank,
+      receiptEmail: null,
+    });
     expect(res.payoutRef).toBe("disb-9");
     expect(retrying.calls).toHaveLength(2);
-    const keys = retrying.calls.map((c) => (c.init.headers as Record<string, string>)["Idempotency-key"]);
+    const keys = retrying.calls.map(
+      (c) => (c.init.headers as Record<string, string>)["Idempotency-key"],
+    );
     expect(keys).toEqual(["TXN-9", "TXN-9"]);
 
     const rejecting = fakeFetch({ status: 400, body: { error_code: "API_VALIDATION_ERROR" } });
@@ -150,5 +182,36 @@ describe("Xendit rail", () => {
   it("refuses to hand out a deposit address when no treasury is configured", async () => {
     const rail = createXenditProvider({ secretKey: "k", fetchImpl: fakeFetch().fetchImpl, rates });
     await expect(rail.getDepositAddress("XLM")).rejects.toThrow(/HEYPAY_TREASURY_PUBLIC_KEY/);
+  });
+
+  it("returns Xendit's payout for the log exactly as Xendit sent it", async () => {
+    const created = {
+      id: "disb-9",
+      status: "ACCEPTED",
+      reference_id: "TXN-LOG",
+      channel_code: "PH_GCASH",
+      channel_properties: { account_number: "09171234567", account_holder_name: "Juan" },
+      receipt_notification: { email_to: ["shop@example.com"] },
+    };
+    const failed = {
+      id: "disb-9",
+      status: "FAILED",
+      failure_code: "INVALID_DESTINATION",
+      channel_properties: { account_number: "09171234567" },
+    };
+    const { fetchImpl } = fakeFetch({ status: 200, body: created }, { status: 200, body: failed });
+    const rail = createXenditProvider({ secretKey: "k", fetchImpl, rates, retries: 0 });
+
+    const res = await rail.createPayout({
+      ref: "TXN-LOG",
+      phpAmount: new Decimal("10"),
+      bank,
+      receiptEmail: "shop@example.com",
+    });
+    expect(res.raw).toEqual(created);
+
+    const status = await rail.getPayoutStatus("disb-9");
+    expect(status.railStatus).toBe("FAILED");
+    expect(status.raw).toEqual(failed);
   });
 });
