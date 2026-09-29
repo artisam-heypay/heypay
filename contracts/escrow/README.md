@@ -42,6 +42,45 @@ right after deploying, so no one else can initialize the contract first.
   can use a short deadline.
 - `admin()`, `token()` and `timeout()` are read-only getters.
 
+## Deploy
+
+```sh
+ESCROW_ADMIN=<identity|S...> scripts/escrow-deploy.sh
+```
+
+The script builds the WASM, deploys it with the `heypay-deployer` identity
+(created and funded with Friendbot on first run), calls
+`initialize(admin, native XLM SAC)` in the same run, checks the stored admin,
+and prints `ESCROW_CONTRACT_ID=...` for `.env`. See the header of
+`scripts/escrow-deploy.sh` for the other variables (`ESCROW_NETWORK`,
+`ESCROW_TOKEN`, `ESCROW_TIMEOUT_LEDGERS`).
+
+In the app, the admin must be the HeyPay treasury: the settle job signs
+`release`/`refund` with `HEYPAY_TREASURY_SECRET_ENC`, and `release` pays the
+admin.
+
+## Testnet deployment
+
+| Field       | Value                                                                                                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract ID | [`CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E`](https://stellar.expert/explorer/testnet/contract/CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E) |
+| WASM hash   | `f3ccfe37fa39403a82bc835f18f0b68c83d1503a5d058ec02ae5878143872f60`                                                                                                      |
+| Admin       | `GAY7UUSQVUCNO32YEO6EQP74DYVT7VT7WOLYDDJTELOW6X4KCAS7S5RD` (CLI identity `heypay-escrow-admin`)                                                                         |
+| Token       | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` (native XLM SAC)                                                                                             |
+| Timeout     | 17,280 ledgers (default, ~24h)                                                                                                                                          |
+| Deployed    | 2026-09-29, ledger 4923942                                                                                                                                              |
+
+This deployment's admin is a CLI test identity, not the treasury. Redeploy
+with `ESCROW_ADMIN` set to the treasury before the settle job uses it.
+
+Read a job:
+
+```sh
+stellar contract invoke --id CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E \
+  --network testnet --source-account heypay-test-payer --send=no \
+  -- get_job --job_id <64 hex chars>
+```
+
 ## License
 
 MIT — see the repository `LICENSE`.
