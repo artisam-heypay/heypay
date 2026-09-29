@@ -19,7 +19,7 @@
 - Two HeyPay logins we sent you: a **payer** login (to pay) and a **shop** login (to get paid).
 - Two pictures we sent you:
   - `heypay-test-shop.png`: the test shop's QR code, which you will pay.
-  - `your-shop-qrph.png`: a QR code for your own practice shop.
+  - `your-shop-qrph-NN.png` (NN is your tester number): a QR code for your own practice shop.
 - A quiet place for about an hour.
 
 **You will send us:**
@@ -99,6 +99,9 @@ There is no T6 this week.
 6. Open a new tab and go to the play-money page we sent you: **{{PLAY_MONEY_URL}}**. Paste your address into the box and press the button to get play money.
 7. Go back to the HeyPay tab and wait. Do not refresh. HeyPay checks every 10 seconds.
    - [ ] You see **Deposit detected** with a plus sign and an amount.
+
+   ![Prefund page showing Deposit detected](img/t1-deposit.png)
+
 8. Click **Go to dashboard**.
    - [ ] **Total Balance** now shows pesos, and XLM has an amount.
 
@@ -123,10 +126,14 @@ There is no T6 this week.
    - [ ] You see **Confirm Payment** with the shop's name.
 4. **Read the whole screen out loud**, top to bottom: **You pay**, **Exchange rate**, **Network fee** and **Total deduction**.
    - [ ] You see **Rate locked for** with a countdown in seconds.
+
+   ![The Confirm Payment screen](img/t2-confirm.png)
+
 5. Before the countdown ends, click **Confirm**.
    - [ ] You see **Processing payment…** with a list of steps.
 6. Watch the steps and say what you think each one means. The step **Paying the merchant in PHP** can take a few minutes. That is normal.
-   - [ ] At the end, you see the words **sent to** and the shop's name.
+   - [ ] At the end, you see **₱75.00 sent to HeyPay Test Shop**.
+
 7. Click **Done**.
 
 **SCREENSHOT:** t2-confirm.png, of the **Confirm Payment** screen before you click Confirm.
@@ -148,7 +155,10 @@ There is no T6 this week.
 2. Click the payment.
    - [ ] You see **Payment detail** with **Amount (PHP)**, **Rate** and **Network fee**.
 3. Under **Payment on Stellar**, click the small arrow icon next to the code.
+
+   ![Payment detail with the Payment on Stellar link](img/t3-detail.png)
    - [ ] A new tab opens on the Stellar Expert website.
+
 4. Compare the two tabs out loud. What matches? What is different?
 
 **SCREENSHOT:** t3-stellar-expert.png, of the Stellar Expert tab.
@@ -167,9 +177,11 @@ There is no T6 this week.
 
 1. Log out: click **Logout** at the bottom of the menu.
 2. Sign in with your **shop** login.
-   - [ ] You see **Step 1 of 4**.
-3. **Business identity:** type a made-up shop name in **Business name**. Click **Continue**.
-4. **Settlement account:** this is practice mode, so no real money moves. Enter:
+   - [ ] You see **Dashboard** and an orange box: **Finish setting up your business**.
+3. Click **Complete onboarding**.
+   - [ ] You see **STEP 1 OF 4**.
+4. **Business identity:** type a made-up shop name in **Business name**. Click **Continue**.
+5. **Settlement account:** this is practice mode, so no real money moves. Enter:
    - **Bank or wallet:** GCASH · GCash
    - **Account name:** your first name
    - **Account number:** 09171234567
@@ -177,15 +189,17 @@ There is no T6 this week.
 
    Then click **Continue**.
 
-5. **Link your QRPH:** click **Upload QRPH image** and choose `your-shop-qrph.png`.
+6. **Link your QRPH:** click **Upload QRPH image** and choose your `your-shop-qrph-NN.png`.
    - [ ] You see **Detected:** followed by a name and a city.
 
    Click **Continue**.
 
-6. **Review & go live:** check the four rows (**Business**, **Settlement**, **Receipts to**, **QRPH**). Click **Go live**.
+7. **Review & go live:** check the four rows (**Business**, **Settlement**, **Receipts to**, **QRPH**). Click **Go live**.
    - [ ] You see your shop's **Dashboard** with a **Live** badge.
-7. Click **My QR** in the menu.
+8. Click **My QR** in the menu.
    - [ ] You see **My Business QR** with a **Download** button.
+
+   ![The My Business QR page](img/t4-my-qr.png)
 
 **SCREENSHOT:** t4-my-qr.png, of the **My Business QR** page.
 
@@ -206,6 +220,8 @@ There is no T6 this week.
    - [ ] The chart title **Settled payouts** stays, and the text under it changes (by hour, day, week or month).
 3. Your shop is brand new, so the chart shows **No payouts settled in this period**. Say out loud what you would expect it to show after a busy week.
 4. Read **Total settled** and **Pending payouts** out loud and say what each one means to you.
+
+![The shop dashboard with the Settled payouts chart](img/t5-dashboard.png)
 
 **SCREENSHOT:** t5-dashboard.png, of the dashboard on **1W**.
 
@@ -250,6 +266,10 @@ Answer these out loud on the recording, and write short answers in your answers 
 Stop the Loom recording now.
 
 ## Known issues
+
+- After **Deposit detected**, the balance at the top of the Prefund page can still say 0 XLM. Click **Go to dashboard** to see the new balance.
+- After **Go live**, the orange **Finish setting up your business** box can stay on the page. Log out and sign in again, and it is gone.
+- The step **Paying the merchant in PHP** took about 5 minutes in our own test. That is normal.
 
 - The page title says **Transactions**, but the menu item says **History**. They are the same page.
 - The **Support** link in the payer menu does not open a page yet.
