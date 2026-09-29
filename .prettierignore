@@ -1,5 +1,6 @@
 node_modules
 .next
 src/generated
+src/server/stellar/escrow-bindings
 prisma/migrations
 pnpm-lock.yaml

@@ -8,6 +8,7 @@ export default tseslint.config(
       ".next/**",
       "node_modules/**",
       "src/generated/**",
+      "src/server/stellar/escrow-bindings/**",
       "prisma/migrations/**",
       "pnpm-lock.yaml",
     ],
