@@ -81,6 +81,27 @@ stellar contract invoke --id CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI
   -- get_job --job_id <64 hex chars>
 ```
 
+## Testnet evidence (draft)
+
+CLI run on 2026-09-29 against the contract above. Payer: `heypay-test-payer`
+(`GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W`). Job ids are
+`sha256` of the label.
+
+| Step       | Job (label)        | Amount | Tx                                                                                                                         |
+| ---------- | ------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------- |
+| deploy     | —                  | —      | [`42393ebc…`](https://stellar.expert/explorer/testnet/tx/42393ebc1cf9d8d8072faa33f553793ee0a6646995e58ad5a41515256b7e8fde) |
+| initialize | —                  | —      | [`16af36c5…`](https://stellar.expert/explorer/testnet/tx/16af36c5b57ff77372fcbc860f463e46429f99f7518b08f8b2f1726f45c5fc5c) |
+| deposit    | `d1-cli-release-1` | 10 XLM | [`c6eaef66…`](https://stellar.expert/explorer/testnet/tx/c6eaef6692c6c215721469d2a13537a1b9f41f40617d4cc78e66b6d9b9f015b5) |
+| release    | `d1-cli-release-1` | 10 XLM | [`eebbc0d8…`](https://stellar.expert/explorer/testnet/tx/eebbc0d815c89218ece50c330db8f9fca4d6b7768ac50ff6e53033ba6fb8282e) |
+| deposit    | `d1-cli-refund-1`  | 5 XLM  | [`83706e01…`](https://stellar.expert/explorer/testnet/tx/83706e017492ec92930a4bc8d47135e631fa32e42bc17657f0c358a7825f6282) |
+| refund     | `d1-cli-refund-1`  | 5 XLM  | [`a476d1ff…`](https://stellar.expert/explorer/testnet/tx/a476d1ffd2c361a0e19e16fe5d1acb8a4c6f2f75f39b5117476382bc2789a6a9) |
+
+A second `release` of `d1-cli-release-1` fails simulation with
+`Error(Contract, #5)` (`NotHeld`), so a job settles once.
+
+Still to come: an on-chain `refund()` from a forced payout failure (app) and a
+payer-called `refund_after_timeout()` after an expired deadline.
+
 ## License
 
 MIT — see the repository `LICENSE`.
