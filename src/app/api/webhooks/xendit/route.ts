@@ -10,16 +10,22 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/server/db";
 import { enqueueSettle } from "@/server/queue/queues";
+import { captureEvent, captureUserEvent } from "@/server/observability/analytics";
+import { railPayload } from "@/server/observability/payment-trail";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BodySchema = z.object({
   event: z.string().min(1),
-  data: z.object({
-    id: z.string().min(1),
-    reference_id: z.string().optional(),
-  }),
+  data: z
+    .object({
+      id: z.string().min(1),
+      reference_id: z.string().optional(),
+      status: z.string().optional(),
+      failure_code: z.string().nullish(),
+    })
+    .passthrough(),
 });
 
 const INVALID = NextResponse.json(
@@ -72,10 +78,32 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ...(parsed.data.reference_id ? [{ reference: parsed.data.reference_id }] : []),
       ],
     },
-    select: { id: true },
+    select: { id: true, payerId: true, merchant: { select: { userId: true } } },
   });
 
   if (payment) await enqueueSettle(payment.id);
+
+  // The Xendit side of the payout log, exactly as Xendit reported it.
+  // Unverified content, recorded for tracing only.
+  const props = {
+    xendit_event: parsed.event,
+    payout_ref: parsed.data.id,
+    reference: parsed.data.reference_id,
+    xendit_status: parsed.data.status,
+    failure_code: parsed.data.failure_code ?? undefined,
+    payment_id: payment?.id,
+    xendit_payload: railPayload(parsed.data),
+  };
+  if (payment) {
+    captureUserEvent(
+      "xendit_webhook_received",
+      { id: payment.merchant.userId, role: "MERCHANT" },
+      props,
+    );
+    captureUserEvent("xendit_webhook_received", { id: payment.payerId, role: "PAYER" }, props);
+  } else {
+    captureEvent("xendit_webhook_received", "xendit-webhook", props);
+  }
 
   await prisma.idempotencyKey.create({
     data: {

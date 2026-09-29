@@ -10,6 +10,9 @@ import { withRetry } from "@/lib/retry";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { audit } from "@/server/auth/audit";
 import { captureException } from "@/server/observability/error-tracking";
+import { captureUserEvent } from "@/server/observability/analytics";
+import { assetContract, railPayload } from "@/server/observability/payment-trail";
+import type { PayoutStatus } from "@/server/rails/provider";
 import { enqueueSettle } from "@/server/queue/queues";
 import { creditAsset, debitAsset, releaseAsset } from "@/server/wallet/balances";
 import {
@@ -129,6 +132,22 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
     );
     txHash = res.txHash;
     await db.payment.update({ where: { id: p.id }, data: { stellarTxHash: txHash } });
+    captureUserEvent(
+      "payment_crypto_sent",
+      { id: p.payerId, role: "PAYER" },
+      {
+        payment_id: p.id,
+        reference: p.reference,
+        merchant_id: p.merchantId,
+        asset,
+        ...assetContract(asset),
+        amount_asset: assetAmount.toFixed(7),
+        payer_wallet_address: wallet.stellarPublicKey,
+        destination_address: deposit.address,
+        memo,
+        stellar_tx_hash: txHash,
+      },
+    );
   }
   await applyTransition(db, p, PaymentStatus.STELLAR_SUBMITTED, { stellarTxHash: txHash });
 }
@@ -220,6 +239,10 @@ async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
     });
     payoutRef = res.payoutRef;
     await db.payment.update({ where: { id: p.id }, data: { payoutRef } });
+    capturePayoutEvent("payment_payout_submitted", p, {
+      payout_ref: payoutRef,
+      xendit_payload: railPayload(res.raw),
+    });
   }
   await applyTransition(db, p, PaymentStatus.PAYOUT_SUBMITTED, { payoutRef });
 }
@@ -233,6 +256,11 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
     await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
     return;
   }
+  capturePayoutEvent(
+    status.state === "SETTLED" ? "payment_payout_settled" : "payment_payout_failed",
+    p,
+    payoutResultProperties(p.payoutRef!, status),
+  );
   if (status.state === "FAILED") {
     throw new Error(`Payout ${p.payoutRef} failed: ${status.failureCode ?? "unknown reason"}`);
   }
@@ -350,6 +378,60 @@ async function stepRefund(p: PaymentWithRels): Promise<void> {
       reason: p.failureReason ?? "settlement failed after crypto moved",
     },
   });
+}
+
+// --- analytics ---
+
+/**
+ * A fiat payout event, sent to the merchant being paid and to the payer who paid,
+ * so either side's timeline in PostHog shows where the PHP went.
+ */
+function capturePayoutEvent(
+  event: string,
+  p: PaymentWithRels,
+  extra: Record<string, string | number | undefined>,
+): void {
+  const props = {
+    payment_id: p.id,
+    reference: p.reference,
+    merchant_id: p.merchantId,
+    asset: p.asset,
+    ...assetContract(p.asset),
+    amount_php: Number(p.amountPhp),
+    payer_wallet_address: p.payer.wallet?.stellarPublicKey,
+    stellar_tx_hash: p.stellarTxHash,
+    bank_code: p.merchant.settlementBankCode,
+    bank_name: p.merchant.settlementBankName,
+    bank_account_number: accountNumberForTrail(p.merchant.accountNumber),
+    bank_account_last4: p.merchant.accountNumberLast4,
+    bank_account_name: p.merchant.accountName,
+    payout_email: p.merchant.payoutEmail,
+    ...extra,
+  };
+  captureUserEvent(event, { id: p.merchant.userId, role: "MERCHANT" }, props);
+  captureUserEvent(event, { id: p.payerId, role: "PAYER" }, props);
+}
+
+/** The merchant's decrypted account number; undefined if it cannot be decrypted. */
+function accountNumberForTrail(encrypted: string): string | undefined {
+  try {
+    return decryptSecret(encrypted);
+  } catch {
+    return undefined;
+  }
+}
+
+function payoutResultProperties(
+  payoutRef: string,
+  status: PayoutStatus,
+): Record<string, string | number | undefined> {
+  return {
+    payout_ref: payoutRef,
+    xendit_status: status.railStatus,
+    failure_code: status.failureCode,
+    net_php: status.netPhp ? Number(status.netPhp) : undefined,
+    xendit_payload: railPayload(status.raw),
+  };
 }
 
 // --- failure routing ---

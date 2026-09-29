@@ -21,17 +21,20 @@ import {
   type PaymentRailProvider,
   type PayoutStatus,
   type Quote,
+  type RailPayload,
 } from "@/server/rails/provider";
 
 const API_BASE = "https://api.xendit.co";
 const QUOTE_TTL_MS = 90_000;
 
-const payoutSchema = z.object({
-  id: z.string().min(1),
-  status: z.string(),
-  amount: z.number().optional(),
-  failure_code: z.string().nullish(),
-});
+const payoutSchema = z
+  .object({
+    id: z.string().min(1),
+    status: z.string(),
+    amount: z.number().optional(),
+    failure_code: z.string().nullish(),
+  })
+  .passthrough();
 
 /** Xendit refused the request itself (4xx): retrying the same call cannot help. */
 export class XenditRequestError extends Error {
@@ -50,15 +53,20 @@ type FetchImpl = (url: string, init?: RequestInit) => Promise<Response>;
 
 /** Xendit status → rail state. Anything not yet final is PENDING. */
 function toPayoutStatus(p: z.infer<typeof payoutSchema>): PayoutStatus {
+  const common = { railStatus: p.status, raw: p as RailPayload };
   switch (p.status) {
     case "SUCCEEDED":
-      return { state: "SETTLED", netPhp: p.amount !== undefined ? dec(p.amount) : undefined };
+      return {
+        ...common,
+        state: "SETTLED",
+        netPhp: p.amount !== undefined ? dec(p.amount) : undefined,
+      };
     case "FAILED":
     case "CANCELLED":
     case "REVERSED":
-      return { state: "FAILED", failureCode: p.failure_code ?? p.status };
+      return { ...common, state: "FAILED", failureCode: p.failure_code ?? p.status };
     default:
-      return { state: "PENDING" }; // ACCEPTED, REQUESTED, LOCKED, ...
+      return { ...common, state: "PENDING" }; // ACCEPTED, REQUESTED, LOCKED, ...
   }
 }
 
@@ -175,13 +183,12 @@ export function createXenditProvider(
           ),
         { label: "xendit.createPayout", retries, isRetryable },
       );
-      return { payoutRef: created.id };
+      return { payoutRef: created.id, raw: created as RailPayload };
     },
 
     async getPayoutStatus(payoutRef) {
       const payout = await withRetry(
-        async () =>
-          payoutSchema.parse(await call(`/v2/payouts/${encodeURIComponent(payoutRef)}`)),
+        async () => payoutSchema.parse(await call(`/v2/payouts/${encodeURIComponent(payoutRef)}`)),
         { label: "xendit.getPayoutStatus", retries, isRetryable },
       );
       return toPayoutStatus(payout);
