@@ -26,6 +26,7 @@
     "contract:build": "stellar contract build --package escrow",
     "contract:test": "cargo test -p escrow",
     "contract:bindings": "scripts/escrow-bindings.sh",
+    "escrow:deploy:treasury": "scripts/escrow-deploy-treasury.sh",
     "docs:guide": "tsx scripts/render-testing-guide.ts",
     "faucet": "node --conditions=react-server --import tsx scripts/faucet.ts"
   },

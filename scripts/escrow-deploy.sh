@@ -25,10 +25,23 @@ cd "$(dirname "$0")/.."
 
 NETWORK="${ESCROW_NETWORK:-testnet}"
 DEPLOYER="${ESCROW_DEPLOYER:-heypay-deployer}"
-ADMIN="${ESCROW_ADMIN:-$DEPLOYER}"
 WASM="target/wasm32v1-none/release/escrow.wasm"
 
 log() { printf '==> %s\n' "$*" >&2; }
+
+# An ESCROW_ADMIN that is set but empty usually means the command that was
+# meant to produce it failed. Stop instead of silently using the deployer.
+if [[ -n "${ESCROW_ADMIN+set}" && -z "$ESCROW_ADMIN" ]]; then
+  echo "ESCROW_ADMIN is set but empty; refusing to fall back to the deployer." >&2
+  exit 1
+fi
+ADMIN="${ESCROW_ADMIN:-$DEPLOYER}"
+
+# Optional guard: the admin public key this deploy must end up with.
+if [[ -n "${ESCROW_EXPECT_ADMIN:-}" && "$(stellar keys address "$ADMIN")" != "$ESCROW_EXPECT_ADMIN" ]]; then
+  echo "Admin key does not match ESCROW_EXPECT_ADMIN=$ESCROW_EXPECT_ADMIN" >&2
+  exit 1
+fi
 
 if ! stellar keys address "$DEPLOYER" >/dev/null 2>&1; then
   if [[ "$NETWORK" != "testnet" ]]; then
