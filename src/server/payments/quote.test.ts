@@ -79,7 +79,11 @@ describe("createQuote", () => {
   it("records where the rate came from on the snapshot and the quote event", async () => {
     const { user } = await makePayer({ cachedXlm: "100.0000000" });
     const { merchant } = await makeMerchant();
-    const res = await createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") });
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("100"),
+    });
 
     const snap = await db.exchangeRateSnapshot.findFirstOrThrow();
     expect(snap).toMatchObject({ pair: "XLMPHP", source: "COINSPH" });
