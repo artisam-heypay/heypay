@@ -16,7 +16,7 @@ export default async function MerchantLayout({ children }: { children: React.Rea
 
   return (
     <div className="min-h-screen bg-background text-on-background">
-      <AnalyticsIdentify userId={user.id} role={user.role} />
+      <AnalyticsIdentify userId={user.id} role={user.role} username={user.username} />
       <SideNav businessName={merchant?.businessName || "Your business"} pathname={pathname} />
       <main className="px-margin-mobile pb-24 pt-stack-lg lg:ml-64 lg:px-margin-desktop lg:pb-stack-lg">
         <div className="mx-auto max-w-7xl">

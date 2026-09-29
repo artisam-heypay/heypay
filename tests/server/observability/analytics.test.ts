@@ -127,3 +127,20 @@ describe("normalizeApiPath", () => {
     expect(normalizeApiPath("/api/wallet/deposit-address")).toBe("/api/wallet/deposit-address");
   });
 });
+
+describe("pageProperties", () => {
+  it("turns the Referer into the page URL without query string or hash", async () => {
+    const { pageProperties } = await loadFresh("phc_test");
+    expect(pageProperties("https://app.heypayfi.xyz/payer/pay/abc?token=secret#x")).toEqual({
+      $current_url: "https://app.heypayfi.xyz/payer/pay/abc",
+      $pathname: "/payer/pay/abc",
+    });
+  });
+
+  it("adds nothing without a usable Referer", async () => {
+    const { pageProperties } = await loadFresh("phc_test");
+    expect(pageProperties(null)).toEqual({});
+    expect(pageProperties("not a url")).toEqual({});
+    expect(pageProperties("javascript:alert(1)")).toEqual({});
+  });
+});
