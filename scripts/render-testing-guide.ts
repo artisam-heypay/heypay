@@ -14,7 +14,7 @@
  *   pnpm docs:guide docs/testing-guides/week-1/basic.md
  */
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { chromium } from "@playwright/test";
 import { marked } from "marked";
 
@@ -57,6 +57,8 @@ li.task input { width: 11pt; height: 11pt; margin: 0 6pt 0 0; vertical-align: -1
 .page-break { break-after: page; }
 hr { border: 0; border-top: 1px solid var(--outline-variant); margin: 14pt 0; }
 .card { break-inside: avoid-page; }
+img { display: block; max-width: 78%; max-height: 95mm; margin: 6pt 0 8pt; border: 1px solid var(--outline-variant);
+  border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 188, 212, 0.12); }
 `;
 
 async function render(): Promise<void> {
@@ -76,11 +78,22 @@ async function render(): Promise<void> {
       /<strong>SCREENSHOT:<\/strong>\s*([^<\s,]+),?/g,
       '<span class="shot">SCREENSHOT · $1</span>',
     );
+  // setContent has no base URL, so inline local images (paths relative to the guide).
+  const mime: Record<string, string> = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+  };
+  const withImages = body.replace(/<img src="(?!https?:|data:)([^"]+)"/g, (_, src: string) => {
+    const file = join(dirname(input), decodeURIComponent(src));
+    const data = readFileSync(file).toString("base64");
+    return `<img src="data:${mime[extname(file).toLowerCase()] ?? "image/png"};base64,${data}"`;
+  });
   const title = /^#\s+(.+)$/m.exec(markdown)?.[1] ?? "HeyPay testing guide";
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lexend:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>${STYLES}</style></head><body>${body}</body></html>`;
+<style>${STYLES}</style></head><body>${withImages}</body></html>`;
 
   const browser = await chromium.launch();
   try {
