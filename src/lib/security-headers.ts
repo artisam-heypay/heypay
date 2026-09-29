@@ -3,6 +3,7 @@
 // scripts, so script-src must permit inline (via 'unsafe-inline'); dev additionally
 // needs 'unsafe-eval' (react-refresh/HMR) and a ws: connect-src for the HMR socket.
 // img-src allows data:/blob: for generated QR codes and https: for signed object URLs.
+// worker-src blob: lets PostHog session replay run its compression worker.
 // NOTE: 'unsafe-inline' for scripts is a known trade-off; a nonce/'strict-dynamic'
 // CSP (nonce generated in proxy.ts per request) is the stricter hardening follow-up.
 export function buildCsp(): string {
@@ -18,6 +19,7 @@ export function buildCsp(): string {
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
     `connect-src ${connectSrc}`,
+    "worker-src 'self' blob:",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
