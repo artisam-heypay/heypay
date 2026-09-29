@@ -14,6 +14,7 @@ import {
   markTrustlineEstablished,
 } from "@/server/wallet/balances";
 import { captureUserEvent } from "@/server/observability/analytics";
+import { assetContract } from "@/server/observability/payment-trail";
 
 const cursorKey = (walletId: string) => `horizon:cursor:${walletId}`;
 
@@ -52,7 +53,13 @@ async function autoEstablishTrustlines(
         captureUserEvent(
           "wallet_trustline_added",
           { id: wallet.userId, role: "PAYER" },
-          { asset, automatic: true },
+          {
+            asset,
+            ...assetContract(asset),
+            automatic: true,
+            wallet_address: wallet.stellarPublicKey,
+            stellar_tx_hash: result.txHash,
+          },
         );
       }
     } catch (err) {
@@ -105,7 +112,14 @@ export async function syncWalletDeposits(walletId: string): Promise<{
       captureUserEvent(
         "wallet_deposit_received",
         { id: wallet.userId, role: "PAYER" },
-        { asset: item.asset, amount: amount.toNumber() },
+        {
+          asset: item.asset,
+          ...assetContract(item.asset),
+          amount: amount.toNumber(),
+          wallet_address: wallet.stellarPublicKey,
+          from_address: item.from,
+          stellar_tx_hash: item.txHash,
+        },
       );
     } catch (err) {
       // Concurrent insert of the same txHash → ignore (already credited).
