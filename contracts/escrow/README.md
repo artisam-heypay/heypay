@@ -61,29 +61,38 @@ admin.
 
 ## Testnet deployment
 
+The app uses this contract (`ESCROW_CONTRACT_ID`). Deployed with
+`pnpm escrow:deploy:treasury`.
+
 | Field       | Value                                                                                                                                                                   |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contract ID | [`CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E`](https://stellar.expert/explorer/testnet/contract/CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E) |
+| Contract ID | [`CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J`](https://stellar.expert/explorer/testnet/contract/CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J) |
 | WASM hash   | `f3ccfe37fa39403a82bc835f18f0b68c83d1503a5d058ec02ae5878143872f60`                                                                                                      |
-| Admin       | `GAY7UUSQVUCNO32YEO6EQP74DYVT7VT7WOLYDDJTELOW6X4KCAS7S5RD` (CLI identity `heypay-escrow-admin`)                                                                         |
+| Admin       | `GDZ2BQPZQLLXTBFVKJX6UVZQAIZCIC4HDGT4XDLH5JOWO7WWP2KLIN37` (HeyPay treasury)                                                                                            |
 | Token       | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` (native XLM SAC)                                                                                             |
 | Timeout     | 17,280 ledgers (default, ~24h)                                                                                                                                          |
-| Deployed    | 2026-09-29, ledger 4923942                                                                                                                                              |
-
-This deployment's admin is a CLI test identity, not the treasury. Redeploy
-with `ESCROW_ADMIN` set to the treasury before the settle job uses it.
+| Deploy tx   | [`c648ec53…`](https://stellar.expert/explorer/testnet/tx/c648ec53da4e7a166499895206597572f4ca065e0b007c521334f19c12e0a217)                                              |
+| Init tx     | [`9c18464e…`](https://stellar.expert/explorer/testnet/tx/9c18464e5ea4f1d8bdb3d1ab44350a9b6e117b6aac2170794bef385bd656bc46)                                              |
+| Deployed    | 2026-09-29, ledger 4924273                                                                                                                                              |
 
 Read a job:
 
 ```sh
-stellar contract invoke --id CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E \
+stellar contract invoke --id CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J \
   --network testnet --source-account heypay-test-payer --send=no \
   -- get_job --job_id <64 hex chars>
 ```
 
+### Other Testnet deployments (same WASM, not used by the app)
+
+| Contract ID                                                                                                                  | Admin                                                | Purpose                                |
+| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------- |
+| [`CDGIYVER…LE5E`](https://stellar.expert/explorer/testnet/contract/CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E) | `GAY7UUSQ…S5RD` (CLI identity `heypay-escrow-admin`) | CLI deposit/release/refund proof below |
+| [`CCKUZIXQ…ZD7S`](https://stellar.expert/explorer/testnet/contract/CCKUZIXQJC6CULOKV7B3C5VFCV6AKBCOSHO6PGYRYKZZC7GJVLAZZD7S) | `GCLUI4EI…5TGG` (deployer)                           | Mistaken deploy (empty admin); ignore  |
+
 ## Testnet evidence (draft)
 
-CLI run on 2026-09-29 against the contract above. Payer: `heypay-test-payer`
+CLI run on 2026-09-29 against `CDGIYVER…LE5E` (CLI-admin contract above). Payer: `heypay-test-payer`
 (`GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W`). Job ids are
 `sha256` of the label.
 
