@@ -427,6 +427,7 @@ describe("processSettleJob — escrow off", () => {
     expect(final.status).toBe("SETTLED");
     expect(final.escrowJobId).toBeNull();
     expect(escrow.deposit).not.toHaveBeenCalled();
+    expect(escrow.release).not.toHaveBeenCalled();
   });
 });
 
@@ -443,8 +444,9 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     status,
   });
 
-  it("deposits into the escrow and settles", async () => {
+  it("deposits into the escrow, releases it after the payout, and settles", async () => {
     escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH1" });
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH1" });
     mockHappyRail();
 
     const { wallet, payment } = await makeAuthorized();
@@ -453,6 +455,7 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     expect(final.status).toBe("SETTLED");
     expect(final.escrowJobId).toBe(escrowJobId(payment.id).toString("hex"));
     expect(final.stellarTxHash).toBe("DEPOSITHASH1");
+    expect(final.escrowReleaseTxHash).toBe("RELEASEHASH1");
     expect(sendAsset).not.toHaveBeenCalled(); // nothing goes straight to the treasury
 
     const dep = escrow.deposit.mock.calls[0]![0];
@@ -460,6 +463,7 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     expect(dep.encryptedSecret).toBe(wallet.encryptedSecret); // signed by the payer
     expect(dep.amount.toFixed(7)).toBe("8.3333434");
     expect(confirmTx).toHaveBeenCalledWith("DEPOSITHASH1");
+    expect(escrow.release.mock.calls[0]![0].equals(escrowJobId(payment.id))).toBe(true);
 
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.cachedXlmBalance.toFixed(7)).toBe("91.6666566");
@@ -494,6 +498,7 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
 
   it("lets the confirm step decide a deposit that was sent but not seen landing", async () => {
     escrow.deposit.mockRejectedValue(new EscrowTxFailedError("deposit", "SLOWHASH", "NOT_FOUND"));
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-S" });
     mockHappyRail();
 
     const { payment } = await makeAuthorized();
@@ -506,6 +511,7 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
 
   it("does not deposit twice when a rerun finds the job already held", async () => {
     escrow.deposit.mockRejectedValue(new EscrowContractError("deposit", "JobExists"));
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-R" });
     mockHappyRail();
 
     const { wallet, payment } = await makeAuthorized();
@@ -523,5 +529,173 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
       where: { walletId: wallet.id, type: "PAYMENT_DEBIT" },
     });
     expect(debits).toBe(1);
+  });
+
+  it("stays PAYOUT_SUBMITTED and re-checks — never refunds — when the release fails", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-F" });
+    escrow.release.mockRejectedValueOnce(new Error("soroban rpc unavailable"));
+    mockHappyRail();
+
+    const { payment } = await makeAuthorized();
+    let p = await drive(payment.id);
+    expect(p.status).toBe("PAYOUT_SUBMITTED");
+    expect(escrow.refund).not.toHaveBeenCalled();
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id, { delayMs: 30_000 });
+
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-F" });
+    await processSettleJob({ data: { paymentId: payment.id } });
+    p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("SETTLED");
+    expect(p.escrowReleaseTxHash).toBe("RELEASEHASH-F");
+  });
+
+  it("treats NotHeld on a release rerun as done when the job is already released", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-N" });
+    escrow.release.mockRejectedValue(new EscrowContractError("release", "NotHeld"));
+    mockHappyRail();
+
+    const { wallet, payment } = await makeAuthorized();
+    escrow.getJob.mockResolvedValue(held(wallet.stellarPublicKey, "Released"));
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(final.escrowReleaseTxHash).toBeNull();
+  });
+
+  it("refunds through the contract when the payout fails, and credits the payer once", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-X" });
+    escrow.refund.mockResolvedValue({ txHash: "ESCROWREFUND-X" });
+    mockHappyRail();
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "INVALID_DESTINATION" });
+
+    const { wallet, payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("REFUNDED");
+    expect(final.refundTxHash).toBe("ESCROWREFUND-X");
+    expect(escrow.refund.mock.calls[0]![0].equals(escrowJobId(payment.id))).toBe(true);
+    expect(escrow.release).not.toHaveBeenCalled();
+    expect(sendAsset).not.toHaveBeenCalled(); // not from the treasury
+
+    const credits = await db.walletTransaction.findMany({
+      where: { walletId: wallet.id, type: "REFUND_CREDIT" },
+    });
+    expect(credits).toHaveLength(1);
+    expect(credits[0]!.amount.toFixed(7)).toBe("8.3333434");
+    expect(credits[0]!.stellarTxHash).toBe("ESCROWREFUND-X");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.cachedXlmBalance.toFixed(7)).toBe("100.0000000");
+  });
+
+  it("treats NotHeld on a refund rerun as done, without crediting twice", async () => {
+    const { wallet, payment } = await makeAuthorized();
+    await db.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: "REFUND_PENDING",
+        escrowJobId: escrowJobId(payment.id).toString("hex"),
+        // a crashed attempt, long expired
+        refundSubmittedAt: new Date(Date.now() - 10 * 60_000),
+      },
+    });
+    escrow.refund.mockRejectedValue(new EscrowContractError("refund", "NotHeld"));
+    escrow.getJob.mockResolvedValue(held(wallet.stellarPublicKey, "Refunded"));
+
+    await processSettleJob({ data: { paymentId: payment.id } });
+    await processSettleJob({ data: { paymentId: payment.id } }); // terminal: no-op
+
+    const p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("REFUNDED");
+    expect(
+      await db.walletTransaction.count({ where: { walletId: wallet.id, type: "REFUND_CREDIT" } }),
+    ).toBe(1);
+  });
+
+  it("stays REFUND_PENDING when the job was released instead of refunded", async () => {
+    const { wallet, payment } = await makeAuthorized();
+    await db.payment.update({
+      where: { id: payment.id },
+      data: { status: "REFUND_PENDING", escrowJobId: escrowJobId(payment.id).toString("hex") },
+    });
+    escrow.refund.mockRejectedValue(new EscrowContractError("refund", "NotHeld"));
+    escrow.getJob.mockResolvedValue(held(wallet.stellarPublicKey, "Released"));
+
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    const p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("REFUND_PENDING");
+    expect(p.failureReason).toMatch(/NotHeld/);
+    expect(await db.walletTransaction.count({ where: { type: "REFUND_CREDIT" } })).toBe(0);
+  });
+
+  it("does not start a second escrow refund while one is in flight", async () => {
+    const { payment } = await makeAuthorized();
+    await db.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: "REFUND_PENDING",
+        escrowJobId: escrowJobId(payment.id).toString("hex"),
+        refundSubmittedAt: new Date(), // claimed moments ago by another job
+      },
+    });
+
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    expect(escrow.refund).not.toHaveBeenCalled();
+    const p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("REFUND_PENDING");
+  });
+
+  it("clears the claim when the contract rejects the refund, so a retry can run", async () => {
+    const { payment } = await makeAuthorized();
+    await db.payment.update({
+      where: { id: payment.id },
+      data: { status: "REFUND_PENDING", escrowJobId: escrowJobId(payment.id).toString("hex") },
+    });
+    escrow.refund
+      .mockRejectedValueOnce(new EscrowContractError("refund", "NotInitialized"))
+      .mockResolvedValueOnce({ txHash: "ESCROWREFUND-RETRY" });
+
+    await processSettleJob({ data: { paymentId: payment.id } });
+    let p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("REFUND_PENDING");
+    expect(p.refundSubmittedAt).toBeNull();
+
+    await processSettleJob({ data: { paymentId: payment.id } });
+    p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("REFUNDED");
+    expect(p.refundTxHash).toBe("ESCROWREFUND-RETRY");
+  });
+
+  it("stays REFUND_PENDING without claiming when the admin key is missing", async () => {
+    delete process.env.HEYPAY_TREASURY_SECRET_ENC;
+    const { payment } = await makeAuthorized();
+    await db.payment.update({
+      where: { id: payment.id },
+      data: { status: "REFUND_PENDING", escrowJobId: escrowJobId(payment.id).toString("hex") },
+    });
+
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    const p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("REFUND_PENDING");
+    expect(p.refundSubmittedAt).toBeNull();
+    expect(escrow.refund).not.toHaveBeenCalled();
+  });
+
+  it("follows the escrow for a payment deposited before the flag was turned off", async () => {
+    escrow.refund.mockResolvedValue({ txHash: "ESCROWREFUND-OFF" });
+    const { payment } = await makeAuthorized();
+    await db.payment.update({
+      where: { id: payment.id },
+      data: { status: "REFUND_PENDING", escrowJobId: escrowJobId(payment.id).toString("hex") },
+    });
+    delete process.env.ESCROW_ENABLED;
+
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    const p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("REFUNDED");
+    expect(sendAsset).not.toHaveBeenCalled();
   });
 });

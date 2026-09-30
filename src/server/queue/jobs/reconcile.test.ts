@@ -31,6 +31,7 @@ async function makeInFlightPayment(opts: {
   status: "PAYOUT_SUBMITTED" | "STELLAR_CONFIRMED" | "REFUND_PENDING";
   payoutRef?: string;
   ageMs?: number; // how far in the past updatedAt sits (default: fresh)
+  escrowJobId?: string;
 }) {
   const { user } = await makePayer();
   const { merchant } = await makeMerchant();
@@ -45,6 +46,7 @@ async function makeInFlightPayment(opts: {
       networkFeeXlm: "0.0000100",
       status: opts.status,
       payoutRef: opts.payoutRef ?? null,
+      escrowJobId: opts.escrowJobId ?? null,
       ...(opts.ageMs ? { updatedAt: new Date(Date.now() - opts.ageMs) } : {}),
     },
   });
@@ -143,6 +145,42 @@ describe("processReconcileJob — payout leg (missed-webhook fallback)", () => {
       railKind: "payout",
       railState: "SETTLED",
     });
+  });
+
+  it("re-drives an escrowed payment stuck mid-release after Xendit paid", async () => {
+    getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
+    const payment = await makeInFlightPayment({
+      status: "PAYOUT_SUBMITTED",
+      payoutRef: "disb-escrow",
+      ageMs: 5 * 60_000,
+      escrowJobId: "ab".repeat(32),
+    });
+
+    const res = await processReconcileJob();
+
+    expect(res.paymentDrift).toBe(1);
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
+    const log = await db.auditLog.findFirstOrThrow({
+      where: { action: "reconcile.payment_drift", target: payment.id },
+    });
+    expect(log.metadata).toMatchObject({ railState: "SETTLED", escrowJobId: "ab".repeat(32) });
+  });
+
+  it("re-drives an escrowed payment stuck mid-refund", async () => {
+    const payment = await makeInFlightPayment({
+      status: "REFUND_PENDING",
+      ageMs: 5 * 60_000,
+      escrowJobId: "cd".repeat(32),
+    });
+
+    const res = await processReconcileJob();
+
+    expect(res.paymentDrift).toBe(1);
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
+    const log = await db.auditLog.findFirstOrThrow({
+      where: { action: "reconcile.payment_drift", target: payment.id },
+    });
+    expect(log.metadata).toMatchObject({ railState: "stuck", escrowJobId: "cd".repeat(32) });
   });
 
   it("re-drives a stale PAYOUT_SUBMITTED payment whose payout failed", async () => {

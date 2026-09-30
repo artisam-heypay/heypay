@@ -46,6 +46,13 @@ function loadPayment(id: string) {
 const PAYOUT_RECHECK_MS = Number(process.env.PAYOUT_RECHECK_MS ?? 30_000);
 
 /**
+ * An escrow refund that started but never saved its hash may be reclaimed after
+ * this long. It is longer than the escrow's transaction lifetime (180s), so the
+ * earlier attempt has either landed or expired by then.
+ */
+const ESCROW_REFUND_RECLAIM_MS = 5 * 60_000;
+
+/**
  * ESCROW_ENABLED routes new payments' crypto leg through the Soroban escrow. D1
  * escrows XLM only (the deployed contract holds the native XLM SAC); USDC keeps
  * the direct treasury path until D2. Later steps follow `escrowJobId`, not this
@@ -351,6 +358,7 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
   if (status.state === "FAILED") {
     throw new Error(`Payout ${p.payoutRef} failed: ${status.failureCode ?? "unknown reason"}`);
   }
+  if (p.escrowJobId && !p.escrowReleaseTxHash && !(await releaseEscrow(p))) return;
   const feePhp = dec(status.feePhp?.toString() ?? "0");
   const netPhp = status.netPhp
     ? dec(status.netPhp.toString())
@@ -366,8 +374,49 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
   await applyTransition(db, p, PaymentStatus.SETTLED, { netSettledPhp: netPhp.toFixed(2) });
 }
 
+/**
+ * Pays the held crypto to the treasury once the merchant has been paid. Returns
+ * false when the release has to be retried. A failed release must never route to
+ * a refund, because the merchant already has the PHP, so the payment stays
+ * PAYOUT_SUBMITTED, is re-checked shortly, and the reconcile job re-drives it too.
+ */
+async function releaseEscrow(p: PaymentWithRels): Promise<boolean> {
+  const jobId = escrowJob(p);
+  try {
+    const { txHash } = await escrowService.release(jobId);
+    await db.payment.update({ where: { id: p.id }, data: { escrowReleaseTxHash: txHash } });
+    return true;
+  } catch (err) {
+    if (err instanceof EscrowContractError && err.code === "NotHeld") {
+      const job = await escrowService.getJob(jobId);
+      // An earlier attempt released it but never saved the hash.
+      if (job?.status === "Released") return true;
+      if (job?.status === "Refunded") {
+        // The payer self-refunded after the deadline, yet the merchant was paid.
+        // The payment is settled; the treasury is short and a person must follow up.
+        await audit({
+          action: "payment.escrow_refunded_before_release",
+          target: p.id,
+          metadata: { reference: p.reference, escrowJobId: p.escrowJobId },
+        });
+        captureException(err, { source: "settle", paymentId: p.id, moneyAtRisk: true });
+        return true;
+      }
+    }
+    captureException(err, {
+      source: "settle",
+      paymentId: p.id,
+      reference: p.reference,
+      step: "escrow_release",
+    });
+    await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+    return false;
+  }
+}
+
 // REFUND_PENDING → REFUNDED (send crypto back from the treasury; credit payer; alert admin)
 async function stepRefund(p: PaymentWithRels): Promise<void> {
+  if (p.escrowJobId) return stepRefundEscrow(p);
   const wallet = p.payer.wallet!;
   // Send back exactly what reached the treasury. The Stellar fee the payer paid
   // was consumed by the network and is not recoverable.
@@ -418,6 +467,73 @@ async function stepRefund(p: PaymentWithRels): Promise<void> {
   const landed = await withRetry(() => walletService.confirmTx(txHash), { label: "confirmTx" });
   if (!landed) throw new Error(`Refund transaction ${txHash} did not confirm`);
 
+  await creditRefund(p, txHash);
+}
+
+// REFUND_PENDING → REFUNDED for an escrowed payment: the contract returns the held
+// crypto to the payer (`refund`, signed by the treasury as the escrow admin).
+async function stepRefundEscrow(p: PaymentWithRels): Promise<void> {
+  const jobId = escrowJob(p);
+  let txHash = p.refundTxHash;
+  if (!txHash) {
+    treasurySecret(); // fail before claiming if the admin key is missing
+    // Claim the refund atomically, as in stepRefund. A marker left by a crashed
+    // attempt is not ambiguous here: the contract refunds a job at most once, and
+    // get_job says whether it did. It is reclaimed once that attempt has expired.
+    const claimed = await db.payment.updateMany({
+      where: {
+        id: p.id,
+        refundTxHash: null,
+        OR: [
+          { refundSubmittedAt: null },
+          { refundSubmittedAt: { lt: new Date(Date.now() - ESCROW_REFUND_RECLAIM_MS) } },
+        ],
+      },
+      data: { refundSubmittedAt: new Date() },
+    });
+    if (claimed.count === 0) return; // another job is refunding it
+    try {
+      txHash = (await escrowService.refund(jobId)).txHash;
+    } catch (err) {
+      if (err instanceof EscrowContractError && err.code === "NotHeld") {
+        const job = await escrowService.getJob(jobId);
+        // Released means the treasury has the crypto; a person has to refund it.
+        if (job?.status !== "Refunded") throw err;
+        // An earlier attempt refunded it but never saved the hash.
+      } else {
+        // Rejected at simulation or failed on-chain: nothing moved, retry is safe.
+        const nothingMoved =
+          err instanceof EscrowContractError ||
+          (err instanceof EscrowTxFailedError && err.status === "FAILED");
+        if (nothingMoved) {
+          await db.payment.update({ where: { id: p.id }, data: { refundSubmittedAt: null } });
+        }
+        throw err;
+      }
+    }
+    if (txHash) {
+      await db.payment.update({ where: { id: p.id }, data: { refundTxHash: txHash } });
+    }
+  } else {
+    // Saved by an earlier run that stopped before crediting; a fresh refund above
+    // only returns once its transaction has succeeded.
+    const landed = await withRetry(() => walletService.confirmTx(txHash!), {
+      label: "confirmTx",
+    });
+    if (!landed) throw new Error(`Refund transaction ${txHash} did not confirm`);
+  }
+
+  await creditRefund(p, txHash);
+}
+
+/**
+ * Credits the refunded crypto back to the payer's balance once, marks the payment
+ * REFUNDED and audits it. `txHash` is null only for an escrow refund whose hash
+ * was lost; the contract's job status proved it landed.
+ */
+async function creditRefund(p: PaymentWithRels, txHash: string | null): Promise<void> {
+  const wallet = p.payer.wallet!;
+  const { asset, assetAmount } = legs(p);
   await db.$transaction(async (tx) => {
     const existing = await tx.walletTransaction.findFirst({
       where: { paymentId: p.id, type: "REFUND_CREDIT" },
@@ -426,7 +542,9 @@ async function stepRefund(p: PaymentWithRels): Promise<void> {
       // The deposit poller watches the payer's wallet too and may have already
       // recorded this incoming transfer as a deposit. If so the balance is
       // credited; relabel the entry rather than credit it a second time.
-      const seen = await tx.walletTransaction.findUnique({ where: { stellarTxHash: txHash } });
+      const seen = txHash
+        ? await tx.walletTransaction.findUnique({ where: { stellarTxHash: txHash } })
+        : null;
       if (seen) {
         await tx.walletTransaction.update({
           where: { id: seen.id },
