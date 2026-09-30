@@ -24,6 +24,7 @@ export default async function PayerDashboardPage() {
       asset: t.asset,
       balance: t.balance.toFixed(7),
       valuePhp: t.valuePhp?.toFixed(2) ?? null,
+      rate: t.rate?.toFixed(8) ?? null,
     })),
   };
 
