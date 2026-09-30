@@ -25,7 +25,10 @@ function fakeFetch(opts: {
 
 describe("live rates", () => {
   it("prices at the Coins.ph bid, not the ask", async () => {
-    const fetchImpl = fakeFetch({ coinsph: bookTicker("XLMPHP", "13.565"), cmc: cmc("XLM", 13.55) });
+    const fetchImpl = fakeFetch({
+      coinsph: bookTicker("XLMPHP", "13.565"),
+      cmc: cmc("XLM", 13.55),
+    });
     const rates = createLiveRates({ fetchImpl, cmcApiKey: "key" });
     const r = await rates.getRate("XLM");
     expect(r).toMatchObject({ asset: "XLM", source: "COINSPH" });
@@ -48,7 +51,9 @@ describe("live rates", () => {
     await createLiveRates({ fetchImpl, cmcApiKey: "secret-key" }).getRate("XLM");
     const cmcCall = fetchImpl.mock.calls.find(([u]) => u.includes("coinmarketcap"))!;
     expect(cmcCall[0]).toContain("symbol=XLM&convert=PHP");
-    expect((cmcCall[1] as RequestInit).headers).toMatchObject({ "X-CMC_PRO_API_KEY": "secret-key" });
+    expect((cmcCall[1] as RequestInit).headers).toMatchObject({
+      "X-CMC_PRO_API_KEY": "secret-key",
+    });
   });
 
   it("refuses to quote when the two sources disagree by more than the limit", async () => {
@@ -62,7 +67,10 @@ describe("live rates", () => {
 
   it("accepts a small disagreement within the limit", async () => {
     // 13.565 vs 13.5562 is ~0.07%
-    const fetchImpl = fakeFetch({ coinsph: bookTicker("XLMPHP", "13.565"), cmc: cmc("XLM", 13.5562) });
+    const fetchImpl = fakeFetch({
+      coinsph: bookTicker("XLMPHP", "13.565"),
+      cmc: cmc("XLM", 13.5562),
+    });
     const r = await createLiveRates({ fetchImpl, cmcApiKey: "key", maxDivergenceBps: 200 }).getRate(
       "XLM",
     );
@@ -87,15 +95,20 @@ describe("live rates", () => {
 
   it("rejects a malformed or non-positive price instead of quoting it", async () => {
     const fetchImpl = fakeFetch({ coinsph: bookTicker("XLMPHP", "0"), cmc: "down" });
-    await expect(createLiveRates({ fetchImpl, cmcApiKey: "key" }).getRate("XLM")).rejects.toMatchObject(
-      { status: 503 },
-    );
+    await expect(
+      createLiveRates({ fetchImpl, cmcApiKey: "key" }).getRate("XLM"),
+    ).rejects.toMatchObject({ status: 503 });
   });
 
   it("reuses a CoinMarketCap answer inside the cache window to save credits", async () => {
     let now = 1_000_000;
     const fetchImpl = fakeFetch({ coinsph: "down", cmc: cmc("XLM", 13.5) });
-    const rates = createLiveRates({ fetchImpl, cmcApiKey: "key", cmcCacheMs: 60_000, now: () => now });
+    const rates = createLiveRates({
+      fetchImpl,
+      cmcApiKey: "key",
+      cmcCacheMs: 60_000,
+      now: () => now,
+    });
     await rates.getRate("XLM");
     now += 30_000;
     await rates.getRate("XLM");
