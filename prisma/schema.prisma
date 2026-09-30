@@ -220,6 +220,11 @@ model Payment {
   // a marker instead of a silent retry that would refund twice.
   refundTxHash      String?       @unique
   refundSubmittedAt DateTime?
+  // Soroban escrow (ESCROW_ENABLED). `escrowJobId` is the contract's job id,
+  // sha256(payment.id) as hex; set before the deposit, it marks the payment as
+  // escrowed, so release/refund go through the contract instead of the treasury.
+  escrowJobId         String?     @unique
+  escrowReleaseTxHash String?     @unique
 
   quoteExpiresAt    DateTime?
   createdAt         DateTime      @default(now())

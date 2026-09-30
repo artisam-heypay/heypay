@@ -17,6 +17,17 @@ vi.mock("@/server/stellar/wallet", () => ({
   },
 }));
 
+const escrow = vi.hoisted(() => ({
+  deposit: vi.fn(),
+  release: vi.fn(),
+  refund: vi.fn(),
+  getJob: vi.fn(),
+}));
+vi.mock("@/server/stellar/escrow", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/server/stellar/escrow")>()),
+  escrowService: escrow,
+}));
+
 const { getDepositAddress, createPayout, getPayoutStatus } = vi.hoisted(() => ({
   getDepositAddress: vi.fn(),
   createPayout: vi.fn(),
@@ -44,6 +55,7 @@ const TREASURY = "GHEYPAYTREASURYXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 const TREASURY_SECRET = "STREASURYSECRETXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
 import { processSettleJob } from "./settle";
+import { escrowJobId, EscrowContractError, EscrowTxFailedError } from "@/server/stellar/escrow";
 import { isTerminal } from "@/server/payments/state-machine";
 
 async function makeAuthorized(merchantOpts?: { payoutEmail?: string | null }) {
@@ -112,6 +124,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   delete process.env.HEYPAY_TREASURY_SECRET_ENC;
+  delete process.env.ESCROW_ENABLED;
 });
 
 describe("processSettleJob — happy path", () => {
@@ -400,5 +413,115 @@ describe("processSettleJob — payout fails → on-chain refund from the treasur
     p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(p.status).toBe("REFUNDED");
     expect(sendAsset).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("processSettleJob — escrow off", () => {
+  it("pays the treasury directly and never touches the escrow", async () => {
+    sendAsset.mockResolvedValue({ txHash: "STELLARHASH-OFF" });
+    mockHappyRail();
+
+    const { payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(final.escrowJobId).toBeNull();
+    expect(escrow.deposit).not.toHaveBeenCalled();
+  });
+});
+
+describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
+  beforeEach(() => {
+    process.env.ESCROW_ENABLED = "true";
+    for (const fn of Object.values(escrow)) fn.mockReset();
+  });
+
+  const held = (from: string, status = "Held") => ({
+    from,
+    amount: dec("8.3333434"),
+    deadlineLedger: 100,
+    status,
+  });
+
+  it("deposits into the escrow and settles", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH1" });
+    mockHappyRail();
+
+    const { wallet, payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(final.escrowJobId).toBe(escrowJobId(payment.id).toString("hex"));
+    expect(final.stellarTxHash).toBe("DEPOSITHASH1");
+    expect(sendAsset).not.toHaveBeenCalled(); // nothing goes straight to the treasury
+
+    const dep = escrow.deposit.mock.calls[0]![0];
+    expect(dep.jobId.equals(escrowJobId(payment.id))).toBe(true);
+    expect(dep.encryptedSecret).toBe(wallet.encryptedSecret); // signed by the payer
+    expect(dep.amount.toFixed(7)).toBe("8.3333434");
+    expect(confirmTx).toHaveBeenCalledWith("DEPOSITHASH1");
+
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.cachedXlmBalance.toFixed(7)).toBe("91.6666566");
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+  });
+
+  it("keeps USDC on the direct treasury path (escrow is XLM only in D1)", async () => {
+    sendAsset.mockResolvedValue({ txHash: "USDCHASH-E" });
+    mockHappyRail();
+
+    const { payment } = await makeAuthorizedUsdc();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(final.escrowJobId).toBeNull();
+    expect(escrow.deposit).not.toHaveBeenCalled();
+    expect(sendAsset.mock.calls[0]![0].asset).toBe("USDC");
+  });
+
+  it("FAILs and releases the reservation when the contract rejects the deposit", async () => {
+    escrow.deposit.mockRejectedValue(new EscrowContractError("deposit", "InvalidAmount"));
+
+    const { wallet, payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("FAILED");
+    expect(final.failureReason).toMatch(/InvalidAmount/);
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+    expect(createPayout).not.toHaveBeenCalled();
+  });
+
+  it("lets the confirm step decide a deposit that was sent but not seen landing", async () => {
+    escrow.deposit.mockRejectedValue(new EscrowTxFailedError("deposit", "SLOWHASH", "NOT_FOUND"));
+    mockHappyRail();
+
+    const { payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(final.stellarTxHash).toBe("SLOWHASH");
+    expect(confirmTx).toHaveBeenCalledWith("SLOWHASH");
+  });
+
+  it("does not deposit twice when a rerun finds the job already held", async () => {
+    escrow.deposit.mockRejectedValue(new EscrowContractError("deposit", "JobExists"));
+    mockHappyRail();
+
+    const { wallet, payment } = await makeAuthorized();
+    escrow.getJob.mockResolvedValue(held(wallet.stellarPublicKey));
+    await db.payment.update({
+      where: { id: payment.id },
+      data: { escrowJobId: escrowJobId(payment.id).toString("hex") },
+    });
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(final.stellarTxHash).toBeNull(); // hash lost; the contract's job proved it
+    expect(confirmTx).not.toHaveBeenCalledWith(null);
+    const debits = await db.walletTransaction.count({
+      where: { walletId: wallet.id, type: "PAYMENT_DEBIT" },
+    });
+    expect(debits).toBe(1);
   });
 });
