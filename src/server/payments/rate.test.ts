@@ -23,7 +23,7 @@ async function seedSnapshot(pair: string, rate: string, ageMs = 0) {
   });
 }
 
-const STALE = 10 * 60_000; // older than the 5-minute TTL
+const STALE = 10 * 60_000; // older than the 15-second TTL
 
 describe("getAssetRate", () => {
   beforeEach(async () => {
