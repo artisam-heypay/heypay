@@ -6,13 +6,13 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/payer/dashboard" }));
 import { SideNav } from "./SideNav";
 
 describe("SideNav", () => {
-  it("marks the active route and styles the logout link as error", () => {
+  it("marks the active route and styles the logout button as error", () => {
     render(<SideNav username="alice" />);
     const dashboard = screen.getByRole("link", { name: /Dashboard/ });
     expect(dashboard).toHaveAttribute("aria-current", "page");
     expect(dashboard.className).toContain("bg-primary-container");
 
-    const logout = screen.getByRole("link", { name: /Logout/ });
+    const logout = screen.getByRole("button", { name: /Logout/ });
     expect(logout.className).toContain("text-error");
   });
 
