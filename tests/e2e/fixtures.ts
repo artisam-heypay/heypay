@@ -21,8 +21,7 @@ export const DEMO_QRPH_MERCHANT_NAME = "HEYPAY DEMO MERCHANT";
 // Dedicated testnet account that stands in for the HeyPay treasury.
 // Even with PAYMENT_RAIL=mock the settlement's Stellar leg is real (SPEC §8.2), so the
 // custodial→treasury payment needs a funded, existing destination. globalSetup friendbot-funds it.
-export const E2E_TREASURY_ADDRESS =
-  "GBXGSQS3DVUWJVM4BA247MGKNCVRKNO72ONTILJK3DRI2IIPMSDGKACQ";
+export const E2E_TREASURY_ADDRESS = "GBXGSQS3DVUWJVM4BA247MGKNCVRKNO72ONTILJK3DRI2IIPMSDGKACQ";
 
 const CRC_POLY = 0x1021;
 function crc16ccitt(data: string): string {
@@ -119,7 +118,12 @@ export async function ensureActiveMerchant(
   const { merchant } = await create.json();
 
   const settle = await request.post("/api/merchant/settlement", {
-    data: { bankCode: "BPI", accountName: "HeyPay Demo Inc", accountNumber: "1234567890" },
+    data: {
+      bankCode: "BPI",
+      accountName: "HeyPay Demo Inc",
+      accountNumber: "1234567890",
+      payoutEmail: "merchant-e2e@example.com",
+    },
     ...CSRF,
   });
   expect(settle.ok(), `settlement failed: ${await settle.text()}`).toBeTruthy();
