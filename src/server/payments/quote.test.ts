@@ -47,6 +47,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   delete process.env.PAYMENT_ASSETS;
+  delete process.env.ESCROW_ENABLED;
 });
 
 describe("createQuote", () => {
@@ -110,6 +111,25 @@ describe("createQuote", () => {
       createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }),
     ).rejects.toMatchObject({ status: 409 });
     expect(await db.payment.count()).toBe(0);
+  });
+
+  it("reserves the escrow fee estimate on top of the amount when the escrow is on", async () => {
+    // 8.4 covers 8.3333334 + the 0.00001 base fee, but not the 0.2 XLM escrow fee estimate.
+    const { user } = await makePayer({ cachedXlm: "8.4000000" });
+    const { merchant } = await makeMerchant();
+
+    process.env.ESCROW_ENABLED = "true";
+    await expect(
+      createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    delete process.env.ESCROW_ENABLED;
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("100"),
+    });
+    expect(res.amountAsset.toFixed(7)).toBe("8.3333334");
   });
 
   it("rejects a non-ACTIVE merchant with notFound (404)", async () => {

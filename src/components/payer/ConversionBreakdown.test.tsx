@@ -19,4 +19,20 @@ describe("ConversionBreakdown", () => {
     // total deduction = 8.4175084 + 0.0000100 = 8.4175184
     expect(screen.getByText("8.4175184 XLM")).toBeInTheDocument();
   });
+
+  it("adds the escrow fee estimate to the deduction and labels it a maximum", () => {
+    render(
+      <ConversionBreakdown
+        amountPhp={dec("500.00")}
+        quotedRate={dec("59.40")}
+        amountAsset={dec("8.4175084")}
+        networkFeeXlm={dec("0.00001")}
+        escrowFeeXlm={dec("0.2")}
+      />,
+    );
+    expect(screen.getByText("up to 0.2000000 XLM")).toBeInTheDocument();
+    expect(screen.getByText("Maximum deduction")).toBeInTheDocument();
+    // 8.4175084 + 0.0000100 + 0.2000000
+    expect(screen.getByText("8.6175184 XLM")).toBeInTheDocument();
+  });
 });
