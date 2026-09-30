@@ -484,6 +484,7 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     await processSettleJob({ data: { paymentId: payment.id } });
 
     expect(final.status).toBe("SETTLED");
+    expect(escrow.getFeeCharged).toHaveBeenCalledTimes(1);
     expect(escrow.getFeeCharged).toHaveBeenCalledWith("DEPOSITHASH-FEE");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     // 100 - 8.3333434 (amount + base fee) - 0.1060597 (Soroban fee)
