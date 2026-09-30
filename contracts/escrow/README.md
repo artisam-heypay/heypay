@@ -188,8 +188,23 @@ CLI run on 2026-09-29 against `CDGIYVER…LE5E` (CLI-admin contract above). Paye
 A second `release` of `d1-cli-release-1` fails simulation with
 `Error(Contract, #5)` (`NotHeld`), so a job settles once.
 
-Still to come: an on-chain `refund()` from a forced payout failure (app) and a
-payer-called `refund_after_timeout()` after an expired deadline.
+### Forced payout failure (app)
+
+Settle job run on 2026-09-30 against the app contract `CA3IHLNN…BT7J` with
+`ESCROW_ENABLED=true`, `PAYMENT_RAIL=mock` and `MOCK_FAIL_PHP_AMOUNT=17.51`:
+payment `TXN-DUDFC6FD` deposited into the escrow, the mock payout failed, and
+the settle job called the contract's `refund()`. Payer:
+`GCH4JXAY2OAFCNVOCRBXGXXHTBQZONWA4L75KSPUSYWSQNTENHJNG4CJ`, job id
+`ddea858d10540ee666a124c3c4ea0e44c2c82217c2c43cdce435bb58ce439cb2`
+(`sha256(payment.id)`).
+
+| Step    | Amount      | Tx                                                                                                                         |
+| ------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| deposit | 5.00001 XLM | [`0a5cf779…`](https://stellar.expert/explorer/testnet/tx/0a5cf779825149d4cba860d29e60bb8b67ecd8cea686392f453bc943a3dbd372) |
+| refund  | 5.00001 XLM | [`eb5f7198…`](https://stellar.expert/explorer/testnet/tx/eb5f71982b83946531a8a5fbc6a675e3430574db6ebd1ee3ceb4dd8521187c2d) |
+
+Still to come: a payer-called `refund_after_timeout()` after an expired
+deadline.
 
 ## License
 
