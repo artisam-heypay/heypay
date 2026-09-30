@@ -4,6 +4,12 @@ import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
+import {
+  escrowJobId,
+  escrowService,
+  EscrowContractError,
+  EscrowTxFailedError,
+} from "@/server/stellar/escrow";
 import { dec, type Decimal } from "@/lib/money";
 import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { withRetry } from "@/lib/retry";
@@ -38,6 +44,21 @@ function loadPayment(id: string) {
  */
 /** How long to wait before re-checking a payout Xendit still reports as pending. */
 const PAYOUT_RECHECK_MS = Number(process.env.PAYOUT_RECHECK_MS ?? 30_000);
+
+/**
+ * ESCROW_ENABLED routes new payments' crypto leg through the Soroban escrow. D1
+ * escrows XLM only (the deployed contract holds the native XLM SAC); USDC keeps
+ * the direct treasury path until D2. Later steps follow `escrowJobId`, not this
+ * flag, so turning it off never strands a payment already in the escrow.
+ */
+function usesEscrow(p: { asset: PaymentAsset }): boolean {
+  return process.env.ESCROW_ENABLED === "true" && p.asset === "XLM";
+}
+
+/** The payment's escrow job id as the contract's `BytesN<32>`. */
+function escrowJob(p: { escrowJobId: string | null }): Buffer {
+  return Buffer.from(p.escrowJobId!, "hex");
+}
 
 function treasurySecret(): string {
   const value = process.env.HEYPAY_TREASURY_SECRET_ENC?.trim();
@@ -108,6 +129,7 @@ async function dispatch(p: PaymentWithRels): Promise<void> {
 
 // AUTHORIZED → STELLAR_SUBMITTED (payer's crypto → HeyPay treasury)
 async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
+  if (p.escrowJobId || usesEscrow(p)) return stepDepositEscrow(p);
   const wallet = p.payer.wallet!;
   const { asset, assetAmount } = legs(p);
   // Idempotency: if a tx was already submitted, just advance.
@@ -152,13 +174,78 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
   await applyTransition(db, p, PaymentStatus.STELLAR_SUBMITTED, { stellarTxHash: txHash });
 }
 
+// AUTHORIZED → STELLAR_SUBMITTED (payer's crypto → Soroban escrow, held under the payment's job id)
+async function stepDepositEscrow(p: PaymentWithRels): Promise<void> {
+  const wallet = p.payer.wallet!;
+  const { asset, assetAmount } = legs(p);
+  const jobId = escrowJobId(p.id);
+  let txHash = p.stellarTxHash;
+  if (!txHash) {
+    if (!p.escrowJobId) {
+      // Marks the payment as escrowed before anything is sent, so a rerun after a
+      // crash asks the contract instead of paying the treasury directly.
+      await db.payment.update({
+        where: { id: p.id },
+        data: { escrowJobId: jobId.toString("hex") },
+      });
+    }
+    // No withRetry: its timeout is shorter than the deposit's confirmation wait,
+    // and a retry racing a deposit still in flight gains nothing.
+    try {
+      const res = await escrowService.deposit({
+        jobId,
+        encryptedSecret: wallet.encryptedSecret,
+        amount: assetAmount,
+      });
+      txHash = res.txHash;
+    } catch (err) {
+      if (err instanceof EscrowTxFailedError && err.status !== "FAILED" && err.txHash) {
+        // Sent but not seen landing in time; the confirm step decides from the hash.
+        txHash = err.txHash;
+      } else if (err instanceof EscrowContractError && err.code === "JobExists") {
+        // An earlier attempt deposited but crashed before saving its hash. The
+        // contract refuses a second deposit, so nothing moved twice.
+        const job = await escrowService.getJob(jobId);
+        if (job?.from !== wallet.stellarPublicKey) throw err;
+      } else {
+        throw err;
+      }
+    }
+    if (txHash) {
+      await db.payment.update({ where: { id: p.id }, data: { stellarTxHash: txHash } });
+    }
+    captureUserEvent(
+      "payment_crypto_sent",
+      { id: p.payerId, role: "PAYER" },
+      {
+        payment_id: p.id,
+        reference: p.reference,
+        merchant_id: p.merchantId,
+        asset,
+        ...assetContract(asset),
+        amount_asset: assetAmount.toFixed(7),
+        payer_wallet_address: wallet.stellarPublicKey,
+        destination_address: process.env.ESCROW_CONTRACT_ID,
+        escrow_job_id: jobId.toString("hex"),
+        stellar_tx_hash: txHash ?? undefined,
+      },
+    );
+  }
+  await applyTransition(db, p, PaymentStatus.STELLAR_SUBMITTED, {
+    stellarTxHash: txHash,
+    escrowJobId: jobId.toString("hex"),
+  });
+}
+
 // STELLAR_SUBMITTED → STELLAR_CONFIRMED (debit + release reservation) | FAILED (tx never landed)
 async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
   const { asset, assetAmount, xlmFee } = legs(p);
-  const ok = await withRetry(() => walletService.confirmTx(p.stellarTxHash!), {
-    label: "confirmTx",
-  });
+  // A Soroban deposit is confirmed by its hash like any payment. Only an escrow
+  // deposit whose hash was lost has none; the contract holding the job proves it.
+  const ok = p.stellarTxHash
+    ? await withRetry(() => walletService.confirmTx(p.stellarTxHash!), { label: "confirmTx" })
+    : (await escrowService.getJob(escrowJob(p))) !== null;
 
   if (!ok) {
     // Tx definitively failed → crypto never moved → release reservations, FAILED (no refund needed).
