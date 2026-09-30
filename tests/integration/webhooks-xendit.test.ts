@@ -56,7 +56,9 @@ describe("POST /api/webhooks/xendit", () => {
 
   it("nudges the settle job for the payout's payment", async () => {
     const payment = await makeSubmittedPayment("disb-1");
-    const res = await POST(makeReq(succeeded("disb-1"), { "x-callback-token": TOKEN, "webhook-id": "wh_1" }));
+    const res = await POST(
+      makeReq(succeeded("disb-1"), { "x-callback-token": TOKEN, "webhook-id": "wh_1" }),
+    );
 
     expect(res.status).toBe(200);
     expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
