@@ -296,9 +296,17 @@ sequenceDiagram
 
 ## Smart Contracts
 
-HeyPay has no Soroban contracts, so there is **no smart contract testnet address** — Stellar interaction is limited to classic Horizon payment operations (custodial wallet → treasury, treasury → payer for refunds) via `@stellar/stellar-sdk` (`src/server/stellar/wallet.ts`, `src/server/stellar/horizon.ts`).
+**Soroban settlement escrow** — [`contracts/escrow`](contracts/escrow/README.md). It holds the payer's XLM on-chain under a per-payment job id until the merchant's Xendit payout settles (`release` to the treasury) or fails (`refund` to the payer). If HeyPay never acts, the payer can reclaim the funds with `refund_after_timeout` once the deadline ledger passes.
 
-The planned first contract is a **Soroban escrow**: hold the payer's crypto on-chain from confirmation until the merchant's Xendit payout is acknowledged, instead of in the custodial treasury, moving refund logic off HeyPay's servers and onto the chain so the payer need not trust the operator mid-settlement. It is not implemented — see [Ecosystem roadmap / research](#ecosystem-roadmap--research).
+| Network | Contract ID                                                                                                                                                             |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Testnet | [`CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J`](https://stellar.expert/explorer/testnet/contract/CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J) |
+
+- [Contract README](contracts/escrow/README.md): functions, auth rules, errors, deadline and TTL behaviour, deployment and Testnet evidence
+- [Interface](contracts/escrow/INTERFACE.md): the deployed contract's spec
+- [Sample events](contracts/escrow/events.sample.json): real `deposit` / `release` / `refund` event payloads from Testnet
+
+The settle job uses the escrow when `ESCROW_ENABLED=true` (XLM payments only for now; `src/server/queue/jobs/settle.ts`, client in `src/server/stellar/escrow.ts`). With it off, the crypto goes straight to the custodial treasury through classic Horizon payments (`src/server/stellar/wallet.ts`).
 
 ## Ecosystem roadmap / research
 
