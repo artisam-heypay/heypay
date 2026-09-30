@@ -31,6 +31,7 @@ test("merchant completes onboarding, goes live, and sees a settlement", async ({
   await page.getByRole("radio", { name: /BPI/i }).click();
   await page.getByLabel(/account name/i).fill("HeyPay Demo Inc");
   await page.getByLabel(/account number/i).fill("1234567890");
+  await page.getByLabel(/payout receipt email/i).fill("merchant-e2e@example.com");
   await page.getByRole("button", { name: /next|continue/i }).click();
 
   // Step 3 — Link QRPH (paste raw). Target the paste field precisely to avoid
