@@ -29,6 +29,86 @@ Rust target (`rustup target add wasm32v1-none`).
 A job settles exactly once: `release`, `refund` and `refund_after_timeout`
 fail with `NotHeld` unless the job is still `Held`.
 
+The full spec exported from the deployed contract is in
+[INTERFACE.md](INTERFACE.md).
+
+### Auth rules
+
+- `initialize` requires the `admin` being set to sign, so a deployer cannot
+  hand the contract to an account that did not agree to it.
+- `deposit` requires `from` (the payer) to sign; the tokens move from `from`.
+- `release`, `refund` and `set_timeout` require the stored admin to sign.
+- `refund_after_timeout` requires the job's `from` to sign; nobody else can
+  trigger it, not even the admin.
+- Getters need no signature.
+
+Funds only ever move to two places: the admin (`release`) or the job's payer
+(`refund`, `refund_after_timeout`). No function takes a destination address.
+
+### Errors
+
+| Code | Name                 | Returned by                                                                  |
+| ---- | -------------------- | ---------------------------------------------------------------------------- |
+| 1    | `AlreadyInitialized` | `initialize` a second time                                                   |
+| 2    | `NotInitialized`     | any call that needs the admin or token before `initialize`                   |
+| 3    | `JobExists`          | `deposit` with a job id already used (held or settled)                       |
+| 4    | `JobNotFound`        | `release`, `refund`, `refund_after_timeout`, `get_job` for an unknown job id |
+| 5    | `NotHeld`            | `release`, `refund`, `refund_after_timeout` on a job already settled         |
+| 6    | `InvalidAmount`      | `deposit` with `amount <= 0`                                                 |
+| 7    | `DeadlineNotReached` | `refund_after_timeout` before the job's deadline ledger                      |
+| 8    | `InvalidTimeout`     | `set_timeout(0)`                                                             |
+
+A rejected call fails at simulation with `Error(Contract, #<code>)`, so nothing
+is sent. The app's client (`src/server/stellar/escrow.ts`) turns the code into
+an `EscrowContractError`.
+
+### Deadline and TTL
+
+- `deposit` records `deadline_ledger = current ledger + timeout`. The timeout is
+  read when the deposit happens, so `set_timeout` never moves an existing
+  job's deadline.
+- `refund_after_timeout` works from the deadline ledger onwards (inclusive).
+- Every write extends the contract instance's TTL to 30 days once it drops
+  below 7 days.
+- Each job is a persistent entry kept alive until 30 days past its deadline
+  (capped at the network's max TTL), so the payer has time to self-refund
+  before the entry can be archived. Settled jobs are kept, not deleted: they
+  are the on-chain record, and their id can never be deposited again.
+
+### Events
+
+| Topics                                 | Data                                | Emitted by             |
+| -------------------------------------- | ----------------------------------- | ---------------------- |
+| `["escrow", "deposit", job_id]`        | `{ from, amount, deadline_ledger }` | `deposit`              |
+| `["escrow", "release", job_id]`        | `{ to, amount }`                    | `release`              |
+| `["escrow", "refund", job_id]`         | `{ to, amount }`                    | `refund`               |
+| `["escrow", "refund_timeout", job_id]` | `{ to, amount }`                    | `refund_after_timeout` |
+
+Each call also emits the token contract's own `transfer` event. Real payloads
+from the Testnet run are in [events.sample.json](events.sample.json).
+
+### Release address
+
+`release` pays the admin, not an address passed in the call. The admin is the
+HeyPay treasury (`GDZ2…LIN37`), which funds the PHP payout, so releasing to it
+is the same money flow as before the escrow. Taking a destination argument
+would let a compromised admin key send held funds anywhere; with this design it
+can only move them to the treasury or back to the payer.
+
+## In the app
+
+With `ESCROW_ENABLED=true`, the settle job (`src/server/queue/jobs/settle.ts`)
+holds the crypto leg of an XLM payment in this contract:
+
+1. `AUTHORIZED → STELLAR_SUBMITTED`: `deposit`, signed by the payer's custodial
+   wallet, under job id `sha256(payment.id)` (stored as `Payment.escrowJobId`).
+2. `PAYOUT_SUBMITTED → SETTLED`: after Xendit reports the payout paid,
+   `release` to the treasury (`Payment.escrowReleaseTxHash`).
+3. `REFUND_PENDING → REFUNDED`: after a failed payout, `refund` to the payer
+   (`Payment.refundTxHash`).
+
+USDC payments keep the direct treasury path until the escrow holds USDC (D2).
+
 ## Setup
 
 `initialize(admin, token)` runs once. `admin` is the HeyPay operator account
