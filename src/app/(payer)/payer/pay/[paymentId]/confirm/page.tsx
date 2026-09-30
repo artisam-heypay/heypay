@@ -6,6 +6,7 @@ import { dec } from "@/lib/money";
 import { getWalletSummary } from "@/server/payer/data";
 import { getAssetRate } from "@/server/payments/rate";
 import { rail } from "@/server/rails";
+import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-config";
 import { ConfirmPayment } from "@/components/payer/ConfirmPayment";
 
 export default async function ConfirmPaymentPage({
@@ -63,6 +64,7 @@ export default async function ConfirmPaymentPage({
         quotedRate={payment.quotedRate.toFixed(8)}
         amountAsset={payment.amountAsset.toFixed(7)}
         networkFeeXlm={payment.networkFeeXlm.toFixed(7)}
+        escrowFeeXlm={escrowAppliesTo(payment.asset) ? escrowFeeEstimateXlm().toFixed(7) : null}
         quoteExpiresAt={payment.quoteExpiresAt?.toISOString() ?? null}
         merchantName={payment.merchant.businessName}
         walletPublicKey={wallet?.publicKey ?? ""}

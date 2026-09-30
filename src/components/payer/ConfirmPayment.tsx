@@ -22,6 +22,8 @@ export function ConfirmPayment(props: {
   quotedRate: string;
   amountAsset: string;
   networkFeeXlm: string;
+  /** Upper estimate of the escrow deposit's Soroban fee; null when not escrowed. */
+  escrowFeeXlm?: string | null;
   quoteExpiresAt: string | null;
   merchantName: string;
   walletPublicKey: string;
@@ -36,7 +38,10 @@ export function ConfirmPayment(props: {
   // A Stellar fee is always paid in XLM. When XLM funds the payment it comes out
   // of the same balance as the amount; otherwise it is a separate XLM debit.
   const isXlm = props.asset === "XLM";
-  const requiredAsset = isXlm ? amountAsset.plus(networkFeeXlm) : amountAsset;
+  const escrowFeeXlm = props.escrowFeeXlm ? dec(props.escrowFeeXlm) : null;
+  const requiredAsset = isXlm
+    ? amountAsset.plus(networkFeeXlm).plus(escrowFeeXlm ?? 0)
+    : amountAsset;
 
   const [processing, setProcessing] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -182,6 +187,7 @@ export function ConfirmPayment(props: {
           quotedRate={dec(props.quotedRate)}
           amountAsset={amountAsset}
           networkFeeXlm={networkFeeXlm}
+          escrowFeeXlm={escrowFeeXlm}
         />
         <WalletSourceRow
           publicKey={props.walletPublicKey}

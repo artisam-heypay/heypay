@@ -22,6 +22,7 @@ const escrow = vi.hoisted(() => ({
   release: vi.fn(),
   refund: vi.fn(),
   getJob: vi.fn(),
+  getFeeCharged: vi.fn(),
 }));
 vi.mock("@/server/stellar/escrow", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/server/stellar/escrow")>()),
@@ -435,6 +436,7 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
   beforeEach(() => {
     process.env.ESCROW_ENABLED = "true";
     for (const fn of Object.values(escrow)) fn.mockReset();
+    escrow.getFeeCharged.mockResolvedValue(null);
   });
 
   const held = (from: string, status = "Held") => ({
@@ -468,6 +470,46 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.cachedXlmBalance.toFixed(7)).toBe("91.6666566");
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+  });
+
+  it("debits the deposit's real Soroban fee from the payer's XLM, once", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-FEE" });
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-FEE" });
+    escrow.getFeeCharged.mockResolvedValue(dec("0.1060597"));
+    mockHappyRail();
+
+    const { wallet, payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+    // A rerun after settling must not debit the fee a second time.
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    expect(final.status).toBe("SETTLED");
+    expect(escrow.getFeeCharged).toHaveBeenCalledWith("DEPOSITHASH-FEE");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    // 100 - 8.3333434 (amount + base fee) - 0.1060597 (Soroban fee)
+    expect(w.cachedXlmBalance.toFixed(7)).toBe("91.5605969");
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+    const fees = await db.walletTransaction.findMany({
+      where: { paymentId: payment.id, memo: { endsWith: "escrow network fee" } },
+    });
+    expect(fees).toHaveLength(1);
+    expect(fees[0]!.amount.toFixed(7)).toBe("-0.1060597");
+    expect(fees[0]!.stellarTxHash).toBeNull();
+  });
+
+  it("still settles when the deposit's fee cannot be read", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-NOFEE" });
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-NOFEE" });
+    escrow.getFeeCharged.mockRejectedValue(new Error("rpc down"));
+    mockHappyRail();
+
+    const { wallet, payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    // The crypto is in the escrow, so the payment must not fail over the fee.
+    expect(final.status).toBe("SETTLED");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.cachedXlmBalance.toFixed(7)).toBe("91.6666566");
   });
 
   it("keeps USDC on the direct treasury path (escrow is XLM only in D1)", async () => {

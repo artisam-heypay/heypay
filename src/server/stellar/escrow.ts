@@ -72,6 +72,12 @@ export interface EscrowService {
   refund(jobId: Buffer): Promise<{ txHash: string }>;
   /** The job as stored on-chain, or null if it was never deposited. */
   getJob(jobId: Buffer): Promise<EscrowJob | null>;
+  /**
+   * The XLM fee a successful escrow transaction actually charged its source
+   * (Soroban resource fee included, after the refund of unused resources), or
+   * null when the RPC no longer has the transaction or it did not succeed.
+   */
+  getFeeCharged(txHash: string): Promise<Decimal | null>;
 }
 
 // Matches the wallet's transaction lifetime; also bounds how long we poll
@@ -230,6 +236,12 @@ export function createEscrowService(
         deadlineLedger: job.deadline_ledger,
         status: job.status.tag,
       };
+    },
+
+    async getFeeCharged(txHash) {
+      const res = await server().getTransaction(txHash);
+      if (res.status !== rpc.Api.GetTransactionStatus.SUCCESS) return null;
+      return fromStroops(BigInt(res.resultXdr.feeCharged().toString()));
     },
   };
 }
