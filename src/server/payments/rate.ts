@@ -8,8 +8,12 @@ import { rail } from "@/server/rails";
 // Any amount prices the pair; the rate is per unit.
 const RATE_PROBE_PHP = dec("100");
 
-/** How long a persisted rate is served before we ask the rail again. */
-const RATE_TTL_MS = Number(process.env.RATE_SNAPSHOT_TTL_MS ?? 300_000);
+/**
+ * How long a persisted rate is served before we ask the rail again. Kept in step
+ * with the dashboard's 15s poll so balances follow the market; the snapshot is
+ * shared across users, so the rail still sees at most one probe per window.
+ */
+const RATE_TTL_MS = Number(process.env.RATE_SNAPSHOT_TTL_MS ?? 15_000);
 
 /** Marks snapshots written by a display probe rather than by a real quote. */
 const PROBE_SUFFIX = ":probe";
