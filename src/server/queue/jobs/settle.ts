@@ -248,9 +248,11 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
     : (await escrowService.getJob(escrowJob(p))) !== null;
   // A contract call pays a Soroban resource fee that `networkFeeXlm` (the classic
   // base fee) does not cover. Read what the deposit really charged, so the
-  // payer's balance matches the chain.
-  const sorobanFee =
-    ok && p.escrowJobId && p.stellarTxHash ? await escrowFeeCharged(p, p.stellarTxHash) : null;
+  // payer's balance matches the chain. Skipped on a rerun that already debited.
+  const debited =
+    ok &&
+    (await db.walletTransaction.findFirst({ where: { paymentId: p.id, type: "PAYMENT_DEBIT" } }));
+  const sorobanFee = ok && p.escrowJobId && !debited ? await escrowFeeCharged(p) : null;
 
   if (!ok) {
     // Tx definitively failed → crypto never moved → release reservations, FAILED (no refund needed).
@@ -394,8 +396,11 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
  * to FAILED while its crypto sits in the escrow. An unread fee is reported so a
  * person can correct the payer's balance.
  */
-async function escrowFeeCharged(p: PaymentWithRels, txHash: string): Promise<Decimal | null> {
+async function escrowFeeCharged(p: PaymentWithRels): Promise<Decimal | null> {
+  const txHash = p.stellarTxHash;
   try {
+    // A deposit whose hash was lost has no transaction to read the fee from.
+    if (!txHash) throw new Error(`Escrow deposit for ${p.reference} has no saved tx hash`);
     const fee = await withRetry(() => escrowService.getFeeCharged(txHash), {
       label: "escrow.getFeeCharged",
     });
