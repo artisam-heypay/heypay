@@ -6,6 +6,7 @@ import { dec } from "@/lib/money";
 import { isIssuedAsset } from "@/lib/assets";
 import { conflict, forbidden, notFound } from "@/lib/errors";
 import { getAssetBalance, reserveAsset } from "@/server/wallet/balances";
+import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-config";
 import { withIdempotencyKey } from "./idempotency";
 import { applyTransition } from "./state-machine";
 import { enqueueSettle } from "@/server/queue/queues";
@@ -39,10 +40,13 @@ export async function confirmPayment(input: ConfirmPaymentInput): Promise<Confir
     // For XLM both legs are the same balance, so reserve them as one amount; for
     // an issued asset the fee is a separate XLM hold.
     const assetHold = isIssuedAsset(asset) ? amountAsset : amountAsset.plus(networkFeeXlm);
+    // An escrow deposit's Soroban fee must still be there when it runs. It is not
+    // reserved (its real size is debited once the deposit lands), only checked.
+    const escrowFee = escrowAppliesTo(asset) ? escrowFeeEstimateXlm() : dec("0");
 
     const updated = await db.$transaction(async (tx) => {
       const balance = await getAssetBalance(tx, wallet.id, asset);
-      if (balance.available.lessThan(assetHold))
+      if (balance.available.lessThan(assetHold.plus(escrowFee)))
         throw conflict(`insufficient available ${asset} balance`);
       await reserveAsset(tx, wallet.id, asset, assetHold);
 

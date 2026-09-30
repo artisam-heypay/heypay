@@ -270,3 +270,25 @@ describe("EscrowService.getJob", () => {
     await expect(service(server).getJob(jobId)).resolves.toBeNull();
   });
 });
+
+describe("EscrowService.getFeeCharged", () => {
+  it("returns the fee the transaction charged, in XLM", async () => {
+    const resultXdr = { feeCharged: () => xdr.Int64.fromString("1060597") };
+    const server = fakeServer({
+      getTransaction: vi.fn().mockResolvedValue({ status: "SUCCESS", resultXdr }),
+    });
+
+    const fee = await service(server).getFeeCharged(TX_HASH);
+
+    expect(fee!.toFixed(7)).toBe("0.1060597");
+    expect(server.getTransaction).toHaveBeenCalledWith(TX_HASH);
+  });
+
+  it("returns null when the RPC no longer has the transaction", async () => {
+    const server = fakeServer({
+      getTransaction: vi.fn().mockResolvedValue({ status: "NOT_FOUND" }),
+    });
+
+    expect(await service(server).getFeeCharged(TX_HASH)).toBeNull();
+  });
+});

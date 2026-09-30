@@ -4,6 +4,7 @@ import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
+import { escrowAppliesTo } from "@/server/stellar/escrow-config";
 import {
   escrowJobId,
   escrowService,
@@ -51,16 +52,6 @@ const PAYOUT_RECHECK_MS = Number(process.env.PAYOUT_RECHECK_MS ?? 30_000);
  * earlier attempt has either landed or expired by then.
  */
 const ESCROW_REFUND_RECLAIM_MS = 5 * 60_000;
-
-/**
- * ESCROW_ENABLED routes new payments' crypto leg through the Soroban escrow. D1
- * escrows XLM only (the deployed contract holds the native XLM SAC); USDC keeps
- * the direct treasury path until D2. Later steps follow `escrowJobId`, not this
- * flag, so turning it off never strands a payment already in the escrow.
- */
-function usesEscrow(p: { asset: PaymentAsset }): boolean {
-  return process.env.ESCROW_ENABLED === "true" && p.asset === "XLM";
-}
 
 /** The payment's escrow job id as the contract's `BytesN<32>`. */
 function escrowJob(p: { escrowJobId: string | null }): Buffer {
@@ -136,7 +127,9 @@ async function dispatch(p: PaymentWithRels): Promise<void> {
 
 // AUTHORIZED → STELLAR_SUBMITTED (payer's crypto → HeyPay treasury)
 async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
-  if (p.escrowJobId || usesEscrow(p)) return stepDepositEscrow(p);
+  // ESCROW_ENABLED only decides for new payments. Later steps follow `escrowJobId`,
+  // so turning it off never strands a payment already in the escrow.
+  if (p.escrowJobId || escrowAppliesTo(p.asset)) return stepDepositEscrow(p);
   const wallet = p.payer.wallet!;
   const { asset, assetAmount } = legs(p);
   // Idempotency: if a tx was already submitted, just advance.
@@ -253,6 +246,11 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
   const ok = p.stellarTxHash
     ? await withRetry(() => walletService.confirmTx(p.stellarTxHash!), { label: "confirmTx" })
     : (await escrowService.getJob(escrowJob(p))) !== null;
+  // A contract call pays a Soroban resource fee that `networkFeeXlm` (the classic
+  // base fee) does not cover. Read what the deposit really charged, so the
+  // payer's balance matches the chain.
+  const sorobanFee =
+    ok && p.escrowJobId && p.stellarTxHash ? await escrowFeeCharged(p, p.stellarTxHash) : null;
 
   if (!ok) {
     // Tx definitively failed → crypto never moved → release reservations, FAILED (no refund needed).
@@ -305,11 +303,27 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
           },
         });
       }
+      if (sorobanFee?.greaterThan(0)) {
+        // Shares the deposit's tx hash like the fee entry above, so it carries none.
+        const xlmAfter = await debitAsset(tx, wallet.id, "XLM", sorobanFee);
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: "PAYMENT_DEBIT",
+            asset: "XLM",
+            amount: sorobanFee.negated().toFixed(7),
+            balanceAfter: xlmAfter.toFixed(7),
+            paymentId: p.id,
+            memo: `${p.reference} escrow network fee`,
+          },
+        });
+      }
     }
     await applyTransition(tx, p, PaymentStatus.STELLAR_CONFIRMED, {
       asset,
       debitedAsset: assetAmount.toFixed(7),
       debitedXlmFee: xlmFee?.toFixed(7),
+      debitedEscrowFeeXlm: sorobanFee?.toFixed(7),
     });
   });
 }
@@ -372,6 +386,30 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
     },
   });
   await applyTransition(db, p, PaymentStatus.SETTLED, { netSettledPhp: netPhp.toFixed(2) });
+}
+
+/**
+ * The fee an escrow deposit charged, or null when it cannot be read. Never
+ * throws: the deposit has landed, and a failure here must not route the payment
+ * to FAILED while its crypto sits in the escrow. An unread fee is reported so a
+ * person can correct the payer's balance.
+ */
+async function escrowFeeCharged(p: PaymentWithRels, txHash: string): Promise<Decimal | null> {
+  try {
+    const fee = await withRetry(() => escrowService.getFeeCharged(txHash), {
+      label: "escrow.getFeeCharged",
+    });
+    if (fee) return fee;
+    throw new Error(`Soroban RPC has no result for escrow deposit ${txHash}`);
+  } catch (err) {
+    captureException(err, {
+      source: "settle",
+      paymentId: p.id,
+      reference: p.reference,
+      step: "escrow_fee",
+    });
+    return null;
+  }
 }
 
 /**
