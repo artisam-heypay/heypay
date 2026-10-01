@@ -2,6 +2,12 @@
 import { useEffect, useState } from "react";
 import { dec, displayAsset, displayPhp } from "@/lib/money";
 
+/**
+ * Dispatch on `window` after anything that moves the wallet balance (e.g. a
+ * faucet claim), so the balance refreshes now instead of on the next poll.
+ */
+export const WALLET_UPDATED_EVENT = "heypay:wallet-updated";
+
 export type HoldingRow = {
   asset: string;
   /** 7dp string. */
@@ -74,11 +80,13 @@ export function HoldingsLive({
     tick();
     const id = setInterval(tick, 15_000);
     window.addEventListener("focus", tick);
+    window.addEventListener(WALLET_UPDATED_EVENT, tick);
     document.addEventListener("visibilitychange", tick);
     return () => {
       controller.abort();
       clearInterval(id);
       window.removeEventListener("focus", tick);
+      window.removeEventListener(WALLET_UPDATED_EVENT, tick);
       document.removeEventListener("visibilitychange", tick);
     };
   }, [live]);
