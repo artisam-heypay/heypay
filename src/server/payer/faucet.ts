@@ -5,6 +5,7 @@
 // test funds. The XLM comes from a dedicated faucet account (FAUCET_SECRET_ENC),
 // never the treasury, and the faucet refuses to run on mainnet.
 import "server-only";
+import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { dec, type Decimal } from "@/lib/money";
 import { AppError, conflict, notFound } from "@/lib/errors";
@@ -30,13 +31,39 @@ function faucetSecret(): string | null {
   return process.env.FAUCET_SECRET_ENC?.trim() || null;
 }
 
-/** On only off mainnet, and only once a faucet account is configured. */
-export function faucetEnabled(): boolean {
-  return !isMainnet() && faucetSecret() !== null;
+// A positive XLM amount with at most 7 decimal places, the most Stellar can carry.
+const AMOUNT_PATTERN = /^\d+(\.\d{1,7})?$/;
+const amountSchema = z
+  .string()
+  .refine((value) => AMOUNT_PATTERN.test(value) && dec(value).greaterThan(0));
+
+// The bad value last reported, so a typo is reported once and not on every page load.
+let reportedAmount: string | null = null;
+
+/** The XLM sent per claim, or null when FAUCET_AMOUNT_XLM is not a usable amount. */
+function configuredAmountXlm(): Decimal | null {
+  const raw = process.env.FAUCET_AMOUNT_XLM?.trim() || DEFAULT_AMOUNT_XLM;
+  if (amountSchema.safeParse(raw).success) return dec(raw);
+  if (reportedAmount !== raw) {
+    reportedAmount = raw;
+    captureException(new Error(`FAUCET_AMOUNT_XLM is not a positive XLM amount: ${raw}`), {
+      source: "faucet.config",
+    });
+  }
+  return null;
 }
 
+/**
+ * On only off mainnet, and only once a faucet account is configured. A bad
+ * FAUCET_AMOUNT_XLM turns the faucet off rather than failing the dashboard.
+ */
+export function faucetEnabled(): boolean {
+  return !isMainnet() && faucetSecret() !== null && configuredAmountXlm() !== null;
+}
+
+/** The XLM sent per claim. Only meaningful while faucetEnabled(). */
 export function faucetAmountXlm(): Decimal {
-  return dec(process.env.FAUCET_AMOUNT_XLM?.trim() || DEFAULT_AMOUNT_XLM);
+  return configuredAmountXlm() ?? dec(DEFAULT_AMOUNT_XLM);
 }
 
 export async function getFaucetStatus(userId: string): Promise<FaucetStatus> {

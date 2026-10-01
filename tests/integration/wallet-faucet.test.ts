@@ -32,6 +32,12 @@ vi.mock("@/server/queue/jobs/deposit-poller", () => ({
   syncWalletDeposits: (id: string) => syncWalletDeposits(id),
 }));
 
+const { captureException } = vi.hoisted(() => ({ captureException: vi.fn(() => "event-id") }));
+vi.mock("@/server/observability/error-tracking", async (original) => ({
+  ...(await original<typeof import("@/server/observability/error-tracking")>()),
+  captureException,
+}));
+
 import { POST as postFaucet } from "@/app/api/wallet/faucet/route";
 import { getFaucetStatus } from "@/server/payer/faucet";
 
@@ -53,6 +59,7 @@ describe("POST /api/wallet/faucet", () => {
   });
   afterEach(() => {
     delete process.env.FAUCET_SECRET_ENC;
+    delete process.env.FAUCET_AMOUNT_XLM;
     delete process.env.STELLAR_NETWORK;
     delete process.env.STELLAR_NETWORK_PASSPHRASE;
   });
@@ -152,6 +159,18 @@ describe("POST /api/wallet/faucet", () => {
     expect((await postFaucet(req(), noParams)).status).toBe(404);
     expect(await getFaucetStatus(user.id)).toEqual({ enabled: false });
   });
+
+  it.each(["abc", "0", "-5", "1.12345678"])(
+    "is off, and reports it once, when FAUCET_AMOUNT_XLM is %s",
+    async (amount) => {
+      process.env.FAUCET_AMOUNT_XLM = amount;
+      const { user } = await signIn();
+      expect(await getFaucetStatus(user.id)).toEqual({ enabled: false });
+      expect((await postFaucet(req(), noParams)).status).toBe(404);
+      expect(fundXlm).not.toHaveBeenCalled();
+      expect(captureException).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("requires a signed-in payer", async () => {
     sessionUser.current = null;
