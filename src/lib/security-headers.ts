@@ -27,14 +27,18 @@ export function buildCsp(): string {
   ].join("; ");
 }
 
-export function applySecurityHeaders(res: { headers: Headers }, pathname: string): void {
+export function applySecurityHeaders(res: { headers: Headers }): void {
   res.headers.set("Content-Security-Policy", buildCsp());
   res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("X-Frame-Options", "DENY");
 
-  // Camera is required only by the payer QR scanner; deny it everywhere else.
-  const camera = pathname === "/payer/scan" ? "camera=(self)" : "camera=()";
-  res.headers.set("Permissions-Policy", `${camera}, microphone=(), geolocation=()`);
+  // Only the payer QR scanner uses the camera, but this header cannot be scoped to
+  // its route: a policy binds to the document, and reaching /payer/scan through a
+  // client-side link keeps the document (and its camera=()) of the page you came
+  // from, so the scanner failed unless /payer/scan was loaded directly. 'self'
+  // still keeps the camera away from third-party frames, and the browser still
+  // asks the user before any page can open it.
+  res.headers.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=()");
 }
