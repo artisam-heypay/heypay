@@ -1,9 +1,10 @@
 import { Scanner } from "@/components/payer/Scanner";
 import { TestShopQrCard } from "@/components/payer/TestShopQrCard";
+import { isMainnet } from "@/server/stellar/horizon";
 
 export default function PayerScanPage() {
   // The test shop only exists for testers; never offer it against real money.
-  const showTestShop = process.env.STELLAR_NETWORK !== "mainnet";
+  const showTestShop = !isMainnet();
 
   return (
     <div

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { Networks } from "@stellar/stellar-sdk";
 import { resetDb, makePayer } from "../helpers/db";
 import { db } from "@/server/db";
 import { encryptSecret } from "@/server/crypto/envelope";
@@ -53,6 +54,7 @@ describe("POST /api/wallet/faucet", () => {
   afterEach(() => {
     delete process.env.FAUCET_SECRET_ENC;
     delete process.env.STELLAR_NETWORK;
+    delete process.env.STELLAR_NETWORK_PASSPHRASE;
   });
 
   async function signIn() {
@@ -142,6 +144,13 @@ describe("POST /api/wallet/faucet", () => {
     await signIn();
     expect((await postFaucet(req(), noParams)).status).toBe(404);
     expect(fundXlm).not.toHaveBeenCalled();
+  });
+
+  it("is off on mainnet when only the passphrase says so", async () => {
+    process.env.STELLAR_NETWORK_PASSPHRASE = Networks.PUBLIC;
+    const { user } = await signIn();
+    expect((await postFaucet(req(), noParams)).status).toBe(404);
+    expect(await getFaucetStatus(user.id)).toEqual({ enabled: false });
   });
 
   it("requires a signed-in payer", async () => {

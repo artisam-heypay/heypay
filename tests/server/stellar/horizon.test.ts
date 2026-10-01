@@ -1,6 +1,11 @@
 import { Horizon, Networks } from "@stellar/stellar-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
-import { __resetHorizonForTests, getHorizon, getNetworkPassphrase } from "@/server/stellar/horizon";
+import {
+  __resetHorizonForTests,
+  getHorizon,
+  getNetworkPassphrase,
+  isMainnet,
+} from "@/server/stellar/horizon";
 
 beforeEach(() => {
   process.env.STELLAR_HORIZON_URL = "https://horizon-testnet.stellar.org";
@@ -29,6 +34,15 @@ describe("horizon singleton", () => {
   it("honours an explicit passphrase override", () => {
     process.env.STELLAR_NETWORK_PASSPHRASE = "Custom Net ; 2026";
     expect(getNetworkPassphrase()).toBe("Custom Net ; 2026");
+  });
+
+  it("reports mainnet from the passphrase, an explicit override included", () => {
+    expect(isMainnet()).toBe(false);
+    process.env.STELLAR_NETWORK = "mainnet";
+    expect(isMainnet()).toBe(true);
+    process.env.STELLAR_NETWORK = "testnet";
+    process.env.STELLAR_NETWORK_PASSPHRASE = Networks.PUBLIC;
+    expect(isMainnet()).toBe(true);
   });
 
   it("throws when STELLAR_HORIZON_URL is missing", () => {
