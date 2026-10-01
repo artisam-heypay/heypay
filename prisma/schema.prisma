@@ -45,6 +45,12 @@ enum WalletTxType {
   ADJUSTMENT
 }
 
+enum FaucetClaimStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum MerchantStatus {
   DRAFT
   PENDING_REVIEW
@@ -66,6 +72,7 @@ model User {
   sessions     Session[]
   paymentsMade Payment[] @relation("PayerPayments")
   auditLogs    AuditLog[]
+  faucetClaim  FaucetClaim?
 }
 
 model Session {
@@ -255,4 +262,18 @@ model IdempotencyKey {
   response   Json?
   createdAt  DateTime @default(now())
   expiresAt  DateTime
+}
+
+// Testnet faucet: each payer can claim a little test XLM once, so anyone can try
+// HeyPay without hunting for test funds. Never enabled on mainnet. A FAILED claim
+// may be retried; PENDING/SENT block another one (userId is unique).
+model FaucetClaim {
+  id        String            @id @default(cuid())
+  userId    String            @unique
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountXlm Decimal           @db.Decimal(20, 7)
+  status    FaucetClaimStatus @default(PENDING)
+  txHash    String?           @unique
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
 }

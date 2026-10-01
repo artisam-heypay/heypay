@@ -100,6 +100,56 @@ describe("WalletService.sendXlm", () => {
   });
 });
 
+describe("WalletService.fundXlm", () => {
+  const DEST = "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37";
+
+  async function fundWith(destinationExists: boolean) {
+    const seed = createWalletService(fakeServer(), PASSPHRASE);
+    const { publicKey, encryptedSecret } = seed.generate();
+    const submit = vi.fn().mockResolvedValue({ hash: "fundhash" });
+    const loadAccount = vi.fn(async (id: string) => {
+      if (id === DEST && !destinationExists) {
+        throw { name: "NotFoundError", response: { status: 404 } };
+      }
+      return {
+        accountId: () => publicKey,
+        sequenceNumber: () => "1",
+        incrementSequenceNumber: () => undefined,
+      };
+    });
+    const svc = createWalletService(
+      fakeServer({ loadAccount, submitTransaction: submit }),
+      PASSPHRASE,
+    );
+    const res = await svc.fundXlm({
+      encryptedSecret,
+      destination: DEST,
+      amountXlm: new Decimal("20"),
+      memo: "HeyPay test XLM",
+    });
+    const tx = submit.mock.calls[0]![0]! as {
+      memo: { value: { toString: () => string } };
+      operations: { type: string; amount?: string; startingBalance?: string }[];
+    };
+    return { res, tx };
+  }
+
+  it("creates the destination account when it does not exist yet", async () => {
+    const { res, tx } = await fundWith(false);
+    expect(res).toEqual({ txHash: "fundhash", created: true });
+    expect(tx.operations[0]!.type).toBe("createAccount");
+    expect(tx.operations[0]!.startingBalance).toBe("20.0000000");
+    expect(tx.memo.value.toString()).toBe("HeyPay test XLM");
+  });
+
+  it("sends a plain payment to an existing account", async () => {
+    const { res, tx } = await fundWith(true);
+    expect(res).toEqual({ txHash: "fundhash", created: false });
+    expect(tx.operations[0]!.type).toBe("payment");
+    expect(tx.operations[0]!.amount).toBe("20.0000000");
+  });
+});
+
 describe("WalletService submit-error translation", () => {
   /** A Horizon 400 as the SDK's axios surfaces it: a useless message, real codes. */
   const horizon400 = (operations: string[]) =>

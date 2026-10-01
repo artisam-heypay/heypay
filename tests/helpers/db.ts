@@ -17,6 +17,7 @@ export async function resetDb(): Promise<void> {
   await db.merchant.deleteMany();
   await db.walletBalance.deleteMany();
   await db.custodialWallet.deleteMany();
+  await db.faucetClaim.deleteMany();
   await db.session.deleteMany();
   await db.user.deleteMany();
 }
