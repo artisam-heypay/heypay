@@ -13,14 +13,14 @@ describe("buildCsp", () => {
 });
 
 describe("applySecurityHeaders", () => {
-  const headersOf = (pathname: string) => {
+  const headersOf = () => {
     const res = { headers: new Headers() };
-    applySecurityHeaders(res, pathname);
+    applySecurityHeaders(res);
     return res.headers;
   };
 
   it("sets the full hardening header set", () => {
-    const h = headersOf("/payer/dashboard");
+    const h = headersOf();
     expect(h.get("Strict-Transport-Security")).toContain("max-age=");
     expect(h.get("X-Content-Type-Options")).toBe("nosniff");
     expect(h.get("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
@@ -28,8 +28,10 @@ describe("applySecurityHeaders", () => {
     expect(h.get("Content-Security-Policy")).toContain("default-src 'self'");
   });
 
-  it("permits camera ONLY on the scan route", () => {
-    expect(headersOf("/payer/scan").get("Permissions-Policy")).toContain("camera=(self)");
-    expect(headersOf("/payer/dashboard").get("Permissions-Policy")).toContain("camera=()");
+  it("lets same-origin pages use the camera (a client-side link to the scanner keeps the old document's policy)", () => {
+    const policy = headersOf().get("Permissions-Policy");
+    expect(policy).toContain("camera=(self)");
+    expect(policy).toContain("microphone=()");
+    expect(policy).toContain("geolocation=()");
   });
 });
