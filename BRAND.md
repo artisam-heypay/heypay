@@ -18,7 +18,7 @@ and modern, with a "behind the scenes the blockchain is doing the work" feeling.
   ("Confirm Payment", "Pay From", "Scan QRPH"). Technical detail (XLM amounts,
   rates, network fees) is shown in a monospaced data style, visually secondary.
 - **Feel:** Material 3 tonal surfaces, soft cyan-tinted shadows, generous
-  rounding, subtle motion (pulse, scan, spin) reserved for *processing* states.
+  rounding, subtle motion (pulse, scan, spin) reserved for _processing_ states.
 
 ---
 
@@ -29,18 +29,19 @@ The palette is a Material-3-style tonal system built around **Cyan #00bcd4**
 near-white `#fcf9f8`. Encode all of these as CSS variables.
 
 ### Core brand
-| Token | Hex | Usage |
-|---|---|---|
-| `primary` | `#00bcd4` | Primary actions, brand text, active nav, links, balance figures |
-| `on-primary` | `#ffffff` | Text/icons on primary fills |
-| `primary-container` | `#b2ebf2` | Tonal chips, active nav background, info cards |
-| `on-primary-container` | `#002024` | Text on primary-container |
-| `secondary` *(a.k.a. accent / orange)* | `#ff9800` | "LIVE"/"PENDING" status, success-paid state, secondary CTAs, highlights |
-| `on-secondary` | `#ffffff` | Text/icons on orange fills |
-| `secondary-container` | `#ffe0b2` | Soft orange backgrounds |
-| `on-secondary-container` | `#e65100` | Text on secondary-container |
-| `tertiary` | `#0097a7` | Deep cyan support accent (sparingly) |
-| `on-tertiary` | `#ffffff` | Text on tertiary |
+
+| Token                                  | Hex       | Usage                                                                   |
+| -------------------------------------- | --------- | ----------------------------------------------------------------------- |
+| `primary`                              | `#00bcd4` | Primary actions, brand text, active nav, links, balance figures         |
+| `on-primary`                           | `#ffffff` | Text/icons on primary fills                                             |
+| `primary-container`                    | `#b2ebf2` | Tonal chips, active nav background, info cards                          |
+| `on-primary-container`                 | `#002024` | Text on primary-container                                               |
+| `secondary` _(a.k.a. accent / orange)_ | `#ff9800` | "LIVE"/"PENDING" status, success-paid state, secondary CTAs, highlights |
+| `on-secondary`                         | `#ffffff` | Text/icons on orange fills                                              |
+| `secondary-container`                  | `#ffe0b2` | Soft orange backgrounds                                                 |
+| `on-secondary-container`               | `#e65100` | Text on secondary-container                                             |
+| `tertiary`                             | `#0097a7` | Deep cyan support accent (sparingly)                                    |
+| `on-tertiary`                          | `#ffffff` | Text on tertiary                                                        |
 
 > **Naming note:** the mocks are inconsistent — orange appears as `secondary` in
 > the payer-confirm screen and as `tertiary` in the dashboards. **Standardize on
@@ -48,31 +49,34 @@ near-white `#fcf9f8`. Encode all of these as CSS variables.
 > `accent` mapped to the same value to ease migration of any copied markup.
 
 ### Surfaces & neutrals
-| Token | Hex | Usage |
-|---|---|---|
-| `background` | `#fcf9f8` | App background |
-| `on-background` | `#1d1b1a` | Body text on background |
-| `surface` | `#fcf9f8` | Default surface |
-| `on-surface` | `#1d1b1a` | Text on surface |
-| `surface-variant` | `#eee8e5` | Subtle filled areas |
-| `on-surface-variant` | `#4e4643` | Secondary/muted text, captions |
-| `surface-container-lowest` | `#ffffff` | Cards (white) |
-| `surface-container-low` | `#f6f3f2` | Inset panels, table header rows |
-| `surface-container` | `#f0edea` | Logo tiles, neutral fills |
-| `surface-container-high` | `#ebe7e4` | Hover fills, avatars |
+
+| Token                       | Hex       | Usage                                      |
+| --------------------------- | --------- | ------------------------------------------ |
+| `background`                | `#fcf9f8` | App background                             |
+| `on-background`             | `#1d1b1a` | Body text on background                    |
+| `surface`                   | `#fcf9f8` | Default surface                            |
+| `on-surface`                | `#1d1b1a` | Text on surface                            |
+| `surface-variant`           | `#eee8e5` | Subtle filled areas                        |
+| `on-surface-variant`        | `#4e4643` | Secondary/muted text, captions             |
+| `surface-container-lowest`  | `#ffffff` | Cards (white)                              |
+| `surface-container-low`     | `#f6f3f2` | Inset panels, table header rows            |
+| `surface-container`         | `#f0edea` | Logo tiles, neutral fills                  |
+| `surface-container-high`    | `#ebe7e4` | Hover fills, avatars                       |
 | `surface-container-highest` | `#e5e1de` | Strongest neutral fill (wallet source row) |
-| `outline` | `#807673` | Icon strokes, muted labels |
-| `outline-variant` | `#d2c5c1` | Borders, dividers |
+| `outline`                   | `#807673` | Icon strokes, muted labels                 |
+| `outline-variant`           | `#d2c5c1` | Borders, dividers                          |
 
 ### Status
-| Token | Hex | Usage |
-|---|---|---|
-| `error` | `#ba1a1a` | Errors, destructive (logout text) |
-| `on-error` | `#ffffff` | Text on error |
-| `success` | use `primary` `#00bcd4` | "Settled" badge |
+
+| Token                  | Hex                       | Usage                             |
+| ---------------------- | ------------------------- | --------------------------------- |
+| `error`                | `#ba1a1a`                 | Errors, destructive (logout text) |
+| `on-error`             | `#ffffff`                 | Text on error                     |
+| `success`              | use `primary` `#00bcd4`   | "Settled" badge                   |
 | `warning`/`processing` | use `secondary` `#ff9800` | "Pending Trade", "LIVE", spinners |
 
 ### Semantic mapping (state → token)
+
 - **Settled / confirmed / verified** → `primary` (cyan dot + `primary/10` chip).
 - **Pending / live / processing** → `secondary` (orange dot, `pulse`/`status-pulse`).
 - **Success terminal screen** → headline flips from `primary` to `secondary`.
@@ -90,19 +94,21 @@ system below — it matches both dashboards.)
 - Load via Google Fonts (or self-host with `next/font` for performance/privacy).
 
 ### Type scale (encode as fontSize tokens)
-| Token | Size / line-height | Tracking | Weight | Family | Usage |
-|---|---|---|---|---|---|
-| `display-lg` | 48px / 56px | -0.02em | 700 | Lexend | Total balance, big amounts |
-| `headline-lg` | 32px / 40px | — | 600 | Lexend | Page titles (desktop) |
-| `headline-lg-mobile` | 24px / 32px | — | 600 | Lexend | Page titles (mobile) |
-| `headline-md` | 24px / 32px | — | 500 | Lexend | Section / card titles, merchant name |
-| `body-lg` | 18px / 28px | — | 400 | Inter | Emphasis body, secondary buttons |
-| `body-md` | 16px / 24px | — | 400 | Inter | Default body |
-| `body-sm` | 14px / 20px | — | 400 | Inter | Captions, helper text |
-| `label-md` | 12px / 16px | +0.05em | 600 | Lexend | UPPERCASE labels, badges, eyebrows |
-| `mono-data` | 14px / 20px | -0.01em | 500 | Inter | XLM/PHP amounts, rates, addresses, tx IDs |
+
+| Token                | Size / line-height | Tracking | Weight | Family | Usage                                     |
+| -------------------- | ------------------ | -------- | ------ | ------ | ----------------------------------------- |
+| `display-lg`         | 48px / 56px        | -0.02em  | 700    | Lexend | Total balance, big amounts                |
+| `headline-lg`        | 32px / 40px        | —        | 600    | Lexend | Page titles (desktop)                     |
+| `headline-lg-mobile` | 24px / 32px        | —        | 600    | Lexend | Page titles (mobile)                      |
+| `headline-md`        | 24px / 32px        | —        | 500    | Lexend | Section / card titles, merchant name      |
+| `body-lg`            | 18px / 28px        | —        | 400    | Inter  | Emphasis body, secondary buttons          |
+| `body-md`            | 16px / 24px        | —        | 400    | Inter  | Default body                              |
+| `body-sm`            | 14px / 20px        | —        | 400    | Inter  | Captions, helper text                     |
+| `label-md`           | 12px / 16px        | +0.05em  | 600    | Lexend | UPPERCASE labels, badges, eyebrows        |
+| `mono-data`          | 14px / 20px        | -0.01em  | 500    | Inter  | XLM/PHP amounts, rates, addresses, tx IDs |
 
 **Rules**
+
 - All on-chain/financial numerics (XLM, PHP, rates, fees, wallet addresses, tx
   IDs) use `mono-data`. Truncate long Stellar addresses/tx hashes with ellipsis.
 - `label-md` is always UPPERCASE with wide tracking for eyebrows and badges.
@@ -114,16 +120,17 @@ system below — it matches both dashboards.)
 
 Encode this spacing scale (named, not raw px):
 
-| Token | Value |
-|---|---|
-| `unit` | 4px |
-| `stack-sm` | 8px |
-| `gutter` / `stack-md` | 16px |
-| `stack-lg` | 24px |
-| `margin-mobile` | 20px |
-| `margin-desktop` | 40px |
+| Token                 | Value |
+| --------------------- | ----- |
+| `unit`                | 4px   |
+| `stack-sm`            | 8px   |
+| `gutter` / `stack-md` | 16px  |
+| `stack-lg`            | 24px  |
+| `margin-mobile`       | 20px  |
+| `margin-desktop`      | 40px  |
 
 **Layout**
+
 - App max width for centered content: `max-w-7xl` (1280px) with horizontal
   padding `margin-mobile` (mobile) / `margin-desktop` (desktop).
 - Payer single-column flows (confirm/pay) center in `max-w-lg`.
@@ -138,31 +145,34 @@ Encode this spacing scale (named, not raw px):
 ## 5. Radius, elevation & effects
 
 ### Border radius
-| Token | Value | Usage |
-|---|---|---|
-| `DEFAULT` | 8px | Inputs, small chips |
-| `lg` | 8px | Cards, buttons, panels |
-| `xl` | 16px | Hero cards, tonal cards, QR frames |
-| `full` | 9999px | Pills, primary CTAs, avatars, status dots |
+
+| Token     | Value  | Usage                                     |
+| --------- | ------ | ----------------------------------------- |
+| `DEFAULT` | 8px    | Inputs, small chips                       |
+| `lg`      | 8px    | Cards, buttons, panels                    |
+| `xl`      | 16px   | Hero cards, tonal cards, QR frames        |
+| `full`    | 9999px | Pills, primary CTAs, avatars, status dots |
 
 > Note: primary action buttons in the payer flow are **fully rounded pills**
 > (`rounded-full`), while dashboard cards/buttons use `rounded-lg`. Keep this
 > distinction: consumer payment actions = pill; data/admin surfaces = `lg`.
 
 ### Elevation (cyan-tinted shadows)
+
 - **Tonal/bento card:** `background:#fff; box-shadow: 0 8px 24px rgba(0,188,212,0.08)`.
   Hover (dashboard cards): lift `translateY(-2px)` + `0 8px 24px rgba(0,188,212,0.12)`.
 - **Primary CTA:** `shadow-lg shadow-primary/20`.
 - **Glass header / nav:** `background: rgba(252,249,248,0.7); backdrop-filter: blur(20px)`.
 
 ### Motion (reserved for live/processing states only)
-| Name | Spec | Where |
-|---|---|---|
-| `pulse-ring` | scale 0.95↔1.05, opacity 0.5↔0.3, 2s ease-in-out infinite | Processing overlay ring |
-| `status-pulse` / `pulse-slow` | opacity 1↔0.5, 2s cubic-bezier(.4,0,.6,1) infinite | "Pending Trade", "LIVE" dots |
-| `pulse-pending` | same family | Payer "PENDING" badge |
-| spinner | `animate-spin` on a `border-t-4 border-primary` ring | Trade processing |
-| `scan` | top 0%↔100%, 2s linear infinite | QR upload scanner line |
+
+| Name                          | Spec                                                      | Where                        |
+| ----------------------------- | --------------------------------------------------------- | ---------------------------- |
+| `pulse-ring`                  | scale 0.95↔1.05, opacity 0.5↔0.3, 2s ease-in-out infinite | Processing overlay ring      |
+| `status-pulse` / `pulse-slow` | opacity 1↔0.5, 2s cubic-bezier(.4,0,.6,1) infinite        | "Pending Trade", "LIVE" dots |
+| `pulse-pending`               | same family                                               | Payer "PENDING" badge        |
+| spinner                       | `animate-spin` on a `border-t-4 border-primary` ring      | Trade processing             |
+| `scan`                        | top 0%↔100%, 2s linear infinite                           | QR upload scanner line       |
 
 Respect `prefers-reduced-motion`: disable the above animations when set.
 
@@ -171,7 +181,7 @@ Respect `prefers-reduced-motion`: disable the above animations when set.
 ## 6. Iconography
 
 - **Material Symbols Outlined**, default `font-variation-settings: 'FILL' 0,
-  'wght' 400, 'GRAD' 0, 'opsz' 24`.
+'wght' 400, 'GRAD' 0, 'opsz' 24`.
 - Use `FILL 1` for active/selected nav items and brand glyphs
   (`account_balance_wallet`, `star`, `verified`, `payments`).
 - Recurring glyphs: `qr_code_scanner`, `qr_code_2`, `account_balance_wallet`,
@@ -195,19 +205,21 @@ Respect `prefers-reduced-motion`: disable the above animations when set.
 footer (logout text in `error`).
 
 **Cards:**
-- *Tonal/bento card*: white, `rounded-xl`/`rounded-lg`, cyan-tinted shadow.
-- *Hero balance card*: white card with blurred `primary/5` decorative blob,
+
+- _Tonal/bento card_: white, `rounded-xl`/`rounded-lg`, cyan-tinted shadow.
+- _Hero balance card_: white card with blurred `primary/5` decorative blob,
   `display-lg` figure in `primary`, PHP equivalent in `headline-md`
   `on-surface-variant`, paired pill CTAs (filled "Prefund", outlined "Send").
-- *Scan QRPH CTA*: solid `primary` card, white text, inner orange (`secondary`)
+- _Scan QRPH CTA_: solid `primary` card, white text, inner orange (`secondary`)
   "Start Payment" button.
 
 **Buttons:**
-- *Primary pill* (payer): `bg-primary text-on-primary rounded-full py-4`,
+
+- _Primary pill_ (payer): `bg-primary text-on-primary rounded-full py-4`,
   `headline-md` bold, `shadow-lg shadow-primary/20`, hover `brightness-110`,
   active `scale-95`, often with trailing `arrow_forward`.
-- *Secondary/outline pill*: `border-2 border-primary text-primary rounded-full`.
-- *Onboarding "Continue/Next"*: `bg-secondary text-on-secondary rounded-full`,
+- _Secondary/outline pill_: `border-2 border-primary text-primary rounded-full`.
+- _Onboarding "Continue/Next"_: `bg-secondary text-on-secondary rounded-full`,
   hover lift `-translate-y-[2px]`.
 
 **Status badges:** pill chips `px-3 py-1 rounded-full` with a leading
@@ -270,7 +282,7 @@ Tailwind v4 is CSS-first (no `tailwind.config.js` required). Put this in
   --color-on-secondary: #ffffff;
   --color-secondary-container: #ffe0b2;
   --color-on-secondary-container: #e65100;
-  --color-accent: #ff9800;            /* alias of secondary */
+  --color-accent: #ff9800; /* alias of secondary */
   --color-tertiary: #0097a7;
   --color-on-tertiary: #ffffff;
 
@@ -301,21 +313,33 @@ Tailwind v4 is CSS-first (no `tailwind.config.js` required). Put this in
   --font-mono: "Inter", ui-monospace, monospace;
 
   /* ---- Type scale (text-<name>) ---- */
-  --text-display-lg: 48px;        --text-display-lg--line-height: 56px;
-  --text-display-lg--letter-spacing: -0.02em; --text-display-lg--font-weight: 700;
-  --text-headline-lg: 32px;       --text-headline-lg--line-height: 40px;
+  --text-display-lg: 48px;
+  --text-display-lg--line-height: 56px;
+  --text-display-lg--letter-spacing: -0.02em;
+  --text-display-lg--font-weight: 700;
+  --text-headline-lg: 32px;
+  --text-headline-lg--line-height: 40px;
   --text-headline-lg--font-weight: 600;
-  --text-headline-lg-mobile: 24px;--text-headline-lg-mobile--line-height: 32px;
+  --text-headline-lg-mobile: 24px;
+  --text-headline-lg-mobile--line-height: 32px;
   --text-headline-lg-mobile--font-weight: 600;
-  --text-headline-md: 24px;       --text-headline-md--line-height: 32px;
+  --text-headline-md: 24px;
+  --text-headline-md--line-height: 32px;
   --text-headline-md--font-weight: 500;
-  --text-body-lg: 18px;           --text-body-lg--line-height: 28px;
-  --text-body-md: 16px;           --text-body-md--line-height: 24px;
-  --text-body-sm: 14px;           --text-body-sm--line-height: 20px;
-  --text-label-md: 12px;          --text-label-md--line-height: 16px;
-  --text-label-md--letter-spacing: 0.05em; --text-label-md--font-weight: 600;
-  --text-mono-data: 14px;         --text-mono-data--line-height: 20px;
-  --text-mono-data--letter-spacing: -0.01em; --text-mono-data--font-weight: 500;
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 28px;
+  --text-body-md: 16px;
+  --text-body-md--line-height: 24px;
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 20px;
+  --text-label-md: 12px;
+  --text-label-md--line-height: 16px;
+  --text-label-md--letter-spacing: 0.05em;
+  --text-label-md--font-weight: 600;
+  --text-mono-data: 14px;
+  --text-mono-data--line-height: 20px;
+  --text-mono-data--letter-spacing: -0.01em;
+  --text-mono-data--font-weight: 500;
 
   /* ---- Radius (rounded-<name>) ---- */
   --radius-DEFAULT: 0.5rem;
@@ -347,7 +371,12 @@ Tailwind v4 is CSS-first (no `tailwind.config.js` required). Put this in
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 ```
 
@@ -359,12 +388,14 @@ Tailwind v4 is CSS-first (no `tailwind.config.js` required). Put this in
 ## 10. Do / Don't
 
 **Do**
+
 - Reference tokens (`bg-primary`, `text-mono-data`, `p-stack-lg`).
 - Keep cyan for trust/confirmed, orange for live/pending/processing.
 - Use pills for consumer payment CTAs, `lg` radius for data surfaces.
 - Show XLM and PHP together; XLM primary, PHP as the human reference.
 
 **Don't**
+
 - Hard-code hex/px values or invent new greens/reds outside the tokens.
 - Use orange for small body text (fails contrast).
 - Animate anything that isn't a live/processing indicator.

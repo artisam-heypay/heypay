@@ -1,0 +1,111 @@
+# .github/workflows/ci.yml
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://heypay:heypay@localhost:5432/heypay?schema=public
+      SHADOW_DATABASE_URL: postgresql://heypay:heypay@localhost:5432/heypay_shadow?schema=public
+      E2E_DATABASE_URL: postgresql://heypay:heypay@localhost:5432/heypay_e2e?schema=public
+      REDIS_URL: redis://localhost:6379
+      E2E_REDIS_URL: redis://localhost:6379
+      E2E_PORT: "3100"
+      APP_URL: http://localhost:3100
+      PAYMENT_RAIL: mock
+      STELLAR_NETWORK: testnet
+      STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+      STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+      SESSION_SECRET: ci-session-secret-not-for-prod-0123456789abcdef
+      ENCRYPTION_MASTER_KEY: "base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
+      ENCRYPTION_KEY_VERSION: "1"
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin-ci-pass
+      S3_ENDPOINT: http://localhost:9000
+      S3_PUBLIC_URL: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: heypay-uploads
+      S3_ACCESS_KEY: heypay
+      S3_SECRET_KEY: heypay-secret
+      S3_FORCE_PATH_STYLE: "true"
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: heypay
+          POSTGRES_PASSWORD: heypay
+          POSTGRES_DB: heypay
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U heypay" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Create test databases
+        run: |
+          PGPASSWORD=heypay psql -h localhost -U heypay -d heypay -c "CREATE DATABASE heypay_shadow;" || true
+          PGPASSWORD=heypay psql -h localhost -U heypay -d heypay -c "CREATE DATABASE heypay_e2e;" || true
+          PGPASSWORD=heypay psql -h localhost -U heypay -d heypay -c "CREATE DATABASE heypay_e2e_shadow;" || true
+
+      - name: Prisma generate
+        run: pnpm prisma generate
+
+      - name: Migrate (test db)
+        run: pnpm prisma migrate deploy
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Audit (prod deps)
+        run: pnpm audit --prod
+
+      - name: Unit + integration tests
+        run: pnpm vitest run
+
+      - name: Build
+        run: pnpm build
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E (mock rail + testnet)
+        run: pnpm playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7

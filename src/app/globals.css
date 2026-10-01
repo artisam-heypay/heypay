@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+@theme {
+  /* ---- Brand ---- */
+  --color-primary: #00bcd4;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #b2ebf2;
+  --color-on-primary-container: #002024;
+  --color-secondary: #ff9800;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #ffe0b2;
+  --color-on-secondary-container: #e65100;
+  --color-accent: #ff9800; /* alias of secondary */
+  --color-tertiary: #0097a7;
+  --color-on-tertiary: #ffffff;
+
+  /* ---- Surfaces ---- */
+  --color-background: #fcf9f8;
+  --color-on-background: #1d1b1a;
+  --color-surface: #fcf9f8;
+  --color-on-surface: #1d1b1a;
+  --color-surface-variant: #eee8e5;
+  --color-on-surface-variant: #4e4643;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f6f3f2;
+  --color-surface-container: #f0edea;
+  --color-surface-container-high: #ebe7e4;
+  --color-surface-container-highest: #e5e1de;
+  --color-outline: #807673;
+  --color-outline-variant: #d2c5c1;
+
+  /* ---- Status ---- */
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+
+  /* ---- Fonts ---- */
+  --font-display: "Lexend", system-ui, sans-serif;
+  --font-headline: "Lexend", system-ui, sans-serif;
+  --font-label: "Lexend", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "Inter", ui-monospace, monospace;
+
+  /* ---- Type scale (text-<name>) ---- */
+  --text-display-lg: 48px;
+  --text-display-lg--line-height: 56px;
+  --text-display-lg--letter-spacing: -0.02em;
+  --text-display-lg--font-weight: 700;
+  --text-headline-lg: 32px;
+  --text-headline-lg--line-height: 40px;
+  --text-headline-lg--font-weight: 600;
+  --text-headline-lg-mobile: 24px;
+  --text-headline-lg-mobile--line-height: 32px;
+  --text-headline-lg-mobile--font-weight: 600;
+  --text-headline-md: 24px;
+  --text-headline-md--line-height: 32px;
+  --text-headline-md--font-weight: 500;
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 28px;
+  --text-body-md: 16px;
+  --text-body-md--line-height: 24px;
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 20px;
+  --text-label-md: 12px;
+  --text-label-md--line-height: 16px;
+  --text-label-md--letter-spacing: 0.05em;
+  --text-label-md--font-weight: 600;
+  --text-mono-data: 14px;
+  --text-mono-data--line-height: 20px;
+  --text-mono-data--letter-spacing: -0.01em;
+  --text-mono-data--font-weight: 500;
+
+  /* ---- Radius (rounded-<name>) ---- */
+  --radius-DEFAULT: 0.5rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* ---- Spacing (p-/m-/gap- <name>) ---- */
+  --spacing-unit: 4px;
+  --spacing-stack-sm: 8px;
+  --spacing-stack-md: 16px;
+  --spacing-gutter: 16px;
+  --spacing-stack-lg: 24px;
+  --spacing-margin-mobile: 20px;
+  --spacing-margin-desktop: 40px;
+}
+
+/* Base surface + icon defaults */
+@layer base {
+  body {
+    background: var(--color-background);
+    color: var(--color-on-background);
+    font-family: var(--font-body);
+  }
+  .material-symbols-outlined {
+    font-variation-settings:
+      "FILL" 0,
+      "wght" 400,
+      "GRAD" 0,
+      "opsz" 24;
+  }
+  .icon-filled {
+    font-variation-settings:
+      "FILL" 1,
+      "wght" 400,
+      "GRAD" 0,
+      "opsz" 24;
+  }
+}
+
+/* Reusable surface utilities */
+@layer components {
+  .glass {
+    background: color-mix(in srgb, var(--color-background) 70%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .tonal-card {
+    background: var(--color-surface-container-lowest);
+    box-shadow: 0 8px 24px rgba(0, 188, 212, 0.08);
+  }
+}
+
+/* Motion utilities (BRAND §5). All decorative; disabled under reduced-motion below. */
+@layer utilities {
+  @keyframes status-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+  .animate-status-pulse {
+    animation: status-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes scan {
+    0% {
+      top: 0%;
+    }
+    100% {
+      top: 100%;
+    }
+  }
+  .animate-scan {
+    animation: scan 2s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(1.6);
+      opacity: 0;
+    }
+  }
+  .animate-pulse-ring {
+    animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,21 @@
+# .dockerignore
+node_modules
+.next
+.git
+.github
+.env
+.env.*
+!.env.example
+npm-debug.log*
+pnpm-debug.log*
+coverage
+playwright-report
+test-results
+tests
+playwright.config.ts
+Dockerfile
+.dockerignore
+docker-compose*.yml
+*.md
+.vscode
+.idea
