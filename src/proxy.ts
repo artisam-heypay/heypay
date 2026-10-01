@@ -23,7 +23,7 @@ export async function proxy(req: NextRequest): Promise<NextResponse> {
   }
 
   // Security headers on EVERY response (allow/redirect/forbidden alike).
-  applySecurityHeaders(res, pathname);
+  applySecurityHeaders(res);
   return res;
 }
 
