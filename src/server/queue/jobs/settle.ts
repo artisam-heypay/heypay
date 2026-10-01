@@ -2,7 +2,7 @@
 import "server-only";
 import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
-import { rail } from "@/server/rails";
+import { fastSettleEnabled, rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
 import { escrowAppliesTo } from "@/server/stellar/escrow-config";
 import {
@@ -46,6 +46,11 @@ function loadPayment(id: string) {
 /** How long to wait before re-checking a payout Xendit still reports as pending. */
 const PAYOUT_RECHECK_MS = Number(process.env.PAYOUT_RECHECK_MS ?? 30_000);
 
+/** How long a fast-settled payout is followed before it is reported as stuck. */
+const FAST_SETTLE_VERIFY_WINDOW_MS = 30 * 60_000;
+/** Audit action recording how a fast-settled payout really ended at Xendit. */
+const FAST_SETTLE_OUTCOME = "payment.fast_settle_outcome";
+
 /**
  * An escrow refund that started but never saved its hash may be reclaimed after
  * this long. It is longer than the escrow's transaction lifetime (180s), so the
@@ -87,7 +92,11 @@ function legs(p: {
 
 export async function processSettleJob(job: { data: { paymentId: string } }): Promise<void> {
   const payment = await loadPayment(job.data.paymentId);
-  if (isTerminal(payment.status)) return;
+  if (isTerminal(payment.status)) {
+    // A fast-settled payment is final already; only Xendit's own answer is still owed.
+    if (payment.status === PaymentStatus.SETTLED) await verifyFastSettle(payment);
+    return;
+  }
 
   try {
     await dispatch(payment);
@@ -361,6 +370,7 @@ async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
 async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
   const status = await rail.getPayoutStatus(p.payoutRef!);
   if (status.state === "PENDING") {
+    if (fastSettleEnabled()) return settleOnAccept(p, status);
     // Check again shortly. The Xendit webhook usually arrives first; this keeps a
     // payout moving where no webhook can reach us (local dev) or one is missed.
     await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
@@ -374,7 +384,19 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
   if (status.state === "FAILED") {
     throw new Error(`Payout ${p.payoutRef} failed: ${status.failureCode ?? "unknown reason"}`);
   }
-  if (p.escrowJobId && !p.escrowReleaseTxHash && !(await releaseEscrow(p))) return;
+  await markSettled(p, status);
+}
+
+/**
+ * PAYOUT_SUBMITTED → SETTLED. Returns false when the escrow release has to be
+ * retried first, leaving the payment where it was.
+ */
+async function markSettled(
+  p: PaymentWithRels,
+  status: PayoutStatus,
+  detail: Record<string, string | boolean | undefined> = {},
+): Promise<boolean> {
+  if (p.escrowJobId && !p.escrowReleaseTxHash && !(await releaseEscrow(p))) return false;
   const feePhp = dec(status.feePhp?.toString() ?? "0");
   const netPhp = status.netPhp
     ? dec(status.netPhp.toString())
@@ -387,7 +409,81 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
       settledAt: new Date(),
     },
   });
-  await applyTransition(db, p, PaymentStatus.SETTLED, { netSettledPhp: netPhp.toFixed(2) });
+  await applyTransition(db, p, PaymentStatus.SETTLED, {
+    netSettledPhp: netPhp.toFixed(2),
+    ...detail,
+  });
+  return true;
+}
+
+/**
+ * Fast settle (Xendit test key only, see `fastSettleEnabled`): a payout Xendit
+ * has accepted is treated as paid, so nobody waits out the test simulator. The
+ * payout keeps running at Xendit; `verifyFastSettle` records how it really ended.
+ */
+async function settleOnAccept(p: PaymentWithRels, status: PayoutStatus): Promise<void> {
+  const settled = await markSettled(p, status, { fastSettle: true, railStatus: status.railStatus });
+  if (!settled) return;
+  capturePayoutEvent(
+    "payment_payout_fast_settled",
+    p,
+    payoutResultProperties(p.payoutRef!, status),
+  );
+  await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+}
+
+/**
+ * Asks Xendit how a fast-settled payout really ended and records the answer
+ * once. The payment stays SETTLED either way: a payout that failed after the
+ * payer was told it was sent is reported for a person to look at.
+ */
+async function verifyFastSettle(p: PaymentWithRels): Promise<void> {
+  if (!p.payoutRef) return;
+  const settled = await db.paymentEvent.findFirst({
+    where: {
+      paymentId: p.id,
+      toStatus: PaymentStatus.SETTLED,
+      detail: { path: ["fastSettle"], equals: true },
+    },
+  });
+  if (!settled) return;
+  const recorded = await db.auditLog.findFirst({
+    where: { action: FAST_SETTLE_OUTCOME, target: p.id },
+  });
+  if (recorded) return;
+
+  const status = await rail.getPayoutStatus(p.payoutRef);
+  const overdue = Date.now() - settled.createdAt.getTime() > FAST_SETTLE_VERIFY_WINDOW_MS;
+  if (status.state === "PENDING" && !overdue) {
+    await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+    return;
+  }
+  await audit({
+    action: FAST_SETTLE_OUTCOME,
+    target: p.id,
+    metadata: {
+      reference: p.reference,
+      payoutRef: p.payoutRef,
+      railState: status.state,
+      railStatus: status.railStatus,
+      failureCode: status.failureCode,
+    },
+  });
+  if (status.state === "SETTLED") {
+    capturePayoutEvent("payment_payout_settled", p, payoutResultProperties(p.payoutRef, status));
+    return;
+  }
+  if (status.state === "FAILED") {
+    capturePayoutEvent("payment_payout_failed", p, payoutResultProperties(p.payoutRef, status));
+  }
+  captureException(
+    new Error(
+      status.state === "FAILED"
+        ? `Fast-settled payout ${p.payoutRef} failed: ${status.failureCode ?? "unknown reason"}`
+        : `Fast-settled payout ${p.payoutRef} is still pending at Xendit`,
+    ),
+    { source: "settle", paymentId: p.id, reference: p.reference, fastSettle: true },
+  );
 }
 
 /**

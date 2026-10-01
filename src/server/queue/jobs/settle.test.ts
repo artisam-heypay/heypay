@@ -29,12 +29,14 @@ vi.mock("@/server/stellar/escrow", async (importOriginal) => ({
   escrowService: escrow,
 }));
 
-const { getDepositAddress, createPayout, getPayoutStatus } = vi.hoisted(() => ({
+const { getDepositAddress, createPayout, getPayoutStatus, fastSettleEnabled } = vi.hoisted(() => ({
   getDepositAddress: vi.fn(),
   createPayout: vi.fn(),
   getPayoutStatus: vi.fn(),
+  fastSettleEnabled: vi.fn(() => false),
 }));
 vi.mock("@/server/rails", () => ({
+  fastSettleEnabled: () => fastSettleEnabled(),
   rail: {
     supportsAsset: () => true,
     getDepositAddress: (a: string) => getDepositAddress(a),
@@ -120,6 +122,7 @@ function mockHappyRail() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  fastSettleEnabled.mockReturnValue(false);
   process.env.HEYPAY_TREASURY_SECRET_ENC = encryptSecret(TREASURY_SECRET);
   return resetDb();
 });
@@ -219,6 +222,114 @@ describe("processSettleJob — payout still pending at Xendit", () => {
     await processSettleJob({ data: { paymentId: payment.id } });
     p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(p.status).toBe("SETTLED");
+  });
+});
+
+describe("processSettleJob — fast settle (Xendit test key)", () => {
+  const OUTCOME = "payment.fast_settle_outcome";
+
+  /** Drives a payment to SETTLED while Xendit still reports the payout as accepted. */
+  async function fastSettle() {
+    fastSettleEnabled.mockReturnValue(true);
+    sendAsset.mockResolvedValue({ txHash: `STELLARHASH-F${Math.random()}` });
+    mockHappyRail();
+    getPayoutStatus.mockResolvedValue({ state: "PENDING", railStatus: "ACCEPTED" });
+    const { payment } = await makeAuthorized();
+    const settled = await drive(payment.id);
+    return { payment, settled };
+  }
+
+  it("settles as soon as Xendit accepts the payout, and schedules a check of the real result", async () => {
+    const { payment, settled } = await fastSettle();
+
+    expect(settled.status).toBe("SETTLED");
+    expect(settled.netSettledPhp?.toFixed(2)).toBe("100.00");
+    expect(settled.settledAt).not.toBeNull();
+    const event = await db.paymentEvent.findFirstOrThrow({
+      where: { paymentId: payment.id, toStatus: "SETTLED" },
+    });
+    expect(event.detail).toMatchObject({ fastSettle: true, railStatus: "ACCEPTED" });
+    expect(enqueueSettle).toHaveBeenLastCalledWith(payment.id, { delayMs: 30_000 });
+  });
+
+  it("keeps checking while Xendit is still pending", async () => {
+    const { payment } = await fastSettle();
+
+    enqueueSettle.mockClear();
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    expect(enqueueSettle).toHaveBeenCalledOnce();
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id, { delayMs: 30_000 });
+    expect(await db.auditLog.count({ where: { action: OUTCOME } })).toBe(0);
+  });
+
+  it("records Xendit's real answer once, however many nudges arrive", async () => {
+    const { payment } = await fastSettle();
+
+    getPayoutStatus.mockClear();
+    getPayoutStatus.mockResolvedValue({
+      state: "SETTLED",
+      railStatus: "SUCCEEDED",
+      netPhp: dec("100"),
+    });
+    await processSettleJob({ data: { paymentId: payment.id } }); // delayed check
+    await processSettleJob({ data: { paymentId: payment.id } }); // Xendit webhook
+
+    const outcomes = await db.auditLog.findMany({ where: { action: OUTCOME, target: payment.id } });
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]!.metadata).toMatchObject({ railState: "SETTLED", railStatus: "SUCCEEDED" });
+    expect(getPayoutStatus).toHaveBeenCalledOnce();
+  });
+
+  it("reports a payout that failed afterwards, without reopening or refunding the payment", async () => {
+    const { payment } = await fastSettle();
+
+    getPayoutStatus.mockResolvedValue({
+      state: "FAILED",
+      railStatus: "FAILED",
+      failureCode: "REJECTED_BY_CHANNEL",
+    });
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    const p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("SETTLED");
+    const outcome = await db.auditLog.findFirstOrThrow({
+      where: { action: OUTCOME, target: payment.id },
+    });
+    expect(outcome.metadata).toMatchObject({
+      railState: "FAILED",
+      failureCode: "REJECTED_BY_CHANNEL",
+    });
+    expect(sendAsset).toHaveBeenCalledOnce(); // the payment itself; no refund was sent
+  });
+
+  it("stops checking and reports a payout Xendit never finishes", async () => {
+    const { payment } = await fastSettle();
+    await db.paymentEvent.updateMany({
+      where: { paymentId: payment.id, toStatus: "SETTLED" },
+      data: { createdAt: new Date(Date.now() - 31 * 60_000) },
+    });
+
+    enqueueSettle.mockClear();
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    expect(enqueueSettle).not.toHaveBeenCalled();
+    const outcome = await db.auditLog.findFirstOrThrow({
+      where: { action: OUTCOME, target: payment.id },
+    });
+    expect(outcome.metadata).toMatchObject({ railState: "PENDING" });
+  });
+
+  it("never re-checks a payment that settled on Xendit's own confirmation", async () => {
+    sendAsset.mockResolvedValue({ txHash: "STELLARHASH-N" });
+    mockHappyRail();
+    const { payment } = await makeAuthorized();
+    await drive(payment.id);
+
+    getPayoutStatus.mockClear();
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    expect(getPayoutStatus).not.toHaveBeenCalled();
   });
 });
 
