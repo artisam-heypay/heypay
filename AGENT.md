@@ -382,6 +382,10 @@ S3_FORCE_PATH_STYLE=true              # true for MinIO
 ## 13. Conventions
 
 - Commits: Conventional Commits. PRs small and focused.
+- Branch flow: feature branch → `develop` → `main`. After pushing a feature
+  branch, put the change on `develop` (merge or cherry-pick) — do not offer or
+  open a PR yet. Only ask about a PR (e.g. `develop` → `main`) once the change
+  is already on `develop`.
 - Naming: `camelCase` vars, `PascalCase` types/components, `SCREAMING_SNAKE` env.
 - All amounts in code are `Decimal`; format only at the view layer.
 - Co-locate Zod schemas with their handlers; export inferred types.

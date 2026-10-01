@@ -2,6 +2,7 @@ import { route, json, parseBody } from "@/lib/http";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { requireRole } from "@/server/auth/sessions";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 import { prisma } from "@/server/db";
 import { patchMerchantSchema } from "@/lib/schemas/merchant";
 import {
@@ -30,5 +31,10 @@ export const PATCH = route(async (req) => {
     },
   });
   await audit({ actorId: user.id, action: "merchant.update", target: merchant.id });
+  captureUserEvent("merchant_profile_updated", user, {
+    merchant_id: merchant.id,
+    changed_business_name: patch.businessName !== undefined,
+    changed_logo: patch.logoKey !== undefined,
+  });
   return json({ merchant: serializeMerchant(merchant), setup: merchantSetupState(merchant) });
 });

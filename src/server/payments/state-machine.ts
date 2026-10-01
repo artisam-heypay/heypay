@@ -2,8 +2,8 @@
 import "server-only";
 import { PaymentStatus, type Payment, type Prisma } from "@/generated/prisma/client";
 import { conflict } from "@/lib/errors";
-import { Decimal } from "@/lib/money";
-import { prisma } from "@/server/db";
+import { analyticsEnabled, captureUserEvent } from "@/server/observability/analytics";
+import { assetContract } from "@/server/observability/payment-trail";
 
 export type TxClient = Prisma.TransactionClient;
 
@@ -15,10 +15,11 @@ export const TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
   [S.AUTHORIZED]: [S.STELLAR_SUBMITTED, S.FAILED],
   // submitted-but-unconfirmed: confirm step decides CONFIRMED vs FAILED (tx never landed)
   [S.STELLAR_SUBMITTED]: [S.STELLAR_CONFIRMED, S.FAILED],
-  // from here on XLM has left the wallet → failures branch to REFUND_PENDING
-  [S.STELLAR_CONFIRMED]: [S.PDAX_TRADING, S.REFUND_PENDING],
-  [S.PDAX_TRADING]: [S.PDAX_TRADED, S.REFUND_PENDING],
-  [S.PDAX_TRADED]: [S.PAYOUT_SUBMITTED, S.REFUND_PENDING],
+  // from here on the crypto has left the wallet → failures branch to REFUND_PENDING
+  [S.STELLAR_CONFIRMED]: [S.PAYOUT_SUBMITTED, S.REFUND_PENDING],
+  // Legacy PDAX states: never entered any more, so nothing leaves them either.
+  [S.PDAX_TRADING]: [],
+  [S.PDAX_TRADED]: [],
   [S.PAYOUT_SUBMITTED]: [S.SETTLED, S.REFUND_PENDING],
   [S.REFUND_PENDING]: [S.REFUNDED, S.FAILED],
   [S.SETTLED]: [],
@@ -29,8 +30,6 @@ export const TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
 export const TERMINAL: ReadonlySet<PaymentStatus> = new Set([S.SETTLED, S.FAILED, S.REFUNDED]);
 export const XLM_MOVED: ReadonlySet<PaymentStatus> = new Set([
   S.STELLAR_CONFIRMED,
-  S.PDAX_TRADING,
-  S.PDAX_TRADED,
   S.PAYOUT_SUBMITTED,
 ]);
 
@@ -39,9 +38,7 @@ const NEXT: Partial<Record<PaymentStatus, PaymentStatus>> = {
   [S.QUOTED]: S.AUTHORIZED,
   [S.AUTHORIZED]: S.STELLAR_SUBMITTED,
   [S.STELLAR_SUBMITTED]: S.STELLAR_CONFIRMED,
-  [S.STELLAR_CONFIRMED]: S.PDAX_TRADING,
-  [S.PDAX_TRADING]: S.PDAX_TRADED,
-  [S.PDAX_TRADED]: S.PAYOUT_SUBMITTED,
+  [S.STELLAR_CONFIRMED]: S.PAYOUT_SUBMITTED,
   [S.PAYOUT_SUBMITTED]: S.SETTLED,
   [S.REFUND_PENDING]: S.REFUNDED,
 };
@@ -79,72 +76,49 @@ export async function applyTransition(
       detail: detail ?? undefined,
     },
   });
+  // Every status change passes through here, so these two events are the whole
+  // payment funnel, once from the payer's side and once from the merchant's.
+  // They are sent before the surrounding transaction commits; a rollback (rare)
+  // leaves an extra event, and payment_event stays the record.
+  if (analyticsEnabled()) {
+    // Analytics must never fail the transition, so a failed lookup is ignored.
+    const wallet = await client.custodialWallet
+      .findUnique({ where: { userId: updated.payerId }, select: { stellarPublicKey: true } })
+      .catch(() => null);
+    const props = {
+      payment_id: updated.id,
+      reference: updated.reference,
+      merchant_id: updated.merchantId,
+      from_status: payment.status,
+      to_status: toStatus,
+      asset: updated.asset,
+      ...assetContract(updated.asset),
+      amount_php: Number(updated.amountPhp),
+      payer_wallet_address: wallet?.stellarPublicKey,
+      stellar_tx_hash: updated.stellarTxHash,
+      payout_ref: updated.payoutRef,
+      refund_tx_hash: updated.refundTxHash,
+      failure_reason: failureReason(detail),
+    };
+    captureUserEvent("payment_status_changed", { id: updated.payerId, role: "PAYER" }, props);
+    const merchant = await client.merchant
+      .findUnique({ where: { id: updated.merchantId }, select: { userId: true } })
+      .catch(() => null);
+    if (merchant) {
+      captureUserEvent(
+        "merchant_payment_status_changed",
+        { id: merchant.userId, role: "MERCHANT" },
+        props,
+      );
+    }
+  }
   return updated;
 }
 
-const RAIL_STATUS_MAP: Record<
-  "trade" | "cashout",
-  Record<"PENDING" | "FILLED" | "SETTLED" | "FAILED", PaymentStatus>
-> = {
-  trade: {
-    PENDING: "PDAX_TRADING",
-    FILLED: "PDAX_TRADED",
-    SETTLED: "SETTLED",
-    FAILED: "FAILED",
-  },
-  cashout: {
-    PENDING: "PAYOUT_SUBMITTED",
-    FILLED: "PAYOUT_SUBMITTED",
-    SETTLED: "SETTLED",
-    FAILED: "FAILED",
-  },
-};
-
-/**
- * Idempotent advancer used by the PDAX webhook (and polling fallback) to push a
- * payment forward from an external rail callback. Replaying the same callback is
- * a no-op at the data layer.
- */
-export async function advanceOnRailCallback(input: {
-  paymentId: string;
-  kind: "trade" | "cashout";
-  externalRef: string;
-  state: "PENDING" | "FILLED" | "SETTLED" | "FAILED";
-  feePhp?: Decimal;
-  netPhp?: Decimal;
-}): Promise<{ status: PaymentStatus }> {
-  const toStatus = RAIL_STATUS_MAP[input.kind][input.state];
-
-  const payment = await prisma.payment.findUnique({
-    where: { id: input.paymentId },
-    select: { status: true },
-  });
-  if (!payment) throw new Error(`Payment not found: ${input.paymentId}`);
-
-  const data: Prisma.PaymentUpdateInput = { status: toStatus };
-  if (input.kind === "trade" && input.state !== "PENDING") {
-    if (input.feePhp !== undefined) data.pdaxFeePhp = input.feePhp;
-    if (input.netPhp !== undefined) data.netSettledPhp = input.netPhp;
-  }
-  if (toStatus === "SETTLED") {
-    data.settledAt = new Date();
-  }
-
-  const updated = await prisma.payment.update({ where: { id: input.paymentId }, data });
-
-  await prisma.paymentEvent.create({
-    data: {
-      paymentId: input.paymentId,
-      fromStatus: payment.status,
-      toStatus,
-      detail: {
-        kind: input.kind,
-        externalRef: input.externalRef,
-        feePhp: input.feePhp?.toString(),
-        netPhp: input.netPhp?.toString(),
-      },
-    },
-  });
-
-  return { status: updated.status };
+/** The reason a payment failed or is being refunded, if the transition says. */
+function failureReason(detail?: Prisma.InputJsonValue): string | undefined {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return undefined;
+  const d = detail as Record<string, unknown>;
+  const reason = d.failureReason ?? d.reason;
+  return typeof reason === "string" ? reason.slice(0, 200) : undefined;
 }

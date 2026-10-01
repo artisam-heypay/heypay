@@ -2,6 +2,7 @@ import { route, json } from "@/lib/http";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { requireRole } from "@/server/auth/sessions";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 import { badRequest } from "@/lib/errors";
 import { prisma } from "@/server/db";
 import { decodeQrph } from "@/server/qrph/decode";
@@ -18,7 +19,9 @@ export const POST = route(async (req) => {
 
   const setup = merchantSetupState(existing);
   if (!setup.hasBusiness) throw badRequest("Business name is required");
-  if (!setup.hasSettlement) throw badRequest("A settlement bank account is required");
+  if (!setup.hasSettlement) {
+    throw badRequest("A settlement account and payout receipt email are required");
+  }
   if (!setup.hasQrph) throw badRequest("A linked QRPH is required");
 
   // Re-validate the stored QRPH CRC at go-live (defense in depth).
@@ -40,6 +43,10 @@ export const POST = route(async (req) => {
     action: "merchant.go-live",
     target: merchant.id,
     metadata: { status: merchant.status },
+  });
+  captureUserEvent("merchant_went_live", user, {
+    merchant_id: merchant.id,
+    status: merchant.status,
   });
   return json({ merchant: serializeMerchant(merchant) });
 });

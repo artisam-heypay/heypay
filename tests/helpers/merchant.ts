@@ -48,6 +48,7 @@ export async function seedMerchantUser(overrides: Partial<Merchant> = {}) {
       accountName: "Maria Cruz",
       accountNumber: encryptSecret("1234567890"),
       accountNumberLast4: "7890",
+      payoutEmail: "cafe@example.com",
       ...overrides,
     },
   });
@@ -60,6 +61,8 @@ export async function seedPayment(
     status: PaymentStatus;
     netSettledPhp: string;
     amountAsset: string;
+    amountPhp: string;
+    asset: "XLM" | "USDC" | "USDT";
     settledAt: Date;
   }>,
 ) {
@@ -72,7 +75,8 @@ export async function seedPayment(
       reference: newPaymentReference(),
       payerId: payer.id,
       merchantId,
-      amountPhp: "100.00",
+      amountPhp: data.amountPhp ?? "100.00",
+      asset: data.asset ?? "XLM",
       quotedRate: "8.00000000",
       amountAsset: data.amountAsset ?? "12.5000000",
       netSettledPhp: data.netSettledPhp ?? null,

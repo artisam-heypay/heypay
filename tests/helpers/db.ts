@@ -17,6 +17,7 @@ export async function resetDb(): Promise<void> {
   await db.merchant.deleteMany();
   await db.walletBalance.deleteMany();
   await db.custodialWallet.deleteMany();
+  await db.faucetClaim.deleteMany();
   await db.session.deleteMany();
   await db.user.deleteMany();
 }
@@ -58,6 +59,8 @@ export async function makePayer(opts?: {
 export async function makeMerchant(opts?: {
   status?: MerchantStatus;
   accountNumber?: string;
+  /** Null for a merchant that has not set one yet. */
+  payoutEmail?: string | null;
 }): Promise<{ user: User; merchant: Merchant }> {
   const user = await db.user.create({
     data: { username: `merchant-${randomUUID()}`, passwordHash: "x", role: "MERCHANT" },
@@ -75,6 +78,7 @@ export async function makeMerchant(opts?: {
       accountName: "Test Store Inc",
       accountNumber: encryptSecret(acct),
       accountNumberLast4: acct.slice(-4),
+      payoutEmail: opts?.payoutEmail === undefined ? "store@example.com" : opts.payoutEmail,
     },
   });
   return { user, merchant };

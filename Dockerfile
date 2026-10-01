@@ -18,6 +18,12 @@ ENV SHADOW_DATABASE_URL=postgresql://build:build@localhost:5432/build_shadow?sch
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm prisma generate
+# NEXT_PUBLIC_* values are inlined into the browser bundle by `next build`, and
+# next.config.ts rewrites are fixed at build time, so they must reach this stage.
+# Railway passes service variables to the build only when declared as ARGs.
+ARG NEXT_PUBLIC_POSTHOG_KEY
+ARG NEXT_PUBLIC_POSTHOG_UI_HOST
+ARG POSTHOG_HOST
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
@@ -52,6 +58,8 @@ COPY --from=build /app/next.config.ts ./next.config.ts
 COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/src ./src
 COPY --from=build /app/.next ./.next
+# Static files `next start` serves from /, e.g. the test shop QR on the scan page.
+COPY --from=build /app/public ./public
 COPY --from=build /app/src/generated ./src/generated
 
 USER nextjs

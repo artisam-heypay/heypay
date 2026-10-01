@@ -8,8 +8,6 @@ const STATUSES = [
   "AUTHORIZED",
   "STELLAR_SUBMITTED",
   "STELLAR_CONFIRMED",
-  "PDAX_TRADING",
-  "PDAX_TRADED",
   "PAYOUT_SUBMITTED",
   "SETTLED",
   "FAILED",
@@ -37,6 +35,8 @@ export const settlementSchema = z.object({
     .string()
     .trim()
     .regex(/^[0-9]{6,20}$/, "6–20 digits"),
+  // Receives Xendit's payout receipt for every settled payment.
+  payoutEmail: z.string().trim().toLowerCase().email("Enter a valid email").max(254),
 });
 
 export const qrphSchema = z.object({

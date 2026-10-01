@@ -19,9 +19,7 @@ describe("state machine (pure)", () => {
     expect(nextStep("QUOTED")).toBe("AUTHORIZED");
     expect(nextStep("AUTHORIZED")).toBe("STELLAR_SUBMITTED");
     expect(nextStep("STELLAR_SUBMITTED")).toBe("STELLAR_CONFIRMED");
-    expect(nextStep("STELLAR_CONFIRMED")).toBe("PDAX_TRADING");
-    expect(nextStep("PDAX_TRADING")).toBe("PDAX_TRADED");
-    expect(nextStep("PDAX_TRADED")).toBe("PAYOUT_SUBMITTED");
+    expect(nextStep("STELLAR_CONFIRMED")).toBe("PAYOUT_SUBMITTED");
     expect(nextStep("PAYOUT_SUBMITTED")).toBe("SETTLED");
     expect(nextStep("REFUND_PENDING")).toBe("REFUNDED");
     expect(nextStep("SETTLED")).toBeNull();
@@ -38,17 +36,23 @@ describe("state machine (pure)", () => {
   it("permits the refund branch only once XLM has moved", () => {
     expect(XLM_MOVED.has("STELLAR_CONFIRMED")).toBe(true);
     expect(canTransition("STELLAR_CONFIRMED", "REFUND_PENDING")).toBe(true);
-    expect(canTransition("PDAX_TRADED", "REFUND_PENDING")).toBe(true);
     expect(canTransition("PAYOUT_SUBMITTED", "REFUND_PENDING")).toBe(true);
     expect(canTransition("REFUND_PENDING", "REFUNDED")).toBe(true);
     expect(canTransition("AUTHORIZED", "REFUND_PENDING")).toBe(false);
     expect(canTransition("AUTHORIZED", "FAILED")).toBe(true);
   });
 
+  it("never routes a payment through the retired PDAX states", () => {
+    expect(canTransition("STELLAR_CONFIRMED", "PDAX_TRADING")).toBe(false);
+    expect(TRANSITIONS.PDAX_TRADING).toEqual([]);
+    expect(TRANSITIONS.PDAX_TRADED).toEqual([]);
+    expect(XLM_MOVED.has("PDAX_TRADING")).toBe(false);
+  });
+
   it("marks terminal states", () => {
     expect([...TERMINAL].sort()).toEqual(["FAILED", "REFUNDED", "SETTLED"]);
     expect(isTerminal("SETTLED")).toBe(true);
-    expect(isTerminal("PDAX_TRADING")).toBe(false);
+    expect(isTerminal("PAYOUT_SUBMITTED")).toBe(false);
   });
 
   it("every status appears as a key in TRANSITIONS", () => {

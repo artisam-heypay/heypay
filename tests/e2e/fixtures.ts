@@ -18,12 +18,6 @@ export const DEMO_QRPH_RAW =
   "00020101021126330011ph.ppmi.p2m0114HEYPAYDEMO00015204581453036085802PH5920HEYPAY DEMO MERCHANT6006MANILA63042556";
 export const DEMO_QRPH_MERCHANT_NAME = "HEYPAY DEMO MERCHANT";
 
-// Dedicated testnet account that stands in for HeyPay's PDAX XLM deposit address.
-// Even with PAYMENT_RAIL=mock the settlement's Stellar leg is real (SPEC §8.2), so the
-// custodial→deposit payment needs a funded, existing destination. globalSetup friendbot-funds it.
-export const E2E_PDAX_XLM_DEPOSIT_ADDRESS =
-  "GBXGSQS3DVUWJVM4BA247MGKNCVRKNO72ONTILJK3DRI2IIPMSDGKACQ";
-
 const CRC_POLY = 0x1021;
 function crc16ccitt(data: string): string {
   let crc = 0xffff;
@@ -119,7 +113,12 @@ export async function ensureActiveMerchant(
   const { merchant } = await create.json();
 
   const settle = await request.post("/api/merchant/settlement", {
-    data: { bankCode: "BPI", accountName: "HeyPay Demo Inc", accountNumber: "1234567890" },
+    data: {
+      bankCode: "BPI",
+      accountName: "HeyPay Demo Inc",
+      accountNumber: "1234567890",
+      payoutEmail: "merchant-e2e@example.com",
+    },
     ...CSRF,
   });
   expect(settle.ok(), `settlement failed: ${await settle.text()}`).toBeTruthy();

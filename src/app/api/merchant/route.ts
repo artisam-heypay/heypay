@@ -2,6 +2,7 @@ import { route, json, parseBody } from "@/lib/http";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { requireRole } from "@/server/auth/sessions";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 import { conflict } from "@/lib/errors";
 import { prisma } from "@/server/db";
 import { createMerchantSchema } from "@/lib/schemas/merchant";
@@ -30,5 +31,6 @@ export const POST = route(async (req) => {
     },
   });
   await audit({ actorId: user.id, action: "merchant.create", target: merchant.id });
+  captureUserEvent("merchant_profile_created", user, { merchant_id: merchant.id });
   return json({ merchant: serializeMerchant(merchant) }, 201);
 });

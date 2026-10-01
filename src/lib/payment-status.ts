@@ -8,6 +8,7 @@ const LABELS: Record<PaymentStatus, string> = {
   AUTHORIZED: "Authorized",
   STELLAR_SUBMITTED: "Submitting",
   STELLAR_CONFIRMED: "Confirmed",
+  // Legacy PDAX states, still present in older payment history.
   PDAX_TRADING: "Pending Trade",
   PDAX_TRADED: "Traded",
   PAYOUT_SUBMITTED: "Paying Out",

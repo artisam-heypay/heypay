@@ -8,6 +8,7 @@ import { createSession } from "@/server/auth/sessions";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 import { walletService } from "@/server/stellar/wallet";
 
 const signupSchema = z.object({
@@ -52,6 +53,7 @@ export const POST = route(async (req) => {
 
   await createSession(user.id, { ip, userAgent: req.headers.get("user-agent") ?? undefined });
   await audit({ actorId: user.id, action: "auth.signup", target: user.id, ip });
+  captureUserEvent("user_signed_up", user);
 
   return json({ user: { id: user.id, username: user.username, role: user.role } }, 201);
 });

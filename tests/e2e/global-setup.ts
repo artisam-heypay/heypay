@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { E2E_PDAX_XLM_DEPOSIT_ADDRESS } from "./fixtures";
+import { e2eTreasury } from "./treasury";
 
 // Truncate every public table except Prisma's migration ledger, in one statement.
 // Run through `prisma db execute` (no client import — Playwright's ESM loader can't
@@ -48,13 +48,13 @@ export default async function globalSetup(): Promise<void> {
 
   execSync("pnpm prisma db seed", { stdio: "inherit", env }); // seeds the admin
 
-  // Ensure the mock-rail Stellar deposit sink exists on testnet (idempotent: 200 first
-  // time, 400 "already funded" thereafter — both fine). Without it, the settlement's
-  // real custodial→deposit XLM payment fails and every payment ends FAILED.
+  // Fund this run's treasury on testnet (200 the first time, 400 "already funded" on a
+  // rerun — both fine). Without it, the settlement's real custodial→treasury XLM payment
+  // fails and every payment ends FAILED, and a refund has nothing to send from.
   const res = await fetch(
-    `https://friendbot.stellar.org/?addr=${encodeURIComponent(E2E_PDAX_XLM_DEPOSIT_ADDRESS)}`,
+    `https://friendbot.stellar.org/?addr=${encodeURIComponent(e2eTreasury().publicKey())}`,
   );
   if (![200, 400].includes(res.status)) {
-    throw new Error(`friendbot funding of PDAX deposit sink failed: ${res.status}`);
+    throw new Error(`friendbot funding of the treasury sink failed: ${res.status}`);
   }
 }

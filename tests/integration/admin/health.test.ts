@@ -18,7 +18,7 @@ describe("admin health", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { components: HealthComponent[] };
     const names = body.components.map((c) => c.name).sort();
-    expect(names).toEqual(["pdax", "queue", "redis", "stellar"]);
+    expect(names).toEqual(["payouts", "queue", "rates", "redis", "stellar"]);
     for (const c of body.components) expect(["ok", "degraded", "down"]).toContain(c.status);
     const queue = body.components.find((c) => c.name === "queue");
     expect(typeof queue?.queueDepth).toBe("number");

@@ -13,6 +13,9 @@ import { processDepositPollJob } from "@/server/queue/jobs/deposit-poller";
 import { processReconcileJob } from "@/server/queue/jobs/reconcile";
 import { ensureBucket } from "@/server/storage/s3";
 import { captureException } from "@/server/observability/error-tracking";
+import { flushLogs, startLogShipping } from "@/server/observability/logs";
+
+startLogShipping("heypay-worker");
 
 async function main() {
   // Bucket bootstrap (MinIO dev / S3 prod). Non-fatal: settlement/deposit/reconcile jobs
@@ -75,6 +78,7 @@ async function main() {
       reconcileWorker.close(),
     ]);
     await bullConnection.quit();
+    await flushLogs();
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
@@ -83,5 +87,5 @@ async function main() {
 
 main().catch((err) => {
   console.error("[worker] fatal", err);
-  process.exit(1);
+  void flushLogs().finally(() => process.exit(1));
 });

@@ -7,7 +7,8 @@ const TONE = { ok: "settled", degraded: "pending", down: "error" } as const;
 const LABEL = { ok: "OK", degraded: "Degraded", down: "Down" } as const;
 const ICON: Record<string, string> = {
   stellar: "star",
-  pdax: "currency_exchange",
+  payouts: "payments",
+  rates: "currency_exchange",
   redis: "memory",
   queue: "stacks",
 };

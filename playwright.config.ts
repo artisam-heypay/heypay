@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { E2E_PDAX_XLM_DEPOSIT_ADDRESS } from "./tests/e2e/fixtures";
+import { e2eTreasury, encryptForApp } from "./tests/e2e/treasury";
 
 const PORT = process.env.E2E_PORT ?? "3100";
 const BASE_URL = `http://localhost:${PORT}`;
@@ -7,6 +7,9 @@ const E2E_DATABASE_URL =
   process.env.E2E_DATABASE_URL ??
   "postgresql://heypay:heypay@localhost:5433/heypay_e2e?schema=public";
 const E2E_REDIS_URL = process.env.E2E_REDIS_URL ?? "redis://localhost:6380";
+const ENCRYPTION_MASTER_KEY =
+  process.env.ENCRYPTION_MASTER_KEY ?? "base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=";
+const TREASURY = e2eTreasury();
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -40,7 +43,9 @@ export default defineConfig({
       PAYMENT_RAIL: "mock",
       // Real testnet Stellar leg needs a funded destination even under the mock rail;
       // globalSetup friendbot-funds this account so custodial→deposit payments land.
-      PDAX_XLM_DEPOSIT_ADDRESS: E2E_PDAX_XLM_DEPOSIT_ADDRESS,
+      HEYPAY_TREASURY_PUBLIC_KEY: TREASURY.publicKey(),
+      // The refund path sends from the treasury, so it needs the secret.
+      HEYPAY_TREASURY_SECRET_ENC: encryptForApp(TREASURY.secret(), ENCRYPTION_MASTER_KEY),
       // e2e creates ~6 accounts from one IP; lift the per-IP signup cap so it doesn't 429.
       SIGNUP_RATE_LIMIT: "1000",
       // Magic PHP amount the admin-retry-refund spec uses to force a settlement failure.
@@ -52,8 +57,7 @@ export default defineConfig({
       SHADOW_DATABASE_URL: E2E_DATABASE_URL.replace("heypay_e2e", "heypay_e2e_shadow"),
       REDIS_URL: E2E_REDIS_URL,
       SESSION_SECRET: process.env.SESSION_SECRET ?? "e2e-session-secret-not-for-prod-0123456789",
-      ENCRYPTION_MASTER_KEY:
-        process.env.ENCRYPTION_MASTER_KEY ?? "base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+      ENCRYPTION_MASTER_KEY,
       ENCRYPTION_KEY_VERSION: "1",
       ADMIN_USERNAME: process.env.ADMIN_USERNAME ?? "admin",
       ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? "admin-e2e-pass",

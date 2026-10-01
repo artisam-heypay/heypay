@@ -18,6 +18,7 @@ const merchant = {
   settlementBankName: "Bank of the Philippine Islands",
   accountName: "Ana",
   accountNumberLast4: "7890",
+  payoutEmail: "bean@example.com",
   createdAt: "2026-06-01T00:00:00Z",
   updatedAt: "2026-06-01T00:00:00Z",
 } as const;

@@ -2,11 +2,12 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { prisma } from "@/server/db";
 import { notFound } from "@/lib/errors";
-import { dec, formatAsset, formatXlm, formatPhp } from "@/lib/money";
+import { dec, formatAsset, formatPhp, type Decimal } from "@/lib/money";
 import type { PaymentAsset } from "@/lib/assets";
 import type { Merchant, Payment, PaymentStatus } from "@/generated/prisma/client";
 import { MerchantStatus } from "@/generated/prisma/client";
 import type { TxQuery } from "@/lib/schemas/merchant";
+import { stellarTxUrl } from "@/lib/stellar-explorer";
 
 export type MerchantDto = {
   id: string;
@@ -24,6 +25,7 @@ export type MerchantDto = {
   settlementBankName: string;
   accountName: string;
   accountNumberLast4: string;
+  payoutEmail: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -43,22 +45,39 @@ export type MerchantTxItem = {
   amountPhp: string;
   netSettledPhp: string | null;
   status: PaymentStatus;
+  /** Public explorer link for the payer's on-chain payment, once it has been sent. */
+  stellarTxUrl: string | null;
   createdAt: string;
 };
 export type MerchantTxPage = { items: MerchantTxItem[]; nextCursor: string | null };
+export type EarningsRange = "1d" | "1w" | "1m" | "all";
+export const EARNINGS_RANGES: readonly EarningsRange[] = ["1d", "1w", "1m", "all"];
+export type EarningsBucket = "hour" | "day" | "week" | "month";
+/** One point of the settled-PHP series; `t` is the bucket's start (ISO, UTC). */
+export type EarningsPoint = { t: string; php: string };
 export type MerchantEarnings = {
+  range: EarningsRange;
+  /** PHP paid out to the merchant within the range. */
   totalSettledPhp: string;
-  momChangePct: number | null;
-  pendingXlm: string;
+  settledCount: number;
+  /** Change vs the equally long period just before; null for "all" or no prior data. */
+  changePct: number | null;
+  /** PHP of payments still on their way to the merchant, whatever coin paid them. */
+  pendingPhp: string;
+  pendingCount: number;
+  bucket: EarningsBucket;
+  series: EarningsPoint[];
 };
 
-/** Non-terminal in-flight states whose XLM is "pending" (post-authorization, pre-settlement). */
+export function parseEarningsRange(v: string | null | undefined): EarningsRange {
+  return (EARNINGS_RANGES as readonly string[]).includes(v ?? "") ? (v as EarningsRange) : "1m";
+}
+
+/** Non-terminal in-flight states: the payer has paid, the merchant is not yet paid out. */
 export const PENDING_STATUSES: PaymentStatus[] = [
   "AUTHORIZED",
   "STELLAR_SUBMITTED",
   "STELLAR_CONFIRMED",
-  "PDAX_TRADING",
-  "PDAX_TRADED",
   "PAYOUT_SUBMITTED",
 ];
 
@@ -79,6 +98,7 @@ export function serializeMerchant(m: Merchant): MerchantDto {
     settlementBankName: m.settlementBankName,
     accountName: m.accountName,
     accountNumberLast4: m.accountNumberLast4,
+    payoutEmail: m.payoutEmail,
     createdAt: m.createdAt.toISOString(),
     updatedAt: m.updatedAt.toISOString(),
   };
@@ -86,7 +106,9 @@ export function serializeMerchant(m: Merchant): MerchantDto {
 
 export function merchantSetupState(m: Merchant): SetupState {
   const hasBusiness = m.businessName.trim().length > 0;
-  const hasSettlement = m.settlementBankCode.length > 0 && m.accountNumberLast4.length > 0;
+  // Settlement is only usable with somewhere to send the payout receipt.
+  const hasSettlement =
+    m.settlementBankCode.length > 0 && m.accountNumberLast4.length > 0 && Boolean(m.payoutEmail);
   const hasQrph = m.qrphRaw.length > 0;
   return {
     hasBusiness,
@@ -113,48 +135,121 @@ export async function requireMerchant(userId: string): Promise<Merchant> {
   return m;
 }
 
-function monthStart(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+// Merchants are in the Philippines (UTC+8, no DST): buckets follow their wall clock.
+const PH_OFFSET_MS = 8 * 60 * 60_000;
+const HOUR_MS = 60 * 60_000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** Start of the bucket containing `d`, in PH time, returned as a UTC instant. */
+function bucketStart(d: Date, bucket: EarningsBucket): Date {
+  const l = new Date(d.getTime() + PH_OFFSET_MS); // UTC fields now read as PH wall clock
+  const [y, m, day] = [l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate()];
+  const local =
+    bucket === "hour"
+      ? Date.UTC(y, m, day, l.getUTCHours())
+      : bucket === "day"
+        ? Date.UTC(y, m, day)
+        : bucket === "week"
+          ? Date.UTC(y, m, day - ((l.getUTCDay() + 6) % 7)) // weeks start Monday
+          : Date.UTC(y, m, 1);
+  return new Date(local - PH_OFFSET_MS);
 }
 
-export async function getMerchantEarnings(merchantId: string): Promise<MerchantEarnings> {
-  const settled = await prisma.payment.findMany({
-    where: { merchantId, status: "SETTLED" },
-    select: { netSettledPhp: true, settledAt: true },
-  });
-  // `pendingXlm` is an XLM figure, so only XLM-funded payments belong in it —
-  // adding a USDT `amountAsset` here would sum two different units.
-  const pending = await prisma.payment.findMany({
-    where: { merchantId, status: { in: PENDING_STATUSES }, asset: "XLM" },
-    select: { amountAsset: true },
-  });
+function nextBucket(d: Date, bucket: EarningsBucket): Date {
+  if (bucket === "hour") return new Date(d.getTime() + HOUR_MS);
+  if (bucket === "day") return new Date(d.getTime() + DAY_MS);
+  if (bucket === "week") return new Date(d.getTime() + 7 * DAY_MS);
+  const l = new Date(d.getTime() + PH_OFFSET_MS);
+  return new Date(Date.UTC(l.getUTCFullYear(), l.getUTCMonth() + 1, 1) - PH_OFFSET_MS);
+}
 
-  let total = dec(0),
-    thisMonth = dec(0),
-    lastMonth = dec(0);
-  const now = new Date();
-  const curStart = monthStart(now);
-  const prevStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+/** The range's window [start, now] and bucket size; "all" is sized from the first payout. */
+function rangeWindow(
+  range: EarningsRange,
+  now: Date,
+  firstSettledAt: Date | null,
+): { start: Date; bucket: EarningsBucket } {
+  if (range === "1d")
+    return { start: bucketStart(new Date(now.getTime() - 23 * HOUR_MS), "hour"), bucket: "hour" };
+  if (range === "1w")
+    return { start: bucketStart(new Date(now.getTime() - 6 * DAY_MS), "day"), bucket: "day" };
+  if (range === "1m")
+    return { start: bucketStart(new Date(now.getTime() - 29 * DAY_MS), "day"), bucket: "day" };
+  const first = firstSettledAt ?? now;
+  const spanDays = (now.getTime() - first.getTime()) / DAY_MS;
+  const bucket: EarningsBucket = spanDays <= 62 ? "day" : spanDays <= 7 * 104 ? "week" : "month";
+  return { start: bucketStart(first, bucket), bucket };
+}
+
+export async function getMerchantEarnings(
+  merchantId: string,
+  range: EarningsRange = "1m",
+  now: Date = new Date(),
+): Promise<MerchantEarnings> {
+  const first =
+    range === "all"
+      ? await prisma.payment.findFirst({
+          where: { merchantId, status: "SETTLED", settledAt: { not: null } },
+          orderBy: { settledAt: "asc" },
+          select: { settledAt: true },
+        })
+      : null;
+  const { start, bucket } = rangeWindow(range, now, first?.settledAt ?? null);
+  const periodMs = now.getTime() - start.getTime();
+  const prevStart = new Date(start.getTime() - periodMs);
+
+  const [settled, previous, pending] = await Promise.all([
+    prisma.payment.findMany({
+      where: { merchantId, status: "SETTLED", settledAt: { gte: start, lte: now } },
+      select: { netSettledPhp: true, settledAt: true },
+    }),
+    range === "all"
+      ? Promise.resolve([])
+      : prisma.payment.findMany({
+          where: { merchantId, status: "SETTLED", settledAt: { gte: prevStart, lt: start } },
+          select: { netSettledPhp: true },
+        }),
+    prisma.payment.findMany({
+      where: { merchantId, status: { in: PENDING_STATUSES } },
+      select: { amountPhp: true },
+    }),
+  ]);
+
+  // Zero-filled buckets, so the line shows quiet periods instead of skipping them.
+  const sums = new Map<number, Decimal>();
+  for (let b = start; b.getTime() <= now.getTime(); b = nextBucket(b, bucket)) {
+    sums.set(b.getTime(), dec(0));
+  }
+  let total = dec(0);
   for (const p of settled) {
     const v = dec(p.netSettledPhp?.toString() ?? "0");
     total = total.plus(v);
-    const at = p.settledAt ?? undefined;
-    if (at && at >= curStart) thisMonth = thisMonth.plus(v);
-    else if (at && at >= prevStart && at < curStart) lastMonth = lastMonth.plus(v);
+    const key = bucketStart(p.settledAt!, bucket).getTime();
+    sums.set(key, (sums.get(key) ?? dec(0)).plus(v));
   }
-  let pendingXlm = dec(0);
-  for (const p of pending) pendingXlm = pendingXlm.plus(dec(p.amountAsset.toString()));
-
-  const momChangePct = lastMonth.isZero()
-    ? null
-    : Number(
-        thisMonth.minus(lastMonth).dividedBy(lastMonth).times(100).toDecimalPlaces(1).toString(),
-      );
+  const prevTotal = previous.reduce(
+    (acc, p) => acc.plus(dec(p.netSettledPhp?.toString() ?? "0")),
+    dec(0),
+  );
+  const changePct =
+    range === "all" || prevTotal.isZero()
+      ? null
+      : Number(
+          total.minus(prevTotal).dividedBy(prevTotal).times(100).toDecimalPlaces(1).toString(),
+        );
+  const pendingPhp = pending.reduce((acc, p) => acc.plus(dec(p.amountPhp.toString())), dec(0));
 
   return {
+    range,
     totalSettledPhp: formatPhp(total),
-    momChangePct,
-    pendingXlm: formatXlm(pendingXlm),
+    settledCount: settled.length,
+    changePct,
+    pendingPhp: formatPhp(pendingPhp),
+    pendingCount: pending.length,
+    bucket,
+    series: [...sums.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([t, v]) => ({ t: new Date(t).toISOString(), php: formatPhp(v) })),
   };
 }
 
@@ -168,6 +263,7 @@ function mapTx(p: Payment & { payer: { username: string } }): MerchantTxItem {
     amountPhp: formatPhp(dec(p.amountPhp.toString())),
     netSettledPhp: p.netSettledPhp ? formatPhp(dec(p.netSettledPhp.toString())) : null,
     status: p.status,
+    stellarTxUrl: p.stellarTxHash ? stellarTxUrl(p.stellarTxHash) : null,
     createdAt: p.createdAt.toISOString(),
   };
 }

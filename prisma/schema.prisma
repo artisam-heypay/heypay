@@ -26,6 +26,9 @@ enum PaymentStatus {
   AUTHORIZED
   STELLAR_SUBMITTED
   STELLAR_CONFIRMED
+  // Legacy PDAX states. No longer entered; kept so pre-Xendit PaymentEvent history
+  // still reads. The migration that retired PDAX moved any payment in them back
+  // to STELLAR_CONFIRMED.
   PDAX_TRADING
   PDAX_TRADED
   PAYOUT_SUBMITTED
@@ -40,6 +43,12 @@ enum WalletTxType {
   PAYMENT_DEBIT
   REFUND_CREDIT
   ADJUSTMENT
+}
+
+enum FaucetClaimStatus {
+  PENDING
+  SENT
+  FAILED
 }
 
 enum MerchantStatus {
@@ -63,6 +72,7 @@ model User {
   sessions     Session[]
   paymentsMade Payment[] @relation("PayerPayments")
   auditLogs    AuditLog[]
+  faucetClaim  FaucetClaim?
 }
 
 model Session {
@@ -154,6 +164,8 @@ model Merchant {
   accountName          String
   accountNumber        String                      // store encrypted; mask in UI
   accountNumberLast4   String
+  // Receives Xendit's payout receipt email for every settled payment.
+  payoutEmail          String?
 
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -166,7 +178,7 @@ model ExchangeRateSnapshot {
   id         String   @id @default(cuid())
   pair       String                              // "XLMPHP"
   rate       Decimal  @db.Decimal(20, 8)         // 1 XLM = rate PHP
-  source     String   @default("PDAX")
+  source     String   @default("COINSPH")
   fetchedAt  DateTime @default(now())
   @@index([pair, fetchedAt])
 }
@@ -194,7 +206,7 @@ model Payment {
   settlementAmount  Decimal?      @db.Decimal(20, 7)
   // Stellar fees are always paid in XLM, whatever asset is being moved.
   networkFeeXlm     Decimal       @db.Decimal(20, 7) @default(0)
-  pdaxFeePhp        Decimal       @db.Decimal(14, 2) @default(0)
+  payoutFeePhp      Decimal       @db.Decimal(14, 2) @default(0)
   netSettledPhp     Decimal?      @db.Decimal(14, 2)   // PHP actually paid out
 
   status            PaymentStatus @default(CREATED)
@@ -202,8 +214,12 @@ model Payment {
 
   // external references
   stellarTxHash     String?       @unique
-  pdaxTradeRef      String?
-  pdaxCashoutRef    String?
+  payoutRef         String?       @unique         // Xendit payout id (disb-...)
+  // Refund of the payer's crypto from the HeyPay treasury. `refundSubmittedAt` is
+  // set *before* the send, so a crash between sending and saving the hash leaves
+  // a marker instead of a silent retry that would refund twice.
+  refundTxHash      String?       @unique
+  refundSubmittedAt DateTime?
 
   quoteExpiresAt    DateTime?
   createdAt         DateTime      @default(now())
@@ -246,4 +262,18 @@ model IdempotencyKey {
   response   Json?
   createdAt  DateTime @default(now())
   expiresAt  DateTime
+}
+
+// Testnet faucet: each payer can claim a little test XLM once, so anyone can try
+// HeyPay without hunting for test funds. Never enabled on mainnet. A FAILED claim
+// may be retried; PENDING/SENT block another one (userId is unique).
+model FaucetClaim {
+  id        String            @id @default(cuid())
+  userId    String            @unique
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountXlm Decimal           @db.Decimal(20, 7)
+  status    FaucetClaimStatus @default(PENDING)
+  txHash    String?           @unique
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
 }

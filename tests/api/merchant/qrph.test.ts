@@ -63,6 +63,17 @@ it("rejects a QRPH already owned by another merchant (409)", async () => {
   expect(res.status).toBe(409);
 });
 
+it("rejects a QRPH whose merchant id another merchant already uses, even if the string differs (409)", async () => {
+  // A scan resolves by merchant id as well as by exact string, so two merchants
+  // sharing an id would make the scan pick one of them arbitrarily.
+  await seedMerchantUser({ qrphRaw: "SOME-OTHER-QR-STRING", qrphMerchantId: "MERCHID01" });
+  const { user } = await seedMerchantUser({ qrphRaw: "", qrphMerchantId: null });
+  USER.id = user.id;
+  const { POST } = await import("@/app/api/merchant/qrph/route");
+  const res = await POST(req({ raw: RAW }), ctx);
+  expect(res.status).toBe(409);
+});
+
 it("rejects a CRC-invalid string (400)", async () => {
   const { user } = await seedMerchantUser({ qrphRaw: "" });
   USER.id = user.id;

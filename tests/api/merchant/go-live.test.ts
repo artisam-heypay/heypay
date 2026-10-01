@@ -49,6 +49,15 @@ it("blocks go-live with 400 when settlement is missing", async () => {
   expect(res.status).toBe(400);
 });
 
+it("blocks go-live with 400 when there is no payout receipt email", async () => {
+  const { user } = await seedMerchantUser({ status: "DRAFT", payoutEmail: null });
+  USER.id = user.id;
+  const { POST } = await import("@/app/api/merchant/go-live/route");
+  const res = await POST(req(), ctx);
+  expect(res.status).toBe(400);
+  expect((await res.json()).error.message).toMatch(/payout receipt email/);
+});
+
 it("routes to PENDING_REVIEW behind the feature flag", async () => {
   process.env.MERCHANT_REVIEW_GATE = "1";
   const { user } = await seedMerchantUser({ status: "DRAFT" });

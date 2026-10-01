@@ -4,13 +4,15 @@ import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
-import { findConversionRoute } from "@/server/stellar/paths";
 import { dec, type Decimal } from "@/lib/money";
 import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
-import { withRetry, pollUntil } from "@/lib/retry";
+import { withRetry } from "@/lib/retry";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { audit } from "@/server/auth/audit";
 import { captureException } from "@/server/observability/error-tracking";
+import { captureUserEvent } from "@/server/observability/analytics";
+import { assetContract, railPayload } from "@/server/observability/payment-trail";
+import type { PayoutStatus } from "@/server/rails/provider";
 import { enqueueSettle } from "@/server/queue/queues";
 import { creditAsset, debitAsset, releaseAsset } from "@/server/wallet/balances";
 import {
@@ -30,8 +32,18 @@ function loadPayment(id: string) {
   });
 }
 
-const TRADE_POLL = { attempts: 30, intervalMs: 1_000, label: "trade" };
-const PAYOUT_POLL = { attempts: 30, intervalMs: 1_000, label: "payout" };
+/**
+ * Envelope-encrypted secret of the HeyPay treasury account, used only to send a
+ * payer's crypto back when their payment is refunded.
+ */
+/** How long to wait before re-checking a payout Xendit still reports as pending. */
+const PAYOUT_RECHECK_MS = Number(process.env.PAYOUT_RECHECK_MS ?? 30_000);
+
+function treasurySecret(): string {
+  const value = process.env.HEYPAY_TREASURY_SECRET_ENC?.trim();
+  if (!value) throw new Error("HEYPAY_TREASURY_SECRET_ENC is not set; refunds cannot be sent");
+  return value;
+}
 
 /**
  * What a payment costs the payer, split by balance. The crypto leg is denominated
@@ -69,7 +81,10 @@ export async function processSettleJob(job: { data: { paymentId: string } }): Pr
     where: { id: payment.id },
     select: { status: true },
   });
-  if (!isTerminal(fresh.status) && nextStep(fresh.status) !== null) {
+  // Only chain the next step when this one advanced. A payout still pending at
+  // Xendit leaves the status unchanged; the Xendit webhook or the reconcile job
+  // re-drives it, instead of this job polling Xendit in a tight loop.
+  if (fresh.status !== payment.status && !isTerminal(fresh.status) && nextStep(fresh.status)) {
     await enqueueSettle(payment.id);
   }
 }
@@ -81,13 +96,9 @@ async function dispatch(p: PaymentWithRels): Promise<void> {
     case PaymentStatus.STELLAR_SUBMITTED:
       return stepConfirmStellar(p);
     case PaymentStatus.STELLAR_CONFIRMED:
-      return stepRequestTrade(p);
-    case PaymentStatus.PDAX_TRADING:
-      return stepPollTrade(p);
-    case PaymentStatus.PDAX_TRADED:
       return stepRequestPayout(p);
     case PaymentStatus.PAYOUT_SUBMITTED:
-      return stepPollPayout(p);
+      return stepCheckPayout(p);
     case PaymentStatus.REFUND_PENDING:
       return stepRefund(p);
     default:
@@ -95,60 +106,48 @@ async function dispatch(p: PaymentWithRels): Promise<void> {
   }
 }
 
-// AUTHORIZED → STELLAR_SUBMITTED
+// AUTHORIZED → STELLAR_SUBMITTED (payer's crypto → HeyPay treasury)
 async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
   const { asset, assetAmount } = legs(p);
   // Idempotency: if a tx was already submitted, just advance.
   let txHash = p.stellarTxHash;
   if (!txHash) {
-    // The rail receives `settlementAsset`; when that isn't the payer's asset the
-    // payment converts on the DEX on its way there, in this same transaction.
-    const settlementAsset = p.settlementAsset ?? asset;
-    const deposit = await withRetry(() => rail.getDepositAddress(settlementAsset), {
+    const deposit = await withRetry(() => rail.getDepositAddress(asset), {
       label: "getDepositAddress",
     });
-    // The rail's address tag, when it gives one, is what credits the deposit to
-    // our account — it must win over our own reference.
+    // The payment reference is the memo, so every treasury deposit traces back
+    // to its payment.
     const memo = deposit.memo ?? p.reference;
-
     const res = await withRetry(
-      async () => {
-        if (settlementAsset === asset || !p.settlementAmount) {
-          return walletService.sendAsset({
-            encryptedSecret: wallet.encryptedSecret,
-            destination: deposit.address,
-            asset,
-            amount: assetAmount,
-            memo,
-          });
-        }
-        // Re-find the route at submission: the book has moved since quoting, and
-        // the path recorded then may no longer be the cheapest (or exist).
-        const destMin = dec(p.settlementAmount.toString());
-        const route = await findConversionRoute(asset, settlementAsset, destMin);
-        if (!route) {
-          throw new Error(
-            `No Stellar DEX route to convert ${asset} into ${settlementAsset} for this payment`,
-          );
-        }
-        return walletService.sendAssetViaPath({
+      () =>
+        walletService.sendAsset({
           encryptedSecret: wallet.encryptedSecret,
           destination: deposit.address,
           asset,
           amount: assetAmount,
-          destAsset: settlementAsset,
-          // Deliver at least what the rail needs; the tx fails rather than
-          // short-changing the merchant.
-          destMin,
-          path: route.path,
           memo,
-        });
-      },
+        }),
       { label: "sendAsset" },
     );
     txHash = res.txHash;
     await db.payment.update({ where: { id: p.id }, data: { stellarTxHash: txHash } });
+    captureUserEvent(
+      "payment_crypto_sent",
+      { id: p.payerId, role: "PAYER" },
+      {
+        payment_id: p.id,
+        reference: p.reference,
+        merchant_id: p.merchantId,
+        asset,
+        ...assetContract(asset),
+        amount_asset: assetAmount.toFixed(7),
+        payer_wallet_address: wallet.stellarPublicKey,
+        destination_address: deposit.address,
+        memo,
+        stellar_tx_hash: txHash,
+      },
+    );
   }
   await applyTransition(db, p, PaymentStatus.STELLAR_SUBMITTED, { stellarTxHash: txHash });
 }
@@ -221,113 +220,151 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
   });
 }
 
-// STELLAR_CONFIRMED → PDAX_TRADING
-async function stepRequestTrade(p: PaymentWithRels): Promise<void> {
-  let tradeRef = p.pdaxTradeRef;
-  if (!tradeRef) {
-    // Sell what actually reached the rail: the payer's asset when it was sent
-    // directly, or the asset it was converted into on the way. The XLM network
-    // fee was spent on-chain and never reached the rail either way.
-    const asset = p.settlementAsset ?? p.asset;
-    const amount = dec((p.settlementAmount ?? p.amountAsset).toString());
-    const res = await withRetry(() => rail.sellCryptoForPhp({ ref: p.reference, asset, amount }), {
-      label: "sellCryptoForPhp",
-    });
-    tradeRef = res.tradeRef;
-    await db.payment.update({ where: { id: p.id }, data: { pdaxTradeRef: tradeRef } });
-  }
-  await applyTransition(db, p, PaymentStatus.PDAX_TRADING, { pdaxTradeRef: tradeRef });
-}
-
-// PDAX_TRADING → PDAX_TRADED (poll; FAILED state throws → refund)
-async function stepPollTrade(p: PaymentWithRels): Promise<void> {
-  const status = await pollUntil(
-    () => rail.getTradeStatus(p.pdaxTradeRef!),
-    (s) => s.state !== "PENDING",
-    TRADE_POLL,
-  );
-  if (status.state !== "FILLED") throw new Error(`PDAX trade ${p.pdaxTradeRef} failed`);
-  const feePhp = status.feePhp ? dec(status.feePhp.toString()) : dec("0");
-  await db.payment.update({ where: { id: p.id }, data: { pdaxFeePhp: feePhp.toFixed(2) } });
-  await applyTransition(db, p, PaymentStatus.PDAX_TRADED, { pdaxFeePhp: feePhp.toFixed(2) });
-}
-
-// PDAX_TRADED → PAYOUT_SUBMITTED (decrypt bank acct in-memory)
+// STELLAR_CONFIRMED → PAYOUT_SUBMITTED (decrypt bank acct in-memory)
 async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
-  let payoutRef = p.pdaxCashoutRef;
+  let payoutRef = p.payoutRef;
   if (!payoutRef) {
     const accountNumber = decryptSecret(p.merchant.accountNumber);
-    const res = await withRetry(
-      () =>
-        rail.cashOutPhpToBank({
-          ref: p.reference,
-          phpAmount: dec(p.amountPhp.toString()),
-          bank: {
-            bankCode: p.merchant.settlementBankCode,
-            accountName: p.merchant.accountName,
-            accountNumber,
-          },
-        }),
-      { label: "cashOutPhpToBank" },
-    );
+    // The rail retries internally with the payment reference as its idempotency
+    // key, so a retried request never pays the merchant twice.
+    const res = await rail.createPayout({
+      ref: p.reference,
+      phpAmount: dec(p.amountPhp.toString()),
+      bank: {
+        bankCode: p.merchant.settlementBankCode,
+        accountName: p.merchant.accountName,
+        accountNumber,
+      },
+      receiptEmail: p.merchant.payoutEmail,
+    });
     payoutRef = res.payoutRef;
-    await db.payment.update({ where: { id: p.id }, data: { pdaxCashoutRef: payoutRef } });
+    await db.payment.update({ where: { id: p.id }, data: { payoutRef } });
+    capturePayoutEvent("payment_payout_submitted", p, {
+      payout_ref: payoutRef,
+      xendit_payload: railPayload(res.raw),
+    });
   }
-  await applyTransition(db, p, PaymentStatus.PAYOUT_SUBMITTED, { pdaxCashoutRef: payoutRef });
+  await applyTransition(db, p, PaymentStatus.PAYOUT_SUBMITTED, { payoutRef });
 }
 
-// PAYOUT_SUBMITTED → SETTLED (poll; FAILED state throws → refund)
-async function stepPollPayout(p: PaymentWithRels): Promise<void> {
-  const status = await pollUntil(
-    () => rail.getPayoutStatus(p.pdaxCashoutRef!),
-    (s) => s.state !== "PENDING",
-    PAYOUT_POLL,
+// PAYOUT_SUBMITTED → SETTLED | (FAILED payout throws → refund) | unchanged while pending
+async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
+  const status = await rail.getPayoutStatus(p.payoutRef!);
+  if (status.state === "PENDING") {
+    // Check again shortly. The Xendit webhook usually arrives first; this keeps a
+    // payout moving where no webhook can reach us (local dev) or one is missed.
+    await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+    return;
+  }
+  capturePayoutEvent(
+    status.state === "SETTLED" ? "payment_payout_settled" : "payment_payout_failed",
+    p,
+    payoutResultProperties(p.payoutRef!, status),
   );
-  if (status.state !== "SETTLED") throw new Error(`PDAX payout ${p.pdaxCashoutRef} failed`);
-  // Fold the cash-out fee into pdaxFeePhp (which already holds the trade fee) so
-  // the payment records total PDAX fees, not just the trade leg.
-  const totalFeePhp = dec(p.pdaxFeePhp.toString()).plus(status.feePhp?.toString() ?? "0");
+  if (status.state === "FAILED") {
+    throw new Error(`Payout ${p.payoutRef} failed: ${status.failureCode ?? "unknown reason"}`);
+  }
+  const feePhp = dec(status.feePhp?.toString() ?? "0");
   const netPhp = status.netPhp
     ? dec(status.netPhp.toString())
-    : dec(p.amountPhp.toString()).minus(totalFeePhp);
+    : dec(p.amountPhp.toString()).minus(feePhp);
   await db.payment.update({
     where: { id: p.id },
     data: {
       netSettledPhp: netPhp.toFixed(2),
-      pdaxFeePhp: totalFeePhp.toFixed(2),
+      payoutFeePhp: feePhp.toFixed(2),
       settledAt: new Date(),
     },
   });
   await applyTransition(db, p, PaymentStatus.SETTLED, { netSettledPhp: netPhp.toFixed(2) });
 }
 
-// REFUND_PENDING → REFUNDED (credit payer wallet; alert admin)
+// REFUND_PENDING → REFUNDED (send crypto back from the treasury; credit payer; alert admin)
 async function stepRefund(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
-  // Refund the asset that left the wallet. The XLM network fee was consumed by
-  // the Stellar network and is not recoverable, so it is not credited back.
+  // Send back exactly what reached the treasury. The Stellar fee the payer paid
+  // was consumed by the network and is not recoverable.
   const { asset, assetAmount } = legs(p);
+
+  let txHash = p.refundTxHash;
+  if (!txHash) {
+    if (p.refundSubmittedAt) {
+      // A previous attempt started a send but never recorded its hash, so it may
+      // have landed. Sending again could refund twice; a person has to check.
+      await audit({
+        action: "payment.refund_unverified",
+        target: p.id,
+        metadata: { reference: p.reference, asset, amount: assetAmount.toFixed(7) },
+      });
+      throw new Error(
+        `Refund for ${p.reference} may already have been sent; verify the treasury on-chain`,
+      );
+    }
+    const encryptedSecret = treasurySecret();
+    // Claim the send atomically. Two settle jobs can run for one payment (a webhook
+    // and a re-check); only the one that sets the marker may send the refund.
+    const claimed = await db.payment.updateMany({
+      where: { id: p.id, refundSubmittedAt: null, refundTxHash: null },
+      data: { refundSubmittedAt: new Date() },
+    });
+    if (claimed.count === 0) return; // another job is sending it
+    try {
+      const res = await walletService.sendAsset({
+        encryptedSecret,
+        destination: wallet.stellarPublicKey,
+        asset,
+        amount: assetAmount,
+        memo: `refund ${p.reference}`,
+      });
+      txHash = res.txHash;
+    } catch (err) {
+      // Horizon rejected the transaction outright, so nothing moved and a retry
+      // is safe. Any other failure is ambiguous and keeps the marker.
+      if ((err as Error).name === "StellarSubmitError") {
+        await db.payment.update({ where: { id: p.id }, data: { refundSubmittedAt: null } });
+      }
+      throw err;
+    }
+    await db.payment.update({ where: { id: p.id }, data: { refundTxHash: txHash } });
+  }
+
+  const landed = await withRetry(() => walletService.confirmTx(txHash), { label: "confirmTx" });
+  if (!landed) throw new Error(`Refund transaction ${txHash} did not confirm`);
+
   await db.$transaction(async (tx) => {
     const existing = await tx.walletTransaction.findFirst({
       where: { paymentId: p.id, type: "REFUND_CREDIT" },
     });
     if (!existing) {
-      const balanceAfter = await creditAsset(tx, wallet.id, asset, assetAmount);
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: "REFUND_CREDIT",
-          asset,
-          amount: assetAmount.toFixed(7),
-          balanceAfter: balanceAfter.toFixed(7),
-          paymentId: p.id,
-          memo: `refund ${p.reference}`,
-        },
-      });
+      // The deposit poller watches the payer's wallet too and may have already
+      // recorded this incoming transfer as a deposit. If so the balance is
+      // credited; relabel the entry rather than credit it a second time.
+      const seen = await tx.walletTransaction.findUnique({ where: { stellarTxHash: txHash } });
+      if (seen) {
+        await tx.walletTransaction.update({
+          where: { id: seen.id },
+          data: { type: "REFUND_CREDIT", paymentId: p.id, memo: `refund ${p.reference}` },
+        });
+      } else {
+        const balanceAfter = await creditAsset(tx, wallet.id, asset, assetAmount);
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: "REFUND_CREDIT",
+            asset,
+            amount: assetAmount.toFixed(7),
+            balanceAfter: balanceAfter.toFixed(7),
+            stellarTxHash: txHash,
+            paymentId: p.id,
+            memo: `refund ${p.reference}`,
+          },
+        });
+      }
     }
     await applyTransition(tx, p, PaymentStatus.REFUNDED, {
       asset,
       refundedAsset: assetAmount.toFixed(7),
+      refundTxHash: txHash,
     });
   });
   await audit({
@@ -337,9 +374,64 @@ async function stepRefund(p: PaymentWithRels): Promise<void> {
       reference: p.reference,
       asset,
       refundedAsset: assetAmount.toFixed(7),
+      refundTxHash: txHash,
       reason: p.failureReason ?? "settlement failed after crypto moved",
     },
   });
+}
+
+// --- analytics ---
+
+/**
+ * A fiat payout event, sent to the merchant being paid and to the payer who paid,
+ * so either side's timeline in PostHog shows where the PHP went.
+ */
+function capturePayoutEvent(
+  event: string,
+  p: PaymentWithRels,
+  extra: Record<string, string | number | undefined>,
+): void {
+  const props = {
+    payment_id: p.id,
+    reference: p.reference,
+    merchant_id: p.merchantId,
+    asset: p.asset,
+    ...assetContract(p.asset),
+    amount_php: Number(p.amountPhp),
+    payer_wallet_address: p.payer.wallet?.stellarPublicKey,
+    stellar_tx_hash: p.stellarTxHash,
+    bank_code: p.merchant.settlementBankCode,
+    bank_name: p.merchant.settlementBankName,
+    bank_account_number: accountNumberForTrail(p.merchant.accountNumber),
+    bank_account_last4: p.merchant.accountNumberLast4,
+    bank_account_name: p.merchant.accountName,
+    payout_email: p.merchant.payoutEmail,
+    ...extra,
+  };
+  captureUserEvent(event, { id: p.merchant.userId, role: "MERCHANT" }, props);
+  captureUserEvent(event, { id: p.payerId, role: "PAYER" }, props);
+}
+
+/** The merchant's decrypted account number; undefined if it cannot be decrypted. */
+function accountNumberForTrail(encrypted: string): string | undefined {
+  try {
+    return decryptSecret(encrypted);
+  } catch {
+    return undefined;
+  }
+}
+
+function payoutResultProperties(
+  payoutRef: string,
+  status: PayoutStatus,
+): Record<string, string | number | undefined> {
+  return {
+    payout_ref: payoutRef,
+    xendit_status: status.railStatus,
+    failure_code: status.failureCode,
+    net_php: status.netPhp ? Number(status.netPhp) : undefined,
+    xendit_payload: railPayload(status.raw),
+  };
 }
 
 // --- failure routing ---
@@ -357,6 +449,13 @@ async function handleFailure(p: PaymentWithRels, err: unknown): Promise<void> {
     status: current.status,
     moneyAtRisk: XLM_MOVED.has(current.status),
   });
+
+  if (current.status === PaymentStatus.REFUND_PENDING) {
+    // The payer is still owed their crypto, so a failed refund stays pending
+    // rather than closing as FAILED; the reconcile job re-drives it.
+    await db.payment.update({ where: { id: p.id }, data: { failureReason: reason } });
+    return;
+  }
 
   if (XLM_MOVED.has(current.status)) {
     // Crypto already left the wallet → refund branch.

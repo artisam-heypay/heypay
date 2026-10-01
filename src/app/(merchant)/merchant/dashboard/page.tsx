@@ -4,17 +4,25 @@ import {
   requireMerchant,
   getMerchantEarnings,
   listMerchantTransactions,
+  parseEarningsRange,
   serializeMerchant,
 } from "@/server/merchant/service";
 import { EarningsCards } from "@/components/merchant/EarningsCards";
+import { EarningsChart } from "@/components/merchant/EarningsChart";
+import { RangeFilter } from "@/components/merchant/RangeFilter";
 import { TransactionsTable } from "@/components/merchant/TransactionsTable";
 import { BusinessSummaryCard } from "@/components/merchant/BusinessSummaryCard";
 
-export default async function MerchantDashboard() {
+export default async function MerchantDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
   const user = await requireRole("MERCHANT");
   const merchant = await requireMerchant(user.id);
+  const range = parseEarningsRange((await searchParams).range);
   const [earnings, txPage] = await Promise.all([
-    getMerchantEarnings(merchant.id),
+    getMerchantEarnings(merchant.id, range),
     listMerchantTransactions(merchant.id, { limit: 8 }),
   ]);
 
@@ -39,7 +47,9 @@ export default async function MerchantDashboard() {
           {statusLabel}
         </span>
       </div>
+      <RangeFilter current={range} />
       <EarningsCards earnings={earnings} />
+      <EarningsChart series={earnings.series} bucket={earnings.bucket} />
       <div className="grid grid-cols-1 gap-stack-lg lg:grid-cols-3">
         <section className="lg:col-span-2">
           <div className="mb-stack-md flex items-center justify-between">

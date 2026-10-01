@@ -35,13 +35,38 @@ export const reconcileQueue = new Queue(QUEUE_NAMES.reconcile, {
   defaultJobOptions: defaultJobOpts,
 });
 
-export async function enqueueSettle(paymentId: string): Promise<void> {
+export async function enqueueSettle(
+  paymentId: string,
+  opts: { delayMs?: number } = {},
+): Promise<void> {
   const payment = await db.payment.findUnique({
     where: { id: paymentId },
     select: { status: true },
   });
   if (!payment) return;
-  // jobId ties the job to (payment, status); BullMQ dedupes a duplicate of the same step.
   // Separator is "-" not ":" — BullMQ forbids ":" in a custom jobId (its internal key delimiter).
-  await settleQueue.add("settle", { paymentId }, { jobId: `${paymentId}-${payment.status}` });
+  const stepId = `${paymentId}-${payment.status}`;
+
+  if (opts.delayMs) {
+    // A scheduled re-check (e.g. a payout still pending at Xendit). It gets its own id:
+    // it is usually requested from inside the job that holds `stepId`.
+    await settleQueue.add(
+      "settle",
+      { paymentId },
+      { jobId: `${stepId}-at${Date.now() + opts.delayMs}`, delay: opts.delayMs },
+    );
+    return;
+  }
+
+  // jobId ties the job to (payment, status) so a duplicate of a queued or running step
+  // is dropped. BullMQ also drops an id it has *finished*, which would silently swallow
+  // every later nudge for a step that can be re-checked (PAYOUT_SUBMITTED waiting on
+  // Xendit, a REFUND_PENDING retry) — so a finished job is cleared to make room.
+  const existing = await settleQueue.getJob(stepId);
+  if (existing) {
+    const state = await existing.getState();
+    if (state !== "completed" && state !== "failed") return; // already queued or running
+    await existing.remove();
+  }
+  await settleQueue.add("settle", { paymentId }, { jobId: stepId });
 }

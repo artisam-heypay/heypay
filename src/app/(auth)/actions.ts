@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, DUMMY_PASSWORD_HASH } from "@/server/auth
 import { createSession, destroySession, getSessionUser } from "@/server/auth/sessions";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { audit } from "@/server/auth/audit";
+import { captureUserEvent } from "@/server/observability/analytics";
 import { walletService } from "@/server/stellar/wallet";
 import { dashboardPath } from "@/lib/auth-redirect";
 
@@ -60,11 +61,13 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
       target: parsed.data.username,
       ip,
     });
+    if (user) captureUserEvent("user_login_failed", user, { active: user.isActive });
     return { error: "Invalid username or password." };
   }
 
   await createSession(user.id, { ip, userAgent });
   await audit({ actorId: user.id, action: "auth.login", target: user.id, ip });
+  captureUserEvent("user_logged_in", user);
   redirect(dashboardPath(user.role)); // throws NEXT_REDIRECT — must be outside try/catch
 }
 
@@ -79,7 +82,8 @@ export async function signupAction(_prev: AuthState, formData: FormData): Promis
 
   const { ip, userAgent } = await requestMeta();
   try {
-    await rateLimit(`signup:ip:${ip}`, { limit: 5, windowSec: 3600 });
+    const signupLimit = Number(process.env.SIGNUP_RATE_LIMIT ?? "5");
+    await rateLimit(`signup:ip:${ip}`, { limit: signupLimit, windowSec: 3600 });
   } catch {
     return { error: "Too many sign-up attempts. Please try again later." };
   }
@@ -108,6 +112,7 @@ export async function signupAction(_prev: AuthState, formData: FormData): Promis
 
   await createSession(user.id, { ip, userAgent });
   await audit({ actorId: user.id, action: "auth.signup", target: user.id, ip });
+  captureUserEvent("user_signed_up", user);
   redirect(dashboardPath(user.role));
 }
 
@@ -117,6 +122,7 @@ export async function logoutAction(): Promise<void> {
   if (user) {
     const { ip } = await requestMeta();
     await audit({ actorId: user.id, action: "auth.logout", target: user.id, ip });
+    captureUserEvent("user_logged_out", user);
   }
   redirect("/login");
 }

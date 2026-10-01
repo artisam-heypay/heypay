@@ -8,6 +8,7 @@ import { assertAssetEnabled, isIssuedAsset } from "@/lib/assets";
 import { assetIssuer } from "@/server/stellar/assets";
 import { notFound } from "@/lib/errors";
 import { walletService } from "@/server/stellar/wallet";
+import { captureUserEvent } from "@/server/observability/analytics";
 
 const querySchema = z.object({ asset: z.enum(["XLM", "USDC", "USDT"]).default("XLM") });
 
@@ -24,6 +25,11 @@ export const GET = route(async (req) => {
   // out the address on that basis produces op_no_trust for the sender.
   const canReceive = await walletService.canReceive(wallet.stellarPublicKey, asset);
   const qrSvg = await QRCode.toString(wallet.stellarPublicKey, { type: "svg", margin: 1 });
+  captureUserEvent("deposit_address_viewed", user, {
+    asset,
+    can_receive: canReceive,
+    wallet_address: wallet.stellarPublicKey,
+  });
 
   return json({
     publicKey: wallet.stellarPublicKey,

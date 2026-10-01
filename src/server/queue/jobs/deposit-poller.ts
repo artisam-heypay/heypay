@@ -13,6 +13,8 @@ import {
   getAssetBalances,
   markTrustlineEstablished,
 } from "@/server/wallet/balances";
+import { captureUserEvent } from "@/server/observability/analytics";
+import { assetContract } from "@/server/observability/payment-trail";
 
 const cursorKey = (walletId: string) => `horizon:cursor:${walletId}`;
 
@@ -34,15 +36,32 @@ function creditableAssets(): PaymentAsset[] {
  * still trigger it manually from the prefund screen.
  */
 async function autoEstablishTrustlines(
-  wallet: { id: string; stellarPublicKey: string; encryptedSecret: string },
+  wallet: { id: string; userId: string; stellarPublicKey: string; encryptedSecret: string },
   assets: readonly PaymentAsset[],
 ): Promise<void> {
   for (const asset of assets) {
     const { available } = await getAssetBalance(db, wallet.id, "XLM");
     if (available.lessThan(dec(TRUSTLINE_XLM_REQUIREMENT))) return; // not funded enough (yet)
     try {
-      await walletService.establishTrustline({ encryptedSecret: wallet.encryptedSecret, asset });
+      const result = await walletService.establishTrustline({
+        encryptedSecret: wallet.encryptedSecret,
+        asset,
+      });
       await markTrustlineEstablished(wallet.id, asset);
+      if (!result.alreadyEstablished) {
+        // Custodial wallets belong to payers only.
+        captureUserEvent(
+          "wallet_trustline_added",
+          { id: wallet.userId, role: "PAYER" },
+          {
+            asset,
+            ...assetContract(asset),
+            automatic: true,
+            wallet_address: wallet.stellarPublicKey,
+            stellar_tx_hash: result.txHash,
+          },
+        );
+      }
     } catch (err) {
       console.error("[deposit-poll] auto-trustline failed", {
         walletId: wallet.id,
@@ -90,6 +109,18 @@ export async function syncWalletDeposits(walletId: string): Promise<{
         });
       });
       newDeposits++;
+      captureUserEvent(
+        "wallet_deposit_received",
+        { id: wallet.userId, role: "PAYER" },
+        {
+          asset: item.asset,
+          ...assetContract(item.asset),
+          amount: amount.toNumber(),
+          wallet_address: wallet.stellarPublicKey,
+          from_address: item.from,
+          stellar_tx_hash: item.txHash,
+        },
+      );
     } catch (err) {
       // Concurrent insert of the same txHash → ignore (already credited).
       if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) throw err;

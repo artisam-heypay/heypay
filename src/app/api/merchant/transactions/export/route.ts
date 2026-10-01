@@ -4,6 +4,7 @@ import { requireRole } from "@/server/auth/sessions";
 import { txQuerySchema } from "@/lib/schemas/merchant";
 import { allMerchantTransactions, getMerchantForUser } from "@/server/merchant/service";
 import { toCsv } from "@/lib/csv";
+import { captureUserEvent } from "@/server/observability/analytics";
 
 export const GET = route(async (req) => {
   const user = await requireRole("MERCHANT");
@@ -33,6 +34,12 @@ export const GET = route(async (req) => {
       r.createdAt,
     ]),
   );
+  captureUserEvent("merchant_transactions_exported", user, {
+    merchant_id: merchant.id,
+    rows: rows.length,
+    status_filter: status ?? null,
+    has_date_range: Boolean(from || to),
+  });
   const filename = `heypay-settlements-${new Date().toISOString().slice(0, 10)}.csv`;
   return new NextResponse(csv, {
     status: 200,

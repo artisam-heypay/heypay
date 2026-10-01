@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "releaseCommand": "pnpm prisma migrate deploy && pnpm prisma db seed",
+    "preDeployCommand": "pnpm prisma migrate deploy && pnpm prisma db seed",
     "healthcheckTimeout": 120,
     "numReplicas": 1,
     "restartPolicyType": "ON_FAILURE",

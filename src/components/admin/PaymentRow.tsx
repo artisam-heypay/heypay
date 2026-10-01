@@ -160,7 +160,7 @@ export function PaymentRow({ row }: { row: PaymentRowData }) {
           pending={pending}
           title="Refund payment"
           confirmLabel="Confirm refund"
-          body={`Return XLM to the payer for ${row.reference}? This sets the payment to REFUND_PENDING.`}
+          body={`Send the payer's crypto back from the HeyPay treasury for ${row.reference}? Only possible before the merchant payout starts.`}
           onCancel={() => setDialog(null)}
           onConfirm={() => act("refund")}
         />

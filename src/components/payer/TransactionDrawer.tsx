@@ -13,6 +13,9 @@ type PaymentDetail = {
     networkFeeXlm: string;
     merchantName: string;
     stellarTxHash: string | null;
+    stellarTxUrl: string | null;
+    refundTxHash: string | null;
+    refundTxUrl: string | null;
     createdAt: string;
   };
   events: { fromStatus: string | null; toStatus: string; createdAt: string }[];
@@ -89,8 +92,19 @@ export function TransactionDrawer({
                 value={`${data.payment.amountAsset} ${data.payment.asset}`}
               />
               <Row label="Network fee" value={`${data.payment.networkFeeXlm} XLM`} />
-              {data.payment.stellarTxHash && (
-                <Row label="Stellar tx" value={data.payment.stellarTxHash} mono />
+              {data.payment.stellarTxHash && data.payment.stellarTxUrl && (
+                <TxLinkRow
+                  label="Payment on Stellar"
+                  hash={data.payment.stellarTxHash}
+                  href={data.payment.stellarTxUrl}
+                />
+              )}
+              {data.payment.refundTxHash && data.payment.refundTxUrl && (
+                <TxLinkRow
+                  label="Refund on Stellar"
+                  hash={data.payment.refundTxHash}
+                  href={data.payment.refundTxUrl}
+                />
               )}
             </dl>
 
@@ -110,6 +124,29 @@ export function TransactionDrawer({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** A transaction hash that opens in the public Stellar explorer. */
+function TxLinkRow({ label, hash, href }: { label: string; hash: string; href: string }) {
+  return (
+    <div className="flex items-center justify-between gap-stack-md py-stack-sm">
+      <dt className="shrink-0 text-body-md text-on-surface-variant">{label}</dt>
+      <dd className="min-w-0">
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex max-w-full items-center gap-1 rounded text-primary underline-offset-2 hover:underline focus:outline-none focus:ring-4 focus:ring-primary/10"
+        >
+          <span className="truncate font-mono text-mono-data">
+            {hash.slice(0, 8)}…{hash.slice(-8)}
+          </span>
+          <Icon name="open_in_new" className="shrink-0 text-base" />
+          <span className="sr-only">View on Stellar explorer (opens in a new tab)</span>
+        </a>
+      </dd>
     </div>
   );
 }

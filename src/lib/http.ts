@@ -3,6 +3,11 @@ import { z } from "zod";
 import type { Role } from "@/generated/prisma/client";
 import { AppError, badRequest, serverError, type ErrorEnvelope } from "./errors";
 import { captureException } from "@/server/observability/error-tracking";
+import {
+  analyticsEnabled,
+  captureUserEvent,
+  normalizeApiPath,
+} from "@/server/observability/analytics";
 
 export type HandlerContext = {
   params: Record<string, string>;
@@ -48,10 +53,46 @@ export function route(
           path: req.nextUrl.pathname,
         });
       }
+      await reportApiError(req, appErr);
       const body: ErrorEnvelope = appErr.toEnvelope();
       return NextResponse.json(body, { status: appErr.status });
     }
   };
+}
+
+// Payer, merchant and admin APIs; auth (no user yet) and webhooks are not
+// monitored here.
+const MONITORED_API_PREFIXES = [
+  "/api/payments",
+  "/api/wallet",
+  "/api/qrph",
+  "/api/merchant",
+  "/api/admin",
+];
+
+/**
+ * Send a failed payer/merchant/admin API call to analytics as `api_error`, so errors
+ * testers hit show up even when nobody reports them. Never throws.
+ */
+async function reportApiError(req: NextRequest, err: AppError): Promise<void> {
+  if (!analyticsEnabled() || err.status === 401) return;
+  const path = req.nextUrl.pathname;
+  if (!MONITORED_API_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) return;
+  try {
+    // Imported lazily: the session module pulls in the database client.
+    const { getSessionUser } = await import("@/server/auth/sessions");
+    const user = await getSessionUser();
+    if (!user) return;
+    captureUserEvent("api_error", user, {
+      path: normalizeApiPath(path),
+      method: req.method,
+      status: err.status,
+      code: err.code,
+      message: err.message.slice(0, 200),
+    });
+  } catch {
+    // Analytics must never change the error response.
+  }
 }
 
 /** Parse + validate a JSON body with a Zod schema; throws badRequest on failure. */

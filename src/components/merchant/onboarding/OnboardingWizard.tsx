@@ -32,6 +32,7 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
   const [bankCode, setBankCode] = useState(initial?.settlementBankCode ?? "");
   const [accountName, setAccountName] = useState(initial?.accountName ?? "");
   const [accountNumber, setAccountNumber] = useState("");
+  const [payoutEmail, setPayoutEmail] = useState(initial?.payoutEmail ?? "");
   const [last4, setLast4] = useState(initial?.accountNumberLast4 ?? "");
   const [qrphRaw, setQrphRaw] = useState(initial?.qrphRaw ?? "");
   const [qrName, setQrName] = useState(initial?.qrphMerchantName ?? "");
@@ -62,7 +63,12 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
 
   const submitStep2 = () =>
     run(async () => {
-      await callApi("/api/merchant/settlement", "POST", { bankCode, accountName, accountNumber });
+      await callApi("/api/merchant/settlement", "POST", {
+        bankCode,
+        accountName,
+        accountNumber,
+        payoutEmail,
+      });
       setLast4(accountNumber.slice(-4));
       setStep(3);
     });
@@ -144,16 +150,16 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
                   Test settlement account
                 </p>
                 <p className="text-body-sm text-on-surface-variant">
-                  For UAT, use this whitelisted payout account:
+                  In Xendit test mode no real money moves, so any account works, e.g.:
                 </p>
                 <dl className="mt-stack-sm flex flex-col gap-stack-sm font-mono text-mono-data">
                   <div className="flex items-center justify-between gap-stack-md">
-                    <dt className="text-on-surface-variant">Bank</dt>
-                    <dd className="text-on-surface">Security Bank</dd>
+                    <dt className="text-on-surface-variant">Wallet</dt>
+                    <dd className="text-on-surface">GCash</dd>
                   </div>
                   <div className="flex items-center justify-between gap-stack-md">
-                    <dt className="text-on-surface-variant">Account</dt>
-                    <dd className="text-on-surface">0000042001461</dd>
+                    <dt className="text-on-surface-variant">Number</dt>
+                    <dd className="text-on-surface">09171234567</dd>
                   </div>
                 </dl>
               </div>
@@ -195,6 +201,17 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
               />
+              <FloatingInput
+                id="payoutEmail"
+                label="Payout receipt email"
+                type="email"
+                value={payoutEmail}
+                onChange={(e) => setPayoutEmail(e.target.value)}
+                autoComplete="email"
+              />
+              <p className="text-body-sm text-on-surface-variant">
+                Xendit emails a receipt here each time a payment is paid out to you.
+              </p>
             </>
           )}
 
@@ -244,6 +261,7 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
               <dl className="flex flex-col gap-stack-md">
                 <Row label="Business" value={businessName} />
                 <Row label="Settlement" value={`${bankCode} •••• ${last4}`} />
+                <Row label="Receipts to" value={payoutEmail} />
                 <Row label="QRPH" value={qrName || "Linked"} />
               </dl>
             </>

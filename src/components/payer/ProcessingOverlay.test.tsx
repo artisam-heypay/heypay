@@ -3,15 +3,15 @@ import { render, screen } from "@testing-library/react";
 import { ProcessingOverlay } from "./ProcessingOverlay";
 
 describe("ProcessingOverlay", () => {
-  it("shows the checklist with in-progress step while trading", () => {
+  it("shows the checklist with in-progress step while paying out", () => {
     render(
       <ProcessingOverlay
-        status="PDAX_TRADING"
+        status="PAYOUT_SUBMITTED"
         merchantName="Sari Store"
         amountPhpDisplay="₱500.00"
       />,
     );
-    expect(screen.getByText("Converting XLM → PHP")).toBeInTheDocument();
+    expect(screen.getByText("Paying the merchant in PHP")).toBeInTheDocument();
     expect(screen.getByText("Payment authorized")).toBeInTheDocument();
   });
 

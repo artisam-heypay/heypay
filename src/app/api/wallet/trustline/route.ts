@@ -15,6 +15,8 @@ import { badRequest, conflict, notFound } from "@/lib/errors";
 import { walletService } from "@/server/stellar/wallet";
 import { TRUSTLINE_XLM_REQUIREMENT } from "@/server/stellar/assets";
 import { getAssetBalance, markTrustlineEstablished } from "@/server/wallet/balances";
+import { captureUserEvent } from "@/server/observability/analytics";
+import { assetContract } from "@/server/observability/payment-trail";
 
 const bodySchema = z.object({ asset: z.enum(["XLM", "USDC", "USDT"]) });
 
@@ -48,6 +50,15 @@ export const POST = route(async (req) => {
     asset,
   });
   await markTrustlineEstablished(wallet.id, asset);
+  if (!result.alreadyEstablished) {
+    captureUserEvent("wallet_trustline_added", user, {
+      asset,
+      ...assetContract(asset),
+      automatic: false,
+      wallet_address: wallet.stellarPublicKey,
+      stellar_tx_hash: result.txHash,
+    });
+  }
 
   return json({
     asset,

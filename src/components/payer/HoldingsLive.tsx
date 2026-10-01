@@ -2,12 +2,20 @@
 import { useEffect, useState } from "react";
 import { dec, displayAsset, displayPhp } from "@/lib/money";
 
+/**
+ * Dispatch on `window` after anything that moves the wallet balance (e.g. a
+ * faucet claim), so the balance refreshes now instead of on the next poll.
+ */
+export const WALLET_UPDATED_EVENT = "heypay:wallet-updated";
+
 export type HoldingRow = {
   asset: string;
   /** 7dp string. */
   balance: string;
   /** 2dp string, or null when the rail cannot price this token. */
   valuePhp: string | null;
+  /** 1 unit in PHP (8dp string); null or absent when unpriced. */
+  rate?: string | null;
 };
 
 export type HoldingsSnapshot = {
@@ -42,7 +50,12 @@ export function HoldingsLive({
         const data = (await res.json()) as {
           totalPhp: string;
           hasUnpricedBalance: boolean;
-          assets: { asset: string; balance: string; valuePhp: string | null }[];
+          assets: {
+            asset: string;
+            balance: string;
+            valuePhp: string | null;
+            rate: string | null;
+          }[];
         };
         setSnapshot({
           totalPhp: data.totalPhp,
@@ -51,18 +64,30 @@ export function HoldingsLive({
             asset: a.asset,
             balance: a.balance,
             valuePhp: a.valuePhp,
+            rate: a.rate,
           })),
         });
       } catch {
         // network/abort — keep the last known value
       }
     }
-    const id = setInterval(refresh, 15_000);
-    window.addEventListener("focus", refresh);
+    // Poll while the tab is visible; a hidden tab has no one to show a price to.
+    const tick = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    // The server-rendered snapshot can be stale on arrival (back navigation,
+    // bfcache), so refresh once straight away.
+    tick();
+    const id = setInterval(tick, 15_000);
+    window.addEventListener("focus", tick);
+    window.addEventListener(WALLET_UPDATED_EVENT, tick);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       controller.abort();
       clearInterval(id);
-      window.removeEventListener("focus", refresh);
+      window.removeEventListener("focus", tick);
+      window.removeEventListener(WALLET_UPDATED_EVENT, tick);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, [live]);
 
@@ -97,15 +122,22 @@ export function HoldingsLive({
                 </p>
               </div>
             </div>
-            <span className="font-mono text-mono-data text-on-surface">
-              {t.valuePhp === null ? (
-                <span className="text-on-surface-variant" title="No exchange rate available">
-                  —
-                </span>
-              ) : (
-                `≈ ${displayPhp(dec(t.valuePhp))}`
+            <div className="text-right">
+              <p className="font-mono text-mono-data text-on-surface">
+                {t.valuePhp === null ? (
+                  <span className="text-on-surface-variant" title="No exchange rate available">
+                    —
+                  </span>
+                ) : (
+                  `≈ ${displayPhp(dec(t.valuePhp))}`
+                )}
+              </p>
+              {t.rate && (
+                <p className="font-mono text-body-sm text-on-surface-variant">
+                  1 {t.asset} = {displayPhp(dec(t.rate))}
+                </p>
               )}
-            </span>
+            </div>
           </li>
         ))}
       </ul>

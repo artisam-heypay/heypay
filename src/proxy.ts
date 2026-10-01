@@ -23,11 +23,12 @@ export async function proxy(req: NextRequest): Promise<NextResponse> {
   }
 
   // Security headers on EVERY response (allow/redirect/forbidden alike).
-  applySecurityHeaders(res, pathname);
+  applySecurityHeaders(res);
   return res;
 }
 
 export const config = {
-  // Run on all paths except Next internals and static assets.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Run on all paths except Next internals, static assets, and the PostHog
+  // ingest rewrite (public, high-volume; no session lookup needed).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|ingest/).*)"],
 };

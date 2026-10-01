@@ -66,6 +66,17 @@ export interface WalletService {
     amountXlm: Decimal;
     memo: string;
   }): Promise<{ txHash: string }>;
+  /**
+   * Sends `amountXlm` to `destination`, creating the account (createAccount)
+   * when it does not exist on the network yet — a brand-new custodial wallet
+   * cannot receive a plain payment until something funds it.
+   */
+  fundXlm(input: {
+    encryptedSecret: string;
+    destination: string;
+    amountXlm: Decimal;
+    memo: string;
+  }): Promise<{ txHash: string; created: boolean }>;
   /** Idempotent `changeTrust`; a no-op when the trustline already exists. */
   establishTrustline(input: {
     encryptedSecret: string;
@@ -307,6 +318,26 @@ export function createWalletService(
         amount: amountXlm,
         memo,
       });
+    },
+
+    async fundXlm({ encryptedSecret, destination, amountXlm, memo }) {
+      let exists = true;
+      try {
+        await srv().loadAccount(destination);
+      } catch (e) {
+        if (!isNotFound(e)) throw e;
+        exists = false;
+      }
+      const amount = formatAsset(amountXlm);
+      const txHash = await submitOp(
+        encryptedSecret,
+        () =>
+          exists
+            ? Operation.payment({ destination, asset: Asset.native(), amount })
+            : Operation.createAccount({ destination, startingBalance: amount }),
+        memo,
+      );
+      return { txHash, created: !exists };
     },
 
     async establishTrustline({ encryptedSecret, asset, limit }) {

@@ -28,12 +28,18 @@ it("stores encrypted account + last4 + resolved bank name", async () => {
   USER.id = user.id;
   const { POST } = await import("@/app/api/merchant/settlement/route");
   const res = await POST(
-    req({ bankCode: "BPI", accountName: "Maria Cruz", accountNumber: "1234567890" }),
+    req({
+      bankCode: "BPI",
+      accountName: "Maria Cruz",
+      accountNumber: "1234567890",
+      payoutEmail: " Maria@Example.com ",
+    }),
     ctx,
   );
   expect(res.status).toBe(200);
   const body = await res.json();
   expect(body.merchant.settlementBankName).toBe("Bank of the Philippine Islands");
+  expect(body.merchant.payoutEmail).toBe("maria@example.com"); // trimmed + lower-cased
   expect(body.merchant.accountNumberLast4).toBe("7890");
   expect(body.merchant).not.toHaveProperty("accountNumber");
 
@@ -47,8 +53,26 @@ it("rejects an unsupported bank code with 400", async () => {
   USER.id = user.id;
   const { POST } = await import("@/app/api/merchant/settlement/route");
   const res = await POST(
-    req({ bankCode: "FAKEBANK", accountName: "X Y", accountNumber: "12345678" }),
+    req({
+      bankCode: "FAKEBANK",
+      accountName: "X Y",
+      accountNumber: "12345678",
+      payoutEmail: "x@example.com",
+    }),
     ctx,
   );
   expect(res.status).toBe(400);
+});
+
+it("requires a valid payout receipt email", async () => {
+  const { user } = await seedMerchantUser({});
+  USER.id = user.id;
+  const { POST } = await import("@/app/api/merchant/settlement/route");
+  for (const payoutEmail of [undefined, "", "not-an-email"]) {
+    const res = await POST(
+      req({ bankCode: "GCASH", accountName: "X Y", accountNumber: "09171234567", payoutEmail }),
+      ctx,
+    );
+    expect(res.status).toBe(400);
+  }
 });

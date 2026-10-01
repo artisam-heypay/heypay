@@ -76,7 +76,7 @@ export async function withRetry<T>(
 
 /**
  * Poll `fn` until `done(value)` is true; throws after `attempts`. Returns the
- * last value when done. Used by the worker to await PDAX trade/payout fills.
+ * last value when done.
  */
 export async function pollUntil<T>(
   fn: () => Promise<T>,
