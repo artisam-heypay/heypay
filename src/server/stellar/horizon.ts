@@ -18,6 +18,11 @@ export function getNetworkPassphrase(): string {
   return process.env.STELLAR_NETWORK === "mainnet" ? Networks.PUBLIC : Networks.TESTNET;
 }
 
+/** True when the app runs against the Stellar public network (real money). */
+export function isMainnet(): boolean {
+  return getNetworkPassphrase() === Networks.PUBLIC;
+}
+
 export function __resetHorizonForTests(): void {
   server = null;
 }

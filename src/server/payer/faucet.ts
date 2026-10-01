@@ -5,7 +5,6 @@
 // test funds. The XLM comes from a dedicated faucet account (FAUCET_SECRET_ENC),
 // never the treasury, and the faucet refuses to run on mainnet.
 import "server-only";
-import { Networks } from "@stellar/stellar-sdk";
 import { Prisma } from "@/generated/prisma/client";
 import { dec, type Decimal } from "@/lib/money";
 import { AppError, conflict, notFound } from "@/lib/errors";
@@ -15,7 +14,7 @@ import { audit } from "@/server/auth/audit";
 import { captureUserEvent } from "@/server/observability/analytics";
 import { captureException } from "@/server/observability/error-tracking";
 import { syncWalletDeposits } from "@/server/queue/jobs/deposit-poller";
-import { getNetworkPassphrase } from "@/server/stellar/horizon";
+import { isMainnet } from "@/server/stellar/horizon";
 import { walletService } from "@/server/stellar/wallet";
 
 const DEFAULT_AMOUNT_XLM = "20";
@@ -33,7 +32,7 @@ function faucetSecret(): string | null {
 
 /** On only off mainnet, and only once a faucet account is configured. */
 export function faucetEnabled(): boolean {
-  return getNetworkPassphrase() !== Networks.PUBLIC && faucetSecret() !== null;
+  return !isMainnet() && faucetSecret() !== null;
 }
 
 export function faucetAmountXlm(): Decimal {
