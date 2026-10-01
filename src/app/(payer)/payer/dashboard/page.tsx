@@ -3,18 +3,21 @@ import { requireRole } from "@/server/auth/sessions";
 import { Role } from "@/generated/prisma/client";
 import { getRecentPayments } from "@/server/payer/data";
 import { getHoldings } from "@/server/payer/holdings";
+import { getFaucetStatus } from "@/server/payer/faucet";
 import { HeroBalanceCard } from "@/components/payer/HeroBalanceCard";
 import type { HoldingsSnapshot } from "@/components/payer/HoldingsLive";
 import { ScanQrphCard } from "@/components/payer/ScanQrphCard";
 import { RecentPaymentsList } from "@/components/payer/RecentPaymentsList";
 import { PrefundPanel } from "@/components/payer/PrefundPanel";
 import { NetworkStatus } from "@/components/payer/NetworkStatus";
+import { FaucetCard } from "@/components/payer/FaucetCard";
 
 export default async function PayerDashboardPage() {
   const user = await requireRole(Role.PAYER);
-  const [holdings, recent] = await Promise.all([
+  const [holdings, recent, faucet] = await Promise.all([
     getHoldings(user.id),
     getRecentPayments(user.id, 5),
+    getFaucetStatus(user.id),
   ]);
 
   const snapshot: HoldingsSnapshot = {
@@ -38,6 +41,8 @@ export default async function PayerDashboardPage() {
         <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Dashboard</h1>
         <NetworkStatus />
       </div>
+
+      {holdings && faucet.enabled && !faucet.claimed && <FaucetCard amountXlm={faucet.amountXlm} />}
 
       <div className="grid grid-cols-1 gap-stack-lg lg:grid-cols-3">
         <div className="lg:col-span-2">
