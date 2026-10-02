@@ -107,13 +107,12 @@ holds the crypto leg of an XLM payment in this contract:
 3. `REFUND_PENDING → REFUNDED`: after a failed payout, `refund` to the payer
    (`Payment.refundTxHash`).
 
-4. Still held when the deadline ledger passes (the payout has not finished, or
-   was never requested): the payment expires. The settle job calls
-   `refund_after_timeout`, signed by the payer's custodial wallet
-   (`Payment.refundTxHash`), and the payment ends `REFUNDED`. The payer can
-   trigger the same call from the payment detail drawer ("Refund from escrow").
-   A payout already running is not cancelled; its outcome is audited, and one
-   that is still paid is reported for a person to follow up.
+4. Still held past its deadline ledger: the payer can call
+   `refund_after_timeout` from the payment detail drawer ("Refund from escrow"),
+   signed by their custodial wallet (`Payment.refundTxHash`). HeyPay never makes
+   that call on its own. The payment then ends `REFUNDED`. A payout already
+   running is not cancelled; its outcome is audited, and one that is still paid
+   is reported for a person to follow up.
 
 `ESCROW_TIMEOUT_LEDGERS` sets the self-refund window from the app: before a
 deposit, the settle job calls `set_timeout` if the contract's window differs.
@@ -162,7 +161,7 @@ The app uses this contract (`ESCROW_CONTRACT_ID`). Deployed with
 | WASM hash   | `f3ccfe37fa39403a82bc835f18f0b68c83d1503a5d058ec02ae5878143872f60`                                                                                                      |
 | Admin       | `GDZ2BQPZQLLXTBFVKJX6UVZQAIZCIC4HDGT4XDLH5JOWO7WWP2KLIN37` (HeyPay treasury)                                                                                            |
 | Token       | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` (native XLM SAC)                                                                                             |
-| Timeout     | 17,280 ledgers (default, ~24h)                                                                                                                                          |
+| Timeout     | 17,000 ledgers (~23.6h), last set from the app on 2026-10-02 with `ESCROW_TIMEOUT_LEDGERS`; the contract's default is 17,280                                            |
 | Deploy tx   | [`c648ec53…`](https://stellar.expert/explorer/testnet/tx/c648ec53da4e7a166499895206597572f4ca065e0b007c521334f19c12e0a217)                                              |
 | Init tx     | [`9c18464e…`](https://stellar.expert/explorer/testnet/tx/9c18464e5ea4f1d8bdb3d1ab44350a9b6e117b6aac2170794bef385bd656bc46)                                              |
 | Deployed    | 2026-09-29, ledger 4924273                                                                                                                                              |
@@ -182,7 +181,7 @@ stellar contract invoke --id CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73
 | [`CDGIYVER…LE5E`](https://stellar.expert/explorer/testnet/contract/CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E) | `GAY7UUSQ…S5RD` (CLI identity `heypay-escrow-admin`) | CLI deposit/release/refund proof below |
 | [`CCKUZIXQ…ZD7S`](https://stellar.expert/explorer/testnet/contract/CCKUZIXQJC6CULOKV7B3C5VFCV6AKBCOSHO6PGYRYKZZC7GJVLAZZD7S) | `GCLUI4EI…5TGG` (deployer)                           | Mistaken deploy (empty admin); ignore  |
 
-## Testnet evidence (draft)
+## Testnet evidence
 
 CLI run on 2026-09-29 against `CDGIYVER…LE5E` (CLI-admin contract above). Payer: `heypay-test-payer`
 (`GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W`). Job ids are
@@ -215,8 +214,33 @@ the settle job called the contract's `refund()`. Payer:
 | deposit | 5.00001 XLM | [`0a5cf779…`](https://stellar.expert/explorer/testnet/tx/0a5cf779825149d4cba860d29e60bb8b67ecd8cea686392f453bc943a3dbd372) |
 | refund  | 5.00001 XLM | [`eb5f7198…`](https://stellar.expert/explorer/testnet/tx/eb5f71982b83946531a8a5fbc6a675e3430574db6ebd1ee3ceb4dd8521187c2d) |
 
-Still to come: a payer-called `refund_after_timeout()` after an expired
-deadline.
+### All four paths from the deployed app
+
+Payments made on the deployed app on 2026-10-02 against the app contract
+`CA3IHLNN…BT7J`. Payer: custodial wallet
+`GBUJMMGEXDJCSXAT73M7AEMNU5SRXKZ3NAPBYWWYRX2X7COBLWD44ZQF`; treasury (admin):
+`GDZ2BQPZ…KLIN37`. Job ids are `sha256(payment.id)`, shortened here.
+
+| Call                   | Job id      | Amount        | Signed by | Tx                                                                                                                         |
+| ---------------------- | ----------- | ------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `set_timeout(12)`      | —           | —             | Treasury  | [`f77cc2e4…`](https://stellar.expert/explorer/testnet/tx/f77cc2e4f63225f9ce603528a1589b07556cdd46c67ed4296a34fedca1e9eab3) |
+| `deposit`              | `202abb64…` | 0.7228668 XLM | Payer     | [`07660d2f…`](https://stellar.expert/explorer/testnet/tx/07660d2f7bde96829c07112def4af0fed6179f200f2596bb989250d1067b0ef7) |
+| `refund_after_timeout` | `202abb64…` | 0.7228668 XLM | Payer     | [`ec4d9fc6…`](https://stellar.expert/explorer/testnet/tx/ec4d9fc63e589226f11b5aebc8f7f1d1a9caab6cbfe595883e81c3acfdbbf2d3) |
+| `set_timeout(17000)`   | —           | —             | Treasury  | [`7da39811…`](https://stellar.expert/explorer/testnet/tx/7da398110ff7caa8df4bb3d38319a6476a31f600ffa83869d04f779cce99b1f7) |
+| `deposit`              | `28a5d69c…` | 0.2893619 XLM | Payer     | [`0bfca6ae…`](https://stellar.expert/explorer/testnet/tx/0bfca6ae5757df6bb35b89e20113240dbaf8da3590cfa96e56fa060b02208925) |
+| `release`              | `28a5d69c…` | 0.2893619 XLM | Treasury  | [`5bd24fb3…`](https://stellar.expert/explorer/testnet/tx/5bd24fb312045bf62c46138daee92f2e56ccfda7917fff7e4ef4af3773dd717c) |
+| `deposit`              | `364761ab…` | 5.0028672 XLM | Payer     | [`26f1b40f…`](https://stellar.expert/explorer/testnet/tx/26f1b40f1fca7d17cff1daa851cc020d8dadfc2c1c0c67c673ffcd46a44dc681) |
+| `refund`               | `364761ab…` | 5.0028672 XLM | Treasury  | [`397bb0f7…`](https://stellar.expert/explorer/testnet/tx/397bb0f75365823b9b3c69d83f755460da83a31aced9a641e4e1d4c7959ace4a) |
+
+- **Payer timeout refund.** The window was set to 12 ledgers for this run. The
+  deposit landed in ledger 4986183, so its deadline was ledger 4986195; the
+  payout was still pending, and `refund_after_timeout` landed in
+  ledger 4986198, signed by the payer's wallet and not by the admin.
+- **Deposit and release.** The payout was accepted and the treasury released
+  the held funds 10 seconds after the deposit.
+- **Forced payout failure.** Run with `PAYMENT_RAIL=mock` and
+  `MOCK_FAIL_PHP_AMOUNT=17.51`: the mock payout failed and the settle job
+  called `refund`, returning the funds to the payer.
 
 ## License
 
