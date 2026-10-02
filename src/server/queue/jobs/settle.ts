@@ -377,17 +377,30 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
 async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
   let payoutRef = p.payoutRef;
   if (!payoutRef) {
-    if (p.escrowJobId) {
-      // A payout is only requested against crypto the escrow still holds, with
-      // time left on it. This is also what stops a payment from going on after
-      // the worker was down past the deadline, or after the payer took it back.
-      const hold = await escrowHold(p);
-      // Never start a payout for crypto the payer is already entitled to take back.
-      if (hold === "expired") return cancelAtDeadline(p);
-      // The payer already has it: paying the merchant now would pay for a refund.
-      if (hold === "refunded") throw new Error(ESCROW_EXPIRED_REASON);
-      if (hold === "unknown") {
-        // The contract cannot be read; the payout waits until it can.
+    // A request an earlier run had already claimed is finished, not judged again:
+    // since that claim no refund was possible, the rail may already hold the
+    // payout, and asking again is safe (the reference is the idempotency key).
+    if (!p.payoutRequestedAt) {
+      if (p.escrowJobId) {
+        // A payout is only requested against crypto the escrow still holds, with
+        // time left on it. This is also what stops a payment from going on after
+        // the worker was down past the deadline, or after the payer took it back.
+        const hold = await escrowHold(p);
+        // Never start a payout for crypto the payer is already entitled to take back.
+        if (hold === "expired") {
+          await cancelAtDeadline(p);
+          return;
+        }
+        // The payer already has it: paying the merchant now would pay for a refund.
+        if (hold === "refunded") throw new Error(ESCROW_EXPIRED_REASON);
+        if (hold === "unknown") {
+          // The contract cannot be read; the payout waits until it can.
+          await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+          return;
+        }
+      }
+      if (!(await claimPayoutRequest(p))) {
+        // A refund of this payment has started; see shortly how it ended.
         await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
         return;
       }
@@ -415,6 +428,31 @@ async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
   await applyTransition(db, p, PaymentStatus.PAYOUT_SUBMITTED, { payoutRef });
 }
 
+/**
+ * Marks the payout request as started, in one atomic update that only succeeds
+ * while no refund of the payment has started. A refund (the payer's own, or an
+ * admin's) takes the opposite claim on the same row, so a payment can never be
+ * both paid out and refunded because the two ran at the same moment.
+ */
+async function claimPayoutRequest(p: PaymentWithRels): Promise<boolean> {
+  const claimed = await db.payment.updateMany({
+    where: {
+      id: p.id,
+      status: PaymentStatus.STELLAR_CONFIRMED,
+      payoutRef: null,
+      refundTxHash: null,
+      // A refund attempt left unfinished this long has expired without moving
+      // anything (the escrow job is still held, or this point is never reached).
+      OR: [
+        { refundSubmittedAt: null },
+        { refundSubmittedAt: { lt: new Date(Date.now() - ESCROW_REFUND_RECLAIM_MS) } },
+      ],
+    },
+    data: { payoutRequestedAt: new Date() },
+  });
+  return claimed.count === 1;
+}
+
 // PAYOUT_SUBMITTED → SETTLED | (FAILED payout throws → refund) | unchanged while pending
 async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
   const status = await rail.getPayoutStatus(p.payoutRef!);
@@ -431,7 +469,8 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
           p,
           payoutResultProperties(p.payoutRef!, stopped),
         );
-        return cancelAtDeadline(p);
+        await cancelAtDeadline(p);
+        return;
       }
       if (stopped?.state === "SETTLED") {
         capturePayoutEvent(
@@ -610,16 +649,27 @@ async function cancelPayout(p: PaymentWithRels): Promise<PayoutStatus | null> {
  * the settle job does not refund it.
  */
 async function cancelAtDeadline(p: PaymentWithRels): Promise<void> {
-  await db.$transaction(async (tx) => {
-    await tx.payment.update({
-      where: { id: p.id },
+  const cancelled = await db.$transaction(async (tx) => {
+    // Only while the payment's payout is as this job saw it. If another job has
+    // started a payout request meanwhile, the payment is not cancelled: the rail
+    // may be about to pay it.
+    const still = await tx.payment.updateMany({
+      where: {
+        id: p.id,
+        status: p.status,
+        payoutRef: p.payoutRef,
+        payoutRequestedAt: p.payoutRequestedAt,
+      },
       data: { failureReason: PAYMENT_CANCELLED_REASON },
     });
+    if (still.count === 0) return false;
     await applyTransition(tx, p, PaymentStatus.REFUND_PENDING, {
       failureReason: PAYMENT_CANCELLED_REASON,
       [AWAITS_PAYER_REFUND_DETAIL]: true,
     });
+    return true;
   });
+  if (!cancelled) return;
   await audit({
     action: "payment.cancelled_at_escrow_deadline",
     target: p.id,

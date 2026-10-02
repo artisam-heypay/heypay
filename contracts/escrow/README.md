@@ -131,6 +131,12 @@ A payout is only requested while the escrow still holds the crypto with time
 left on it. If the worker was down and comes back after the deadline, or after
 the payer took the crypto back, the payment does not go on: no payout is sent.
 
+The payout request and a refund each claim the payment row before they act
+(`Payment.payoutRequestedAt`, `Payment.refundSubmittedAt`), and only one of the
+two claims can succeed. So a refund and a payout can never both start at the
+same moment, and a payer's refund always asks the rail first and goes on only
+when the payout is confirmed stopped or failed.
+
 ### Known limit: a payout already sent cannot be cancelled
 
 Xendit cancels a payout only while it is `ACCEPTED`, before Xendit has sent it

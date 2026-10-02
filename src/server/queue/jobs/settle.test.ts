@@ -1047,6 +1047,96 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
       expect((await drive(payment.id)).status).toBe("SETTLED");
     });
 
+    it("claims the payout request before asking the rail, and keeps the claim", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      escrow.getLatestLedger.mockReset().mockResolvedValue(50);
+      let claimedAtRequest: Date | null = null;
+      createPayout.mockImplementation(async () => {
+        const row = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+        claimedAtRequest = row.payoutRequestedAt;
+        return { payoutRef: "disb-claim" };
+      });
+
+      const final = await drive(payment.id);
+
+      expect(claimedAtRequest).not.toBeNull();
+      expect(final.payoutRequestedAt).not.toBeNull();
+      expect(final.payoutRef).toBe("disb-claim");
+    });
+
+    it("does not request a payout while a refund of the payment is under way", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      escrow.getLatestLedger.mockReset().mockResolvedValue(50);
+      // The payer's refund claims the payment just as the payout is about to be asked.
+      escrow.getJob.mockImplementation(async () => {
+        const row = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+        if (row.status === "STELLAR_CONFIRMED") {
+          await db.payment.update({
+            where: { id: payment.id },
+            data: { refundSubmittedAt: new Date() },
+          });
+        }
+        return held(wallet.stellarPublicKey);
+      });
+
+      const final = await drive(payment.id);
+
+      expect(createPayout).not.toHaveBeenCalled();
+      expect(final.status).toBe("STELLAR_CONFIRMED");
+      expect(final.payoutRequestedAt).toBeNull();
+      expect(enqueueSettle).toHaveBeenCalledWith(payment.id, { delayMs: expect.any(Number) });
+    });
+
+    it("finishes a payout request an earlier run had claimed, even past the deadline", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      escrow.getLatestLedger.mockReset().mockResolvedValue(100); // past the deadline
+      // As a run that stopped after its claim, before the rail answered, left it.
+      await db.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: "STELLAR_CONFIRMED",
+          escrowJobId: escrowJobId(payment.id).toString("hex"),
+          stellarTxHash: "DEPOSITHASH-RESUME",
+          payoutRequestedAt: new Date(),
+        },
+      });
+      createPayout.mockResolvedValue({ payoutRef: "disb-resumed" });
+
+      await processSettleJob({ data: { paymentId: payment.id } });
+
+      // Not cancelled for being past the deadline: no refund was possible since
+      // the claim, and the rail may already hold the payout.
+      const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      expect(createPayout).toHaveBeenCalledTimes(1);
+      expect(after.status).toBe("PAYOUT_SUBMITTED");
+      expect(after.payoutRef).toBe("disb-resumed");
+    });
+
+    it("does not cancel a payment whose payout request started meanwhile", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      // Another job claims the payout request while this one finds the deadline passed.
+      escrow.getLatestLedger.mockReset().mockImplementation(async () => {
+        await db.payment.update({
+          where: { id: payment.id },
+          data: { payoutRequestedAt: new Date() },
+        });
+        return 100;
+      });
+
+      for (let i = 0; i < 3; i++) await processSettleJob({ data: { paymentId: payment.id } });
+
+      const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      expect(after.status).not.toBe("REFUND_PENDING");
+      expect(after.failureReason).toBeNull();
+      expect(
+        await db.auditLog.count({ where: { action: "payment.cancelled_at_escrow_deadline" } }),
+      ).toBe(0);
+    });
+
     it("never starts a payout for a payment already past its deadline", async () => {
       const { wallet, payment } = await makeAuthorized();
       mockPendingPayout(wallet);

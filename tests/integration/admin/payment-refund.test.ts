@@ -33,6 +33,22 @@ describe("POST /api/admin/payments/[id]/refund", () => {
     expect(log?.actorId).toBe(admin.id);
   });
 
+  it("409s once a payout request has started, so the merchant is not paid for a refund", async () => {
+    await asAdmin();
+    const spy = vi.spyOn(queues, "enqueueSettle").mockResolvedValue();
+    const p = await seedPayment({ status: "STELLAR_CONFIRMED", amountAsset: dec("10.0000000") });
+    await prisma.payment.update({ where: { id: p.id }, data: { payoutRequestedAt: new Date() } });
+
+    const res = await POST(makeRequest("POST", `/api/admin/payments/${p.id}/refund`, {}), {
+      params: Promise.resolve({ id: p.id }),
+    });
+
+    expect(res.status).toBe(409);
+    const after = await prisma.payment.findUnique({ where: { id: p.id } });
+    expect(after!.status).toBe("STELLAR_CONFIRMED");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it("409s when XLM never left the wallet (status CREATED/QUOTED/AUTHORIZED)", async () => {
     await asAdmin();
     vi.spyOn(queues, "enqueueSettle").mockResolvedValue();

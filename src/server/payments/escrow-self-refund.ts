@@ -74,7 +74,10 @@ async function secondsUntilRefundable(jobId: Buffer): Promise<number | null> {
  * still load.
  */
 export async function escrowSelfRefundState(
-  p: Pick<Payment, "id" | "status" | "escrowJobId" | "refundTxHash" | "payoutRef">,
+  p: Pick<
+    Payment,
+    "id" | "status" | "escrowJobId" | "refundTxHash" | "payoutRef" | "payoutRequestedAt"
+  >,
 ): Promise<EscrowSelfRefundState | null> {
   if (!holdsEscrow(p)) return null;
   try {
@@ -82,12 +85,13 @@ export async function escrowSelfRefundState(
     if (seconds === null) return null;
     // A refund HeyPay is already sending needs no countdown to the payer's own.
     if (seconds > 0 && p.status === PaymentStatus.REFUND_PENDING) return null;
-    if (seconds === 0 && p.status === PaymentStatus.PAYOUT_SUBMITTED && p.payoutRef) {
+    if (seconds === 0 && (p.payoutRequestedAt || p.payoutRef)) {
+      const waiting = { available: false, secondsUntilAvailable: 0, waitingOnPayout: true };
+      // A request started but not recorded yet: the rail may hold a payout.
+      if (!p.payoutRef) return waiting;
       const payout = await rail.getPayoutStatus(p.payoutRef);
       if (payout.state === "SETTLED") return null; // about to be completed
-      if (payout.state === "PENDING") {
-        return { available: false, secondsUntilAvailable: 0, waitingOnPayout: true };
-      }
+      if (payout.state === "PENDING") return waiting;
     }
     return { available: seconds === 0, secondsUntilAvailable: seconds, waitingOnPayout: false };
   } catch (err) {
@@ -127,11 +131,13 @@ export async function selfRefundEscrow(input: {
     });
   }
 
-  // Stop the payout first, so the merchant is not paid for a payment the payer
-  // takes back. One the rail has already paid means the payment succeeded, so it
-  // is completed instead. One it can no longer stop, or cannot answer about, is
-  // still in progress: the payer waits for its result.
-  if (p.status === PaymentStatus.PAYOUT_SUBMITTED && p.payoutRef) {
+  // Make sure no payout can be paid for this payment before its crypto goes
+  // back. Whatever the payment's status, once a payout request has started the
+  // rail has the last word: stopped or failed lets the refund go on; already paid
+  // means the payment succeeded, so it is completed instead; anything else (still
+  // running, not recorded yet, or the rail cannot say) keeps the payer waiting.
+  if (p.payoutRequestedAt || p.payoutRef) {
+    if (!p.payoutRef) throw conflict(PAYOUT_IN_PROGRESS, { waitingOnPayout: true });
     const stopped = await rail.cancelPayout(p.payoutRef).catch((err: unknown) => {
       captureException(err, {
         source: "escrow.self_refund",
@@ -150,11 +156,16 @@ export async function selfRefundEscrow(input: {
     }
   }
 
-  // Same marker the settle job's own refund claims, so the two never run at once.
+  // Claim the refund. The same marker is claimed by the settle job's own refund,
+  // so the two never run at once; and the claim only succeeds while the payout
+  // is exactly as checked above, so a payout request that started in the
+  // meantime wins and this refund does not happen.
   const claimed = await db.payment.updateMany({
     where: {
       id: p.id,
       refundTxHash: null,
+      payoutRef: p.payoutRef,
+      payoutRequestedAt: p.payoutRequestedAt,
       OR: [
         { refundSubmittedAt: null },
         { refundSubmittedAt: { lt: new Date(Date.now() - ESCROW_REFUND_RECLAIM_MS) } },
@@ -162,7 +173,9 @@ export async function selfRefundEscrow(input: {
     },
     data: { refundSubmittedAt: new Date() },
   });
-  if (claimed.count === 0) throw conflict("A refund for this payment is already in progress.");
+  if (claimed.count === 0) {
+    throw conflict("This payment is being processed right now. Try again in a moment.");
+  }
 
   let txHash: string;
   try {
