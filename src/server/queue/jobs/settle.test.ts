@@ -25,18 +25,21 @@ const escrow = vi.hoisted(() => ({
   getFeeCharged: vi.fn(),
   getTimeout: vi.fn(),
   setTimeout: vi.fn(),
+  getLatestLedger: vi.fn(),
 }));
 vi.mock("@/server/stellar/escrow", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/server/stellar/escrow")>()),
   escrowService: escrow,
 }));
 
-const { getDepositAddress, createPayout, getPayoutStatus, fastSettleEnabled } = vi.hoisted(() => ({
-  getDepositAddress: vi.fn(),
-  createPayout: vi.fn(),
-  getPayoutStatus: vi.fn(),
-  fastSettleEnabled: vi.fn(() => false),
-}));
+const { getDepositAddress, createPayout, getPayoutStatus, cancelPayout, fastSettleEnabled } =
+  vi.hoisted(() => ({
+    getDepositAddress: vi.fn(),
+    createPayout: vi.fn(),
+    getPayoutStatus: vi.fn(),
+    cancelPayout: vi.fn(),
+    fastSettleEnabled: vi.fn(() => false),
+  }));
 vi.mock("@/server/rails", () => ({
   fastSettleEnabled: () => fastSettleEnabled(),
   rail: {
@@ -44,6 +47,7 @@ vi.mock("@/server/rails", () => ({
     getDepositAddress: (a: string) => getDepositAddress(a),
     createPayout: (i: unknown) => createPayout(i),
     getPayoutStatus: (r: string) => getPayoutStatus(r),
+    cancelPayout: (r: string) => cancelPayout(r),
   },
 }));
 
@@ -913,6 +917,109 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     expect(p.status).toBe("REFUND_PENDING");
     expect(p.refundSubmittedAt).toBeNull();
     expect(escrow.refund).not.toHaveBeenCalled();
+  });
+
+  describe("escrow deadline", () => {
+    const CANCELLED_REASON =
+      "The merchant was not paid within the time limit, so this payment was cancelled";
+
+    // held() jobs have deadline ledger 100. The ledger is before the deadline when
+    // the payout is requested and past it at the next check, unless a test says so.
+    function mockPendingPayout(wallet: { stellarPublicKey: string }) {
+      escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-EXP" });
+      escrow.getJob.mockResolvedValue(held(wallet.stellarPublicKey));
+      escrow.getLatestLedger.mockResolvedValueOnce(50).mockResolvedValue(100);
+      confirmTx.mockResolvedValue(true);
+      createPayout.mockResolvedValue({ payoutRef: "disb-exp" });
+      getPayoutStatus.mockResolvedValue({ state: "PENDING", railStatus: "ACCEPTED" });
+    }
+
+    it("stops the payout and leaves the refund to the payer once the deadline has passed", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      cancelPayout.mockResolvedValue({ state: "FAILED", failureCode: "CANCELLED" });
+
+      const final = await drive(payment.id);
+
+      expect(cancelPayout).toHaveBeenCalledWith("disb-exp");
+      expect(final.status).toBe("REFUND_PENDING");
+      expect(final.failureReason).toBe(CANCELLED_REASON);
+      // The crypto stays in the escrow: neither HeyPay's refund nor a release runs,
+      // however many times the job is re-driven.
+      expect(escrow.refund).not.toHaveBeenCalled();
+      expect(escrow.release).not.toHaveBeenCalled();
+      expect(final.refundTxHash).toBeNull();
+      const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+      expect(w.cachedXlmBalance.toFixed(7)).toBe("91.6666566");
+      expect(
+        await db.auditLog.count({ where: { action: "payment.cancelled_at_escrow_deadline" } }),
+      ).toBe(1);
+    });
+
+    it("keeps waiting when the rail can no longer stop the payout", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      cancelPayout.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
+
+      const final = await drive(payment.id);
+
+      expect(final.status).toBe("PAYOUT_SUBMITTED");
+      expect(final.failureReason).toBeNull();
+      expect(enqueueSettle).toHaveBeenCalledWith(payment.id, { delayMs: expect.any(Number) });
+    });
+
+    it("settles when the payout turns out to be paid already", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      cancelPayout.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
+      escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-EXP" });
+
+      const final = await drive(payment.id);
+
+      expect(final.status).toBe("SETTLED");
+      expect(final.escrowReleaseTxHash).toBe("RELEASEHASH-EXP");
+    });
+
+    it("does not touch the payout before the deadline", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      escrow.getLatestLedger.mockReset().mockResolvedValue(50);
+
+      const final = await drive(payment.id);
+
+      expect(final.status).toBe("PAYOUT_SUBMITTED");
+      expect(cancelPayout).not.toHaveBeenCalled();
+    });
+
+    it("never cancels because the contract or the rail could not be asked", async () => {
+      const first = await makeAuthorized();
+      mockPendingPayout(first.wallet);
+      escrow.getLatestLedger.mockReset().mockRejectedValue(new Error("rpc down"));
+      expect((await drive(first.payment.id)).status).toBe("PAYOUT_SUBMITTED");
+      expect(cancelPayout).not.toHaveBeenCalled();
+
+      const second = await makeAuthorized();
+      mockPendingPayout(second.wallet);
+      escrow.getLatestLedger.mockReset().mockResolvedValueOnce(50).mockResolvedValue(100);
+      escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-EXP2" });
+      createPayout.mockResolvedValue({ payoutRef: "disb-exp2" });
+      cancelPayout.mockRejectedValue(new Error("xendit down"));
+      expect((await drive(second.payment.id)).status).toBe("PAYOUT_SUBMITTED");
+    });
+
+    it("never starts a payout for a payment already past its deadline", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      escrow.getLatestLedger.mockReset().mockResolvedValue(100);
+
+      const final = await drive(payment.id);
+
+      expect(createPayout).not.toHaveBeenCalled();
+      expect(cancelPayout).not.toHaveBeenCalled();
+      expect(final.status).toBe("REFUND_PENDING");
+      expect(final.failureReason).toBe(CANCELLED_REASON);
+      expect(escrow.refund).not.toHaveBeenCalled();
+    });
   });
 
   it("follows the escrow for a payment deposited before the flag was turned off", async () => {

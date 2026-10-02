@@ -19,6 +19,7 @@ import {
   ESCROW_REFUND_RECLAIM_MS,
 } from "@/server/queue/jobs/settle";
 import { enqueueSettle } from "@/server/queue/queues";
+import { rail } from "@/server/rails";
 import { applyTransition } from "@/server/payments/state-machine";
 import { escrowService, EscrowContractError, EscrowTxFailedError } from "@/server/stellar/escrow";
 
@@ -62,7 +63,10 @@ export async function escrowSelfRefundState(
   if (!holdsEscrow(p)) return null;
   try {
     const seconds = await secondsUntilRefundable(Buffer.from(p.escrowJobId!, "hex"));
-    return seconds === null ? null : { available: seconds === 0, secondsUntilAvailable: seconds };
+    if (seconds === null) return null;
+    // A refund HeyPay is already sending needs no countdown to the payer's own.
+    if (seconds > 0 && p.status === PaymentStatus.REFUND_PENDING) return null;
+    return { available: seconds === 0, secondsUntilAvailable: seconds };
   } catch (err) {
     captureException(err, { source: "escrow.self_refund_state", paymentId: p.id });
     return null;
@@ -99,6 +103,26 @@ export async function selfRefundEscrow(input: {
     throw conflict(`The escrow refund opens in about ${seconds} seconds.`, {
       secondsUntilAvailable: seconds,
     });
+  }
+
+  // Stop the payout first, so the merchant is not paid for a payment the payer
+  // takes back. A rail that cannot stop it any more does not block the refund:
+  // past the deadline it is the payer's right. One it has already paid does:
+  // the payment succeeded, so it is completed instead.
+  if (p.status === PaymentStatus.PAYOUT_SUBMITTED && p.payoutRef) {
+    const stopped = await rail.cancelPayout(p.payoutRef).catch((err: unknown) => {
+      captureException(err, {
+        source: "escrow.self_refund",
+        paymentId: p.id,
+        reference: p.reference,
+        step: "payout_cancel",
+      });
+      return null;
+    });
+    if (stopped?.state === "SETTLED") {
+      await enqueueSettle(p.id);
+      throw conflict("The merchant has just been paid, so this payment is being completed.");
+    }
   }
 
   // Same marker the settle job's own refund claims, so the two never run at once.

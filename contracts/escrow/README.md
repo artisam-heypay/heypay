@@ -108,11 +108,17 @@ holds the crypto leg of an XLM payment in this contract:
    (`Payment.refundTxHash`).
 
 4. Still held past its deadline ledger: the payer can call
-   `refund_after_timeout` from the payment detail drawer ("Refund from escrow"),
-   signed by their custodial wallet (`Payment.refundTxHash`). HeyPay never makes
-   that call on its own. The payment then ends `REFUNDED`. A payout already
-   running is not cancelled; its outcome is audited, and one that is still paid
-   is reported for a person to follow up.
+   `refund_after_timeout` from the payment detail drawer or the progress screen
+   ("Refund from escrow"), signed by their custodial wallet
+   (`Payment.refundTxHash`). HeyPay never makes that call on its own. The
+   payment then ends `REFUNDED`.
+
+   At the deadline the settle job first asks the rail to stop the payout, so the
+   merchant is not paid for a payment the payer can take back. A payout that was
+   stopped (or never requested) cancels the payment: it waits in
+   `REFUND_PENDING` for the payer's refund. One the rail can no longer stop
+   leaves the payment open; if it is paid after the payer's refund, that is
+   audited and reported for a person to follow up.
 
 `ESCROW_TIMEOUT_LEDGERS` sets the self-refund window from the app: before a
 deposit, the settle job calls `set_timeout` if the contract's window differs.

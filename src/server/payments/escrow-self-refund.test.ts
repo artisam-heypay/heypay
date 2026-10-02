@@ -25,10 +25,16 @@ vi.mock("@/server/stellar/escrow", async (importOriginal) => ({
   escrowService: escrow,
 }));
 
-const { getPayoutStatus } = vi.hoisted(() => ({ getPayoutStatus: vi.fn() }));
+const { getPayoutStatus, cancelPayout } = vi.hoisted(() => ({
+  getPayoutStatus: vi.fn(),
+  cancelPayout: vi.fn(),
+}));
 vi.mock("@/server/rails", () => ({
   fastSettleEnabled: () => false,
-  rail: { getPayoutStatus: (r: string) => getPayoutStatus(r) },
+  rail: {
+    getPayoutStatus: (r: string) => getPayoutStatus(r),
+    cancelPayout: (r: string) => cancelPayout(r),
+  },
 }));
 
 const { enqueueSettle } = vi.hoisted(() => ({
@@ -84,6 +90,8 @@ beforeEach(async () => {
   for (const fn of Object.values(escrow)) fn.mockReset();
   process.env.HEYPAY_TREASURY_SECRET_ENC = encryptSecret("STREASURYSECRET");
   escrow.getFeeCharged.mockResolvedValue(null);
+  // The rail can no longer stop the payout, unless a test says otherwise.
+  cancelPayout.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
   await resetDb();
 });
 afterEach(() => {
@@ -128,6 +136,47 @@ describe("selfRefundEscrow", () => {
     const audits = await db.auditLog.findMany({ where: { action: "payment.escrow_self_refund" } });
     expect(audits).toHaveLength(1);
     expect(audits[0]!.actorId).toBe(user.id);
+  });
+
+  it("stops the payout before refunding, so the merchant is not paid", async () => {
+    const { user, wallet, payment } = await makeEscrowed();
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    cancelPayout.mockResolvedValue({ state: "FAILED", failureCode: "CANCELLED" });
+    escrow.refundAfterTimeout.mockResolvedValue({ txHash: "SELFREFUND-C" });
+
+    await selfRefundEscrow({ id: payment.id, payerId: user.id });
+
+    expect(cancelPayout).toHaveBeenCalledWith("disb-1");
+    expect(cancelPayout.mock.invocationCallOrder[0]!).toBeLessThan(
+      escrow.refundAfterTimeout.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("completes the payment instead when the merchant has already been paid", async () => {
+    const { user, wallet, payment } = await makeEscrowed();
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    cancelPayout.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
+
+    await expect(selfRefundEscrow({ id: payment.id, payerId: user.id })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(escrow.refundAfterTimeout).not.toHaveBeenCalled();
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
+    expect(await balanceOf(wallet.id)).toBe("91.6666566");
+  });
+
+  it("still refunds when the rail cannot be asked to stop the payout", async () => {
+    const { user, wallet, payment } = await makeEscrowed();
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    cancelPayout.mockRejectedValue(new Error("xendit down"));
+    escrow.refundAfterTimeout.mockResolvedValue({ txHash: "SELFREFUND-D" });
+
+    const result = await selfRefundEscrow({ id: payment.id, payerId: user.id });
+
+    expect(result.refundTxHash).toBe("SELFREFUND-D");
   });
 
   it("refuses before the deadline ledger, without calling the contract", async () => {
@@ -272,6 +321,39 @@ describe("settle job after a payer's own escrow refund", () => {
     expect(await balanceOf(wallet.id)).toBe("100.0000000");
   });
 
+  it("takes back a payment cancelled at the deadline, which the settle job then closes", async () => {
+    const { user, wallet, payment } = await makeEscrowed("REFUND_PENDING");
+    await db.paymentEvent.create({
+      data: {
+        paymentId: payment.id,
+        fromStatus: "PAYOUT_SUBMITTED",
+        toStatus: "REFUND_PENDING",
+        detail: { awaitsPayerRefund: true },
+      },
+    });
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+
+    // Until the payer acts, the settle job leaves the crypto in the escrow.
+    await processSettleJob({ data: { paymentId: payment.id } });
+    expect(escrow.refund).not.toHaveBeenCalled();
+    expect((await db.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe(
+      "REFUND_PENDING",
+    );
+
+    escrow.refundAfterTimeout.mockResolvedValue({ txHash: "SELFREFUND-E" });
+    confirmTx.mockResolvedValue(true);
+    await selfRefundEscrow({ id: payment.id, payerId: user.id });
+    expect(cancelPayout).not.toHaveBeenCalled(); // already stopped at the deadline
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe("REFUNDED");
+    expect(after.refundTxHash).toBe("SELFREFUND-E");
+    expect(escrow.refund).not.toHaveBeenCalled();
+    expect(await balanceOf(wallet.id)).toBe("100.0000000");
+  });
+
   it("leaves a payment that was already being refunded in REFUND_PENDING", async () => {
     const { user, wallet, payment } = await makeEscrowed("REFUND_PENDING");
     escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
@@ -309,6 +391,21 @@ describe("escrowSelfRefundState", () => {
     expect(await escrowSelfRefundState(settled.payment)).toBeNull();
     expect(await escrowSelfRefundState({ ...settled.payment, escrowJobId: null })).toBeNull();
     expect(escrow.getJob).not.toHaveBeenCalled();
+  });
+
+  it("shows no countdown for a refund HeyPay is already sending", async () => {
+    const { wallet, payment } = await makeEscrowed("REFUND_PENDING");
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE - 6);
+    expect(await escrowSelfRefundState(payment)).toBeNull();
+
+    // Past the deadline the payer can take it themselves.
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    expect(await escrowSelfRefundState(payment)).toEqual({
+      available: true,
+      secondsUntilAvailable: 0,
+    });
   });
 
   it("is null when the contract cannot be read, so the detail view still loads", async () => {

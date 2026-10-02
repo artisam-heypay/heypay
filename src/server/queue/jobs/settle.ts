@@ -64,6 +64,14 @@ export const ESCROW_EXPIRED_REASON = "Escrow deadline passed before the payment 
 export const ESCROW_EXPIRED_DETAIL = "escrowExpired";
 /** Audit action recording how the payout of such a payment really ended. */
 const EXPIRED_PAYOUT_OUTCOME = "payment.expired_payout_outcome";
+/** Why a payment cancelled at the escrow deadline failed, as the payer reads it. */
+export const PAYMENT_CANCELLED_REASON =
+  "The merchant was not paid within the time limit, so this payment was cancelled";
+/**
+ * Marks, on the REFUND_PENDING event, a payment cancelled at the escrow deadline:
+ * its crypto stays in the escrow until the payer takes it back themselves.
+ */
+export const AWAITS_PAYER_REFUND_DETAIL = "awaitsPayerRefund";
 
 /** The payment's escrow job id as the contract's `BytesN<32>`. */
 function escrowJob(p: { escrowJobId: string | null }): Buffer {
@@ -369,6 +377,8 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
 async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
   let payoutRef = p.payoutRef;
   if (!payoutRef) {
+    // Never start a payout for crypto the payer is already entitled to take back.
+    if (await escrowExpired(p)) return cancelAtDeadline(p);
     const accountNumber = decryptSecret(p.merchant.accountNumber);
     // The rail retries internally with the payment reference as its idempotency
     // key, so a retried request never pays the merchant twice.
@@ -397,6 +407,29 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
   const status = await rail.getPayoutStatus(p.payoutRef!);
   if (status.state === "PENDING") {
     if (fastSettleEnabled()) return settleOnAccept(p, status);
+    // Past the escrow deadline the payer may take the crypto back, so the payout
+    // must not go on: stop it first. If the rail cannot stop it any more, the
+    // payment stays open and is settled or refunded by how the payout ends.
+    if (await escrowExpired(p)) {
+      const stopped = await cancelPayout(p);
+      if (stopped?.state === "FAILED") {
+        capturePayoutEvent(
+          "payment_payout_cancelled",
+          p,
+          payoutResultProperties(p.payoutRef!, stopped),
+        );
+        return cancelAtDeadline(p);
+      }
+      if (stopped?.state === "SETTLED") {
+        capturePayoutEvent(
+          "payment_payout_settled",
+          p,
+          payoutResultProperties(p.payoutRef!, stopped),
+        );
+        await markSettled(p, stopped);
+        return;
+      }
+    }
     // Check again shortly. The Xendit webhook usually arrives first; this keeps a
     // payout moving where no webhook can reach us (local dev) or one is missed.
     await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
@@ -510,6 +543,80 @@ async function verifyFastSettle(p: PaymentWithRels): Promise<void> {
     ),
     { source: "settle", paymentId: p.id, reference: p.reference, fastSettle: true },
   );
+}
+
+/**
+ * Whether the payment's escrow job is still held past its deadline ledger.
+ * False when the contract cannot be read: an RPC failure must never cancel a
+ * payment.
+ */
+async function escrowExpired(p: PaymentWithRels): Promise<boolean> {
+  if (!p.escrowJobId || p.refundTxHash) return false;
+  try {
+    const job = await escrowService.getJob(escrowJob(p));
+    if (job?.status !== "Held") return false;
+    return (await escrowService.getLatestLedger()) >= job.deadlineLedger;
+  } catch (err) {
+    captureException(err, {
+      source: "settle",
+      paymentId: p.id,
+      reference: p.reference,
+      step: "escrow_deadline",
+    });
+    return false;
+  }
+}
+
+/**
+ * Asks the rail to stop the payment's payout. Null when the rail could not be
+ * asked: not knowing must never cancel a payment whose payout may still be paid.
+ */
+async function cancelPayout(p: PaymentWithRels): Promise<PayoutStatus | null> {
+  try {
+    return await rail.cancelPayout(p.payoutRef!);
+  } catch (err) {
+    captureException(err, {
+      source: "settle",
+      paymentId: p.id,
+      reference: p.reference,
+      step: "payout_cancel",
+    });
+    return null;
+  }
+}
+
+/**
+ * The escrow deadline passed and no payout can be paid any more (it was stopped,
+ * or never requested): the payment cannot proceed. It moves to REFUND_PENDING and
+ * waits there for the payer to take the crypto back from the escrow themselves;
+ * the settle job does not refund it.
+ */
+async function cancelAtDeadline(p: PaymentWithRels): Promise<void> {
+  await db.$transaction(async (tx) => {
+    await tx.payment.update({
+      where: { id: p.id },
+      data: { failureReason: PAYMENT_CANCELLED_REASON },
+    });
+    await applyTransition(tx, p, PaymentStatus.REFUND_PENDING, {
+      failureReason: PAYMENT_CANCELLED_REASON,
+      [AWAITS_PAYER_REFUND_DETAIL]: true,
+    });
+  });
+  await audit({
+    action: "payment.cancelled_at_escrow_deadline",
+    target: p.id,
+    metadata: { reference: p.reference, payoutRef: p.payoutRef, escrowJobId: p.escrowJobId },
+  });
+}
+
+/** Whether the payment's latest move to REFUND_PENDING left the refund to the payer. */
+async function awaitsPayerRefund(paymentId: string): Promise<boolean> {
+  const latest = await db.paymentEvent.findFirst({
+    where: { paymentId, toStatus: PaymentStatus.REFUND_PENDING },
+    orderBy: { createdAt: "desc" },
+  });
+  const detail = latest?.detail as Record<string, unknown> | null | undefined;
+  return detail?.[AWAITS_PAYER_REFUND_DETAIL] === true;
 }
 
 /** The REFUND_PENDING event of a payment its payer took back after the deadline. */
@@ -697,6 +804,8 @@ async function stepRefund(p: PaymentWithRels): Promise<void> {
 async function stepRefundEscrow(p: PaymentWithRels): Promise<void> {
   const jobId = escrowJob(p);
   let txHash = p.refundTxHash;
+  // Cancelled at the escrow deadline: the crypto is the payer's to take back.
+  if (!txHash && (await awaitsPayerRefund(p.id))) return;
   if (!txHash) {
     treasurySecret(); // fail before claiming if the admin key is missing
     // Claim the refund atomically, as in stepRefund. A marker left by a crashed
