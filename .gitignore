@@ -28,3 +28,7 @@ test-results
 playwright-report
 
 certificates
+
+# Rust / Soroban build output
+/target/
+contracts/*/test_snapshots/

@@ -4,8 +4,9 @@ import { requireUser } from "@/server/auth/sessions";
 import { db } from "@/server/db";
 import { notFound, forbidden } from "@/lib/errors";
 import { stellarTxUrl } from "@/lib/stellar-explorer";
+import { escrowSelfRefundState } from "@/server/payments/escrow-self-refund";
 
-export const GET = route(async (_req, ctx) => {
+export const GET = route(async (req, ctx) => {
   const user = await requireUser();
   const payment = await db.payment.findUnique({
     where: { id: ctx.params.id! },
@@ -16,6 +17,32 @@ export const GET = route(async (_req, ctx) => {
   });
   if (!payment) throw notFound("payment not found");
   if (payment.payerId !== user.id && user.role !== "ADMIN") throw forbidden("not your payment");
+  // Only the payer can take a payment back from the escrow. Reading the escrow
+  // asks the Soroban RPC, so it is done on request (the detail drawer), not on
+  // every status poll.
+  const escrowRefund =
+    req.nextUrl.searchParams.get("escrow") === "1" && payment.payerId === user.id
+      ? await escrowSelfRefundState(payment)
+      : null;
+  // Who sent the crypto back: the payer themselves after the escrow's deadline,
+  // HeyPay through the escrow, or HeyPay from the treasury (no escrow).
+  const selfRefunded =
+    payment.refundTxHash && payment.escrowJobId
+      ? await db.auditLog.findFirst({
+          where: { action: "payment.escrow_self_refund", target: payment.id },
+          select: { id: true },
+        })
+      : null;
+  const expired = payment.events.some(
+    (e) => (e.detail as Record<string, unknown> | null)?.escrowExpired === true,
+  );
+  const refundKind = !payment.refundTxHash
+    ? null
+    : selfRefunded || expired
+      ? "timeout"
+      : payment.escrowJobId
+        ? "escrow"
+        : "treasury";
 
   return json({
     payment: {
@@ -33,6 +60,13 @@ export const GET = route(async (_req, ctx) => {
       stellarTxUrl: payment.stellarTxHash ? stellarTxUrl(payment.stellarTxHash) : null,
       refundTxHash: payment.refundTxHash,
       refundTxUrl: payment.refundTxHash ? stellarTxUrl(payment.refundTxHash) : null,
+      refundKind,
+      escrowed: Boolean(payment.escrowJobId),
+      escrowReleaseTxHash: payment.escrowReleaseTxHash,
+      escrowReleaseTxUrl: payment.escrowReleaseTxHash
+        ? stellarTxUrl(payment.escrowReleaseTxHash)
+        : null,
+      escrowRefund,
       failureReason: payment.failureReason,
       quoteExpiresAt: payment.quoteExpiresAt?.toISOString() ?? null,
       settledAt: payment.settledAt?.toISOString() ?? null,

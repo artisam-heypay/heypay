@@ -174,20 +174,28 @@ export async function refundPayment(input: {
   if (!REFUNDABLE.includes(p.status)) {
     throw conflict(`Cannot refund a ${p.status} payment`, { status: p.status });
   }
-  await prisma.$transaction([
-    prisma.payment.update({
-      where: { id: p.id },
+  // Atomic, and only while no payout request has started: the settle job takes the
+  // opposite claim on the same row, so the merchant is never paid for a payment
+  // refunded here.
+  await prisma.$transaction(async (tx) => {
+    const moved = await tx.payment.updateMany({
+      where: { id: p.id, status: p.status, payoutRequestedAt: null, payoutRef: null },
       data: { status: "REFUND_PENDING", failureReason: "Admin-initiated refund" },
-    }),
-    prisma.paymentEvent.create({
+    });
+    if (moved.count === 0) {
+      throw conflict("A payout has already been requested for this payment.", {
+        status: p.status,
+      });
+    }
+    await tx.paymentEvent.create({
       data: {
         paymentId: p.id,
         fromStatus: p.status,
         toStatus: "REFUND_PENDING",
         detail: { action: "admin.refund", actorId: input.actorId },
       },
-    }),
-  ]);
+    });
+  });
   await enqueueSettle(p.id);
   await audit({
     actorId: input.actorId,

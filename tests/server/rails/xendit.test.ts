@@ -168,6 +168,36 @@ describe("Xendit rail", () => {
     if (xendit === "FAILED") expect(s.failureCode).toBe("INVALID_DESTINATION");
   });
 
+  it("cancels a payout Xendit has not sent, and reports it as failed", async () => {
+    const { fetchImpl, calls } = fakeFetch(
+      { status: 200, body: { id: "disb-7", status: "CANCELLED" } },
+      { status: 200, body: { id: "disb-7", status: "CANCELLED" } },
+    );
+    const rail = createXenditProvider({ secretKey: "k", fetchImpl, rates });
+
+    const s = await rail.cancelPayout("disb-7");
+
+    expect(calls[0]!.url).toBe("https://api.xendit.co/v2/payouts/disb-7/cancel");
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(calls[1]!.url).toBe("https://api.xendit.co/v2/payouts/disb-7");
+    expect(s.state).toBe("FAILED");
+    expect(s.failureCode).toBe("CANCELLED");
+  });
+
+  it("reports where the payout stands when Xendit refuses to cancel it", async () => {
+    const { fetchImpl, calls } = fakeFetch(
+      { status: 400, body: { error_code: "CANCELLATION_NOT_ALLOWED" } },
+      { status: 200, body: { id: "disb-7", status: "REQUESTED" } },
+    );
+    const rail = createXenditProvider({ secretKey: "k", fetchImpl, rates });
+
+    const s = await rail.cancelPayout("disb-7");
+
+    expect(calls).toHaveLength(2); // the refusal is not retried
+    expect(s.state).toBe("PENDING");
+    expect(s.railStatus).toBe("REQUESTED");
+  });
+
   it("collects into the treasury and quotes off the live rate", async () => {
     process.env.HEYPAY_TREASURY_PUBLIC_KEY = "GTREASURY";
     const rail = createXenditProvider({ secretKey: "k", fetchImpl: fakeFetch().fetchImpl, rates });

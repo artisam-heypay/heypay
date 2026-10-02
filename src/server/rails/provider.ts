@@ -61,6 +61,13 @@ export interface PaymentRailProvider {
     receiptEmail: string | null;
   }): Promise<PayoutResult>;
   getPayoutStatus(payoutRef: string): Promise<PayoutStatus>;
+  /**
+   * Asks the rail to stop a payout it has not sent yet, and returns where the
+   * payout stands afterwards. FAILED means it will not be paid; PENDING or
+   * SETTLED means the rail could not stop it. A rail refusing to cancel is an
+   * answer, not an error.
+   */
+  cancelPayout(payoutRef: string): Promise<PayoutStatus>;
 }
 
 /**

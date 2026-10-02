@@ -24,6 +24,9 @@ const MAX_PAYMENTS_PER_RUN = 50;
 const PAYOUT_STATES: PaymentStatus[] = [PaymentStatus.PAYOUT_SUBMITTED];
 // In-flight states with no fresh rail ref to poll — a stuck one just needs the
 // worker to resume (re-enqueue drives STELLAR_CONFIRMED→payout, REFUND_PENDING→refund).
+// Escrowed payments resume the same way: a paid payout whose escrow release
+// failed stays PAYOUT_SUBMITTED, and an unfinished escrow refund stays
+// REFUND_PENDING, so the settle job retries the contract call.
 const STUCK_STATES: PaymentStatus[] = [
   PaymentStatus.STELLAR_CONFIRMED,
   PaymentStatus.REFUND_PENDING,
@@ -114,7 +117,12 @@ async function reconcilePayments(): Promise<{ checked: number; drift: number }> 
       await audit({
         action: "reconcile.payment_drift",
         target: p.id,
-        metadata: { reference: p.reference, localStatus: p.status, ...finding },
+        metadata: {
+          reference: p.reference,
+          localStatus: p.status,
+          ...finding,
+          ...(p.escrowJobId && { escrowJobId: p.escrowJobId }),
+        },
       });
       await enqueueSettle(p.id); // idempotent (jobId = paymentId-status)
     } catch (err) {

@@ -27,9 +27,14 @@ describe("provider contract", () => {
     expectTypeOf(s.state).toEqualTypeOf<"PENDING" | "SETTLED" | "FAILED">();
   });
 
-  it("PaymentRailProvider has exactly the five methods of a collect-then-pay-out rail", () => {
+  it("PaymentRailProvider has exactly the six methods of a collect-then-pay-out rail", () => {
     expectTypeOf<keyof PaymentRailProvider>().toEqualTypeOf<
-      "supportsAsset" | "getDepositAddress" | "getQuote" | "createPayout" | "getPayoutStatus"
+      | "supportsAsset"
+      | "getDepositAddress"
+      | "getQuote"
+      | "createPayout"
+      | "getPayoutStatus"
+      | "cancelPayout"
     >();
     // structural use of the remaining types so unused-import lint stays clean
     const p: PayoutResult = { payoutRef: "y" };

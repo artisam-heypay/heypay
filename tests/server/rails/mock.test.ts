@@ -62,6 +62,28 @@ describe("MockProvider payout lifecycle", () => {
     expect(s.state).toBe("FAILED");
   });
 
+  it("cancels a payout that has not been paid, and refuses once it has", async () => {
+    const rail = make();
+    const pending = await rail.createPayout({
+      ref: "TXN-CANCEL-1",
+      phpAmount: new Decimal("100"),
+      bank: { bankCode: "BDO", accountName: "A", accountNumber: "1" },
+      receiptEmail: null,
+    });
+    expect((await rail.cancelPayout(pending.payoutRef)).state).toBe("FAILED");
+    expect((await rail.getPayoutStatus(pending.payoutRef)).failureCode).toBe("CANCELLED");
+
+    const paid = await rail.createPayout({
+      ref: "TXN-CANCEL-2",
+      phpAmount: new Decimal("100"),
+      bank: { bankCode: "BDO", accountName: "A", accountNumber: "1" },
+      receiptEmail: null,
+    });
+    await rail.getPayoutStatus(paid.payoutRef);
+    await rail.getPayoutStatus(paid.payoutRef); // now SETTLED
+    expect((await rail.cancelPayout(paid.payoutRef)).state).toBe("SETTLED");
+  });
+
   it("is idempotent per reference, like Xendit's idempotency key", async () => {
     const p = make();
     const input = {
