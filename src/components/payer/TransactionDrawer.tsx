@@ -3,7 +3,12 @@ import { useEffect, useState } from "react";
 import { Button, Icon, StatusBadge } from "@/components/ui";
 import { WALLET_UPDATED_EVENT } from "./HoldingsLive";
 
-type EscrowRefund = { available: boolean; secondsUntilAvailable: number };
+type EscrowRefund = {
+  available: boolean;
+  secondsUntilAvailable: number;
+  /** Past the deadline, but the bank transfer is in progress and can't be stopped. */
+  waitingOnPayout?: boolean;
+};
 
 /** The refund link's label says who returned the crypto, and how. */
 const REFUND_LABELS = {
@@ -230,9 +235,11 @@ function EscrowRefundPanel({
       <p className="text-body-sm text-on-surface-variant">
         {cancelled
           ? `This payment was cancelled and can't proceed. You can take your ${asset} back now.`
-          : state.available
-            ? `This payment has not been settled in time. You can take your ${asset} back now, or keep waiting for it to settle.`
-            : `If this payment is not settled, you can take your ${asset} back in about ${waitLabel(state.secondsUntilAvailable)}.`}
+          : state.waitingOnPayout
+            ? `The bank transfer to the merchant is already on its way and can't be stopped, so this payment can't be refunded yet. If the transfer fails, your ${asset} is refunded automatically.`
+            : state.available
+              ? `This payment has not been settled in time. You can take your ${asset} back now, or keep waiting for it to settle.`
+              : `If this payment is not settled, you can take your ${asset} back in about ${waitLabel(state.secondsUntilAvailable)}.`}
       </p>
       {error && (
         <p role="alert" className="text-body-sm text-error">
