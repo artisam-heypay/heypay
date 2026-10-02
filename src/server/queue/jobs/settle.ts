@@ -377,8 +377,21 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
 async function stepRequestPayout(p: PaymentWithRels): Promise<void> {
   let payoutRef = p.payoutRef;
   if (!payoutRef) {
-    // Never start a payout for crypto the payer is already entitled to take back.
-    if (await escrowExpired(p)) return cancelAtDeadline(p);
+    if (p.escrowJobId) {
+      // A payout is only requested against crypto the escrow still holds, with
+      // time left on it. This is also what stops a payment from going on after
+      // the worker was down past the deadline, or after the payer took it back.
+      const hold = await escrowHold(p);
+      // Never start a payout for crypto the payer is already entitled to take back.
+      if (hold === "expired") return cancelAtDeadline(p);
+      // The payer already has it: paying the merchant now would pay for a refund.
+      if (hold === "refunded") throw new Error(ESCROW_EXPIRED_REASON);
+      if (hold === "unknown") {
+        // The contract cannot be read; the payout waits until it can.
+        await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+        return;
+      }
+    }
     const accountNumber = decryptSecret(p.merchant.accountNumber);
     // The rail retries internally with the payment reference as its idempotency
     // key, so a retried request never pays the merchant twice.
@@ -410,7 +423,7 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
     // Past the escrow deadline the payer may take the crypto back, so the payout
     // must not go on: stop it first. If the rail cannot stop it any more, the
     // payment stays open and is settled or refunded by how the payout ends.
-    if (await escrowExpired(p)) {
+    if (p.escrowJobId && (await escrowHold(p)) === "expired") {
       const stopped = await cancelPayout(p);
       if (stopped?.state === "FAILED") {
         capturePayoutEvent(
@@ -546,24 +559,29 @@ async function verifyFastSettle(p: PaymentWithRels): Promise<void> {
 }
 
 /**
- * Whether the payment's escrow job is still held past its deadline ledger.
- * False when the contract cannot be read: an RPC failure must never cancel a
- * payment.
+ * Where an escrowed payment's crypto stands: `held` with time left (or already
+ * released to the treasury), `expired` when still held past its deadline ledger,
+ * `refunded` when the payer has it back, `unknown` when the contract cannot be
+ * read. Unknown must never cancel a payment, nor let a payout start.
  */
-async function escrowExpired(p: PaymentWithRels): Promise<boolean> {
-  if (!p.escrowJobId || p.refundTxHash) return false;
+async function escrowHold(
+  p: PaymentWithRels,
+): Promise<"held" | "expired" | "refunded" | "unknown"> {
+  if (p.refundTxHash) return "refunded";
   try {
     const job = await escrowService.getJob(escrowJob(p));
-    if (job?.status !== "Held") return false;
-    return (await escrowService.getLatestLedger()) >= job.deadlineLedger;
+    if (!job) return "unknown";
+    if (job.status === "Refunded") return "refunded";
+    if (job.status !== "Held") return "held";
+    return (await escrowService.getLatestLedger()) >= job.deadlineLedger ? "expired" : "held";
   } catch (err) {
     captureException(err, {
       source: "settle",
       paymentId: p.id,
       reference: p.reference,
-      step: "escrow_deadline",
+      step: "escrow_hold",
     });
-    return false;
+    return "unknown";
   }
 }
 

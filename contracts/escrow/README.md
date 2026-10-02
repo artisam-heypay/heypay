@@ -127,6 +127,25 @@ holds the crypto leg of an XLM payment in this contract:
    The contract itself places no such condition on `refund_after_timeout`: once
    the deadline ledger has passed, the payer's signature is all it needs.
 
+A payout is only requested while the escrow still holds the crypto with time
+left on it. If the worker was down and comes back after the deadline, or after
+the payer took the crypto back, the payment does not go on: no payout is sent.
+
+### Known limit: a payout already sent cannot be cancelled
+
+Xendit cancels a payout only while it is `ACCEPTED`, before Xendit has sent it
+to the bank or e-wallet (`POST /v2/payouts/{id}/cancel`). Checked in Xendit
+test mode on 2026-10-03: a `PH_GCASH` payout was created `ACCEPTED`, and a
+cancel one second later was refused with `400 CANCELLATION_NOT_ALLOWED`
+("Disbursement cannot be canceled because it has already been processed by
+Xendit"); the payout was already `REQUESTED`. Xendit's documentation gives the
+same rule for live payouts and names no difference between the two modes. Live
+mode has not been tried, since that moves real money.
+
+So in practice the cancel only helps when a payout is waiting at Xendit, for
+example while the destination bank is offline. For a payout already sent, the
+app waits for the bank's answer instead of refunding, as described above.
+
 `ESCROW_TIMEOUT_LEDGERS` sets the self-refund window from the app: before a
 deposit, the settle job calls `set_timeout` if the contract's window differs.
 Leave it empty to keep the contract's own window.

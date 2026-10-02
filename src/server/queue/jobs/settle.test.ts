@@ -555,6 +555,9 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     process.env.ESCROW_ENABLED = "true";
     for (const fn of Object.values(escrow)) fn.mockReset();
     escrow.getFeeCharged.mockResolvedValue(null);
+    // The escrow holds the payment with time left, unless a test says otherwise.
+    escrow.getJob.mockResolvedValue(held("GANYPAYER"));
+    escrow.getLatestLedger.mockResolvedValue(50);
   });
 
   const held = (from: string, status = "Held") => ({
@@ -994,7 +997,11 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     it("never cancels because the contract or the rail could not be asked", async () => {
       const first = await makeAuthorized();
       mockPendingPayout(first.wallet);
-      escrow.getLatestLedger.mockReset().mockRejectedValue(new Error("rpc down"));
+      // Readable when the payout is requested, not when it is checked afterwards.
+      escrow.getLatestLedger
+        .mockReset()
+        .mockResolvedValueOnce(50)
+        .mockRejectedValue(new Error("rpc down"));
       expect((await drive(first.payment.id)).status).toBe("PAYOUT_SUBMITTED");
       expect(cancelPayout).not.toHaveBeenCalled();
 
@@ -1005,6 +1012,39 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
       createPayout.mockResolvedValue({ payoutRef: "disb-exp2" });
       cancelPayout.mockRejectedValue(new Error("xendit down"));
       expect((await drive(second.payment.id)).status).toBe("PAYOUT_SUBMITTED");
+    });
+
+    it("never starts a payout for crypto the payer has already taken back", async () => {
+      // The worker was down; by the time it runs again the payer has refunded.
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      escrow.getJob.mockReset().mockResolvedValue(held(wallet.stellarPublicKey, "Refunded"));
+      escrow.refund.mockRejectedValue(new EscrowContractError("refund", "NotHeld"));
+
+      const final = await drive(payment.id);
+
+      expect(createPayout).not.toHaveBeenCalled();
+      expect(final.status).toBe("REFUNDED");
+      const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+      expect(w.cachedXlmBalance.toFixed(7)).toBe("100.0000000"); // credited once
+    });
+
+    it("holds the payout back while the contract cannot be read", async () => {
+      const { wallet, payment } = await makeAuthorized();
+      mockPendingPayout(wallet);
+      escrow.getLatestLedger.mockReset().mockRejectedValue(new Error("rpc down"));
+
+      const final = await drive(payment.id);
+
+      expect(createPayout).not.toHaveBeenCalled();
+      expect(final.status).toBe("STELLAR_CONFIRMED"); // neither paid out nor cancelled
+      expect(enqueueSettle).toHaveBeenCalledWith(payment.id, { delayMs: expect.any(Number) });
+
+      // Readable again: the payment goes on from where it stopped.
+      escrow.getLatestLedger.mockReset().mockResolvedValue(50);
+      getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
+      escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-RPC" });
+      expect((await drive(payment.id)).status).toBe("SETTLED");
     });
 
     it("never starts a payout for a payment already past its deadline", async () => {
