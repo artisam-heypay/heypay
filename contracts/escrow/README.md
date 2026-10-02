@@ -118,14 +118,14 @@ holds the crypto leg of an XLM payment in this contract:
    deadline the settle job asks the rail to stop the payout:
    - stopped, or never requested: the payment is cancelled and waits in
      `REFUND_PENDING` for the payer's refund;
-   - still in progress: the payer waits for its result (`release` if it is
-     paid, `refund` if it fails);
-   - held by the rail for over 24 hours without an answer: it has stalled, and
-     the payer can refund. With the default window (~24h) that is already true
-     at the deadline. A payout paid after such a refund is audited and reported.
+   - still in progress: the payer waits for its result, however long it takes
+     (`release` if it is paid, `refund` if it fails). The app does not offer
+     the timeout refund meanwhile, so the merchant and the payer are never both
+     paid for one payment.
 
    The contract itself places no such condition on `refund_after_timeout`: once
-   the deadline ledger has passed, the payer's signature is all it needs.
+   the deadline ledger has passed, the payer's signature is all it needs. The
+   condition is the custodial app's, which holds the payer's key.
 
 A payout is only requested while the escrow still holds the crypto with time
 left on it. If the worker was down and comes back after the deadline, or after

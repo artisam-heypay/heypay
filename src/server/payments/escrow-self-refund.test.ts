@@ -51,18 +51,6 @@ import { escrowJobId, EscrowContractError } from "@/server/stellar/escrow";
 
 const DEADLINE = 1_000;
 
-/** Records when the payout was handed to the rail, `hoursAgo` hours back. */
-async function payoutSubmitted(paymentId: string, hoursAgo: number) {
-  await db.paymentEvent.create({
-    data: {
-      paymentId,
-      fromStatus: "STELLAR_CONFIRMED",
-      toStatus: "PAYOUT_SUBMITTED",
-      createdAt: new Date(Date.now() - hoursAgo * 60 * 60_000),
-    },
-  });
-}
-
 /** A payment whose crypto is held in the escrow and already debited from the payer. */
 async function makeEscrowed(status: PaymentStatus = "PAYOUT_SUBMITTED") {
   const { user, wallet } = await makePayer({ cachedXlm: "91.6666566", reservedXlm: "0.0000000" });
@@ -182,7 +170,6 @@ describe("selfRefundEscrow", () => {
 
   it("refuses while the bank transfer is in progress and cannot be stopped", async () => {
     const { user, wallet, payment } = await makeEscrowed();
-    await payoutSubmitted(payment.id, 0);
     escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
     escrow.getLatestLedger.mockResolvedValue(DEADLINE);
     cancelPayout.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
@@ -201,7 +188,6 @@ describe("selfRefundEscrow", () => {
 
   it("refuses when the rail cannot say whether the payout was stopped", async () => {
     const { user, wallet, payment } = await makeEscrowed();
-    await payoutSubmitted(payment.id, 0);
     escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
     escrow.getLatestLedger.mockResolvedValue(DEADLINE);
     cancelPayout.mockRejectedValue(new Error("xendit down"));
@@ -210,20 +196,6 @@ describe("selfRefundEscrow", () => {
       status: 409,
     });
     expect(escrow.refundAfterTimeout).not.toHaveBeenCalled();
-  });
-
-  it("refunds a payout the rail has held for over a day, though it cannot be stopped", async () => {
-    const { user, wallet, payment } = await makeEscrowed();
-    await payoutSubmitted(payment.id, 25);
-    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
-    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
-    cancelPayout.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
-    escrow.refundAfterTimeout.mockResolvedValue({ txHash: "SELFREFUND-D" });
-
-    const result = await selfRefundEscrow({ id: payment.id, payerId: user.id });
-
-    expect(result.refundTxHash).toBe("SELFREFUND-D");
-    expect(await balanceOf(wallet.id)).toBe("100.0000000");
   });
 
   it("refuses before the deadline ledger, without calling the contract", async () => {
@@ -302,13 +274,8 @@ describe("selfRefundEscrow", () => {
 });
 
 describe("settle job after a payer's own escrow refund", () => {
-  /** `stalled`: the rail could not stop the payout, which it has held for over a day. */
-  async function selfRefunded(stalled = false) {
+  async function selfRefunded() {
     const made = await makeEscrowed();
-    if (stalled) {
-      await payoutSubmitted(made.payment.id, 25);
-      cancelPayout.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
-    }
     escrow.getJob.mockResolvedValue(heldJob(made.wallet.stellarPublicKey));
     escrow.getLatestLedger.mockResolvedValue(DEADLINE);
     escrow.refundAfterTimeout.mockResolvedValue({ txHash: "SELFREFUND2" });
@@ -335,8 +302,10 @@ describe("settle job after a payer's own escrow refund", () => {
     expect(await balanceOf(wallet.id)).toBe("100.0000000");
   });
 
-  it("records a stalled payout that is still paid after the refund", async () => {
-    const { payment } = await selfRefunded(true);
+  // The rail said the payout was stopped; should it be paid all the same, that
+  // must not go unnoticed.
+  it("records a payout that is still paid after the refund", async () => {
+    const { payment } = await selfRefunded();
     getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
 
     await processSettleJob({ data: { paymentId: payment.id } }); // → REFUNDED
@@ -444,7 +413,6 @@ describe("escrowSelfRefundState", () => {
 
   it("makes the payer wait while the bank transfer is in progress past the deadline", async () => {
     const { wallet, payment } = await makeEscrowed();
-    await payoutSubmitted(payment.id, 0);
     escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
     escrow.getLatestLedger.mockResolvedValue(DEADLINE);
     getPayoutStatus.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
@@ -456,12 +424,31 @@ describe("escrowSelfRefundState", () => {
     });
   });
 
-  it("opens the refund once the payout has stalled for over a day", async () => {
+  it("keeps the payer waiting however long the bank transfer has been in progress", async () => {
     const { wallet, payment } = await makeEscrowed();
-    await payoutSubmitted(payment.id, 25);
+    await db.paymentEvent.create({
+      data: {
+        paymentId: payment.id,
+        fromStatus: "STELLAR_CONFIRMED",
+        toStatus: "PAYOUT_SUBMITTED",
+        createdAt: new Date(Date.now() - 72 * 60 * 60_000),
+      },
+    });
     escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
     escrow.getLatestLedger.mockResolvedValue(DEADLINE);
     getPayoutStatus.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
+
+    expect(await escrowSelfRefundState(payment)).toMatchObject({
+      available: false,
+      waitingOnPayout: true,
+    });
+  });
+
+  it("opens the refund for a payout that failed but is not refunded yet", async () => {
+    const { wallet, payment } = await makeEscrowed();
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "CANCELLED" });
 
     expect(await escrowSelfRefundState(payment)).toEqual({
       available: true,
