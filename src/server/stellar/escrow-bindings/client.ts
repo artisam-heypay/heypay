@@ -1,4 +1,4 @@
-import {Job} from './types.js';
+import {Job} from './types';
 import {Result, Spec, AssembledTransaction, Client as ContractClient, ClientOptions as ContractClientOptions, MethodOptions} from '@stellar/stellar-sdk/contract';
 import {Address} from '@stellar/stellar-sdk';
 import { Buffer } from 'buffer';

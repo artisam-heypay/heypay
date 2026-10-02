@@ -29,4 +29,10 @@ sed -i.bak \
   -e 's/^\( *\)static deploy</\1static override deploy</' \
   "$DEST/client.ts"
 rm -f "$DEST/client.ts.bak"
+
+# The generator writes relative imports with a `.js` extension, as Node ESM
+# wants for compiled output. These files are imported as TypeScript, and
+# `next build` (Turbopack) does not map `./client.js` to `client.ts`.
+sed -i.bak -E "s#(from ['\"]\./[a-z]+)\.js(['\"])#\1\2#" "$DEST"/*.ts
+rm -f "$DEST"/*.ts.bak
 echo "Bindings written to $DEST"
