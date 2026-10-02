@@ -225,7 +225,7 @@ function EscrowRefundPanel({
       <h3 className="font-display text-body-lg">Held in escrow</h3>
       <p className="text-body-sm text-on-surface-variant">
         {state.available
-          ? `This payment has not been settled in time. You can take your ${asset} back now.`
+          ? `This payment has not been settled in time. You can take your ${asset} back now, or keep waiting for it to settle.`
           : `If this payment is not settled, you can take your ${asset} back in about ${waitLabel(state.secondsUntilAvailable)}.`}
       </p>
       {error && (
