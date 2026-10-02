@@ -41,7 +41,7 @@ export function TransactionDrawer({
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/payments/${paymentId}`, { signal: controller.signal })
+    fetch(`/api/payments/${paymentId}?escrow=1`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((d: PaymentDetail | null) => setData(d))
       .catch(() => {});
