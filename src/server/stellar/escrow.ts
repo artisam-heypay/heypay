@@ -70,8 +70,22 @@ export interface EscrowService {
   release(jobId: Buffer): Promise<{ txHash: string }>;
   /** Admin: returns a held job to the payer after a failed payout. */
   refund(jobId: Buffer): Promise<{ txHash: string }>;
+  /**
+   * Payer: takes a held job back once its deadline ledger has been reached,
+   * signed by the payer's custodial wallet. The admin plays no part.
+   */
+  refundAfterTimeout(input: {
+    jobId: Buffer;
+    encryptedSecret: string;
+  }): Promise<{ txHash: string }>;
   /** The job as stored on-chain, or null if it was never deposited. */
   getJob(jobId: Buffer): Promise<EscrowJob | null>;
+  /** The payer self-refund window new deposits get, in ledgers. */
+  getTimeout(): Promise<number>;
+  /** Admin: changes that window. Jobs already held keep their deadline. */
+  setTimeout(ledgers: number): Promise<{ txHash: string }>;
+  /** The network's latest ledger, to compare with a job's deadline ledger. */
+  getLatestLedger(): Promise<number>;
   /**
    * The XLM fee a successful escrow transaction actually charged its source
    * (Soroban resource fee included, after the refund of unused resources), or
@@ -220,6 +234,26 @@ export function createEscrowService(
       return submit("refund", adminSecret(), (client) =>
         client.refund({ job_id: jobId }, txOptions),
       );
+    },
+
+    refundAfterTimeout({ jobId, encryptedSecret }) {
+      return submit("refund_after_timeout", encryptedSecret, (client) =>
+        client.refund_after_timeout({ job_id: jobId }, txOptions),
+      );
+    },
+
+    async getTimeout() {
+      return (await clientFor(null).timeout()).result;
+    },
+
+    setTimeout(ledgers) {
+      return submit("set_timeout", adminSecret(), (client) =>
+        client.set_timeout({ ledgers }, txOptions),
+      );
+    },
+
+    async getLatestLedger() {
+      return (await server().getLatestLedger()).sequence;
     },
 
     async getJob(jobId) {

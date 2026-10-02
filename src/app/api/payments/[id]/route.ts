@@ -4,6 +4,7 @@ import { requireUser } from "@/server/auth/sessions";
 import { db } from "@/server/db";
 import { notFound, forbidden } from "@/lib/errors";
 import { stellarTxUrl } from "@/lib/stellar-explorer";
+import { escrowSelfRefundState } from "@/server/payments/escrow-self-refund";
 
 export const GET = route(async (_req, ctx) => {
   const user = await requireUser();
@@ -16,6 +17,8 @@ export const GET = route(async (_req, ctx) => {
   });
   if (!payment) throw notFound("payment not found");
   if (payment.payerId !== user.id && user.role !== "ADMIN") throw forbidden("not your payment");
+  // Only the payer can take a payment back from the escrow.
+  const escrowRefund = payment.payerId === user.id ? await escrowSelfRefundState(payment) : null;
 
   return json({
     payment: {
@@ -33,6 +36,7 @@ export const GET = route(async (_req, ctx) => {
       stellarTxUrl: payment.stellarTxHash ? stellarTxUrl(payment.stellarTxHash) : null,
       refundTxHash: payment.refundTxHash,
       refundTxUrl: payment.refundTxHash ? stellarTxUrl(payment.refundTxHash) : null,
+      escrowRefund,
       failureReason: payment.failureReason,
       quoteExpiresAt: payment.quoteExpiresAt?.toISOString() ?? null,
       settledAt: payment.settledAt?.toISOString() ?? null,

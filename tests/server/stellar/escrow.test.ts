@@ -231,6 +231,73 @@ describe("EscrowService.release / refund", () => {
   });
 });
 
+describe("EscrowService.refundAfterTimeout", () => {
+  it("is sourced and signed by the payer, never the admin", async () => {
+    const server = fakeServer();
+    const { txHash } = await service(server).refundAfterTimeout({
+      jobId,
+      encryptedSecret: payerSecretEnc,
+    });
+
+    expect(txHash).toBe(TX_HASH);
+    const sent = sentCall(server);
+    expect(sent.fn).toBe("refund_after_timeout");
+    expect(Buffer.from(sent.args[0] as Uint8Array).equals(jobId)).toBe(true);
+    expect(sent.tx.source).toBe(payer.publicKey());
+    expect(signedBy(sent.tx, payer)).toBe(true);
+    expect(signedBy(sent.tx, admin)).toBe(false);
+  });
+
+  it("maps DeadlineNotReached to a typed error and sends nothing", async () => {
+    const server = fakeServer({
+      simulateTransaction: vi.fn().mockResolvedValue(simContractError(7)),
+    });
+    await expect(
+      service(server).refundAfterTimeout({ jobId, encryptedSecret: payerSecretEnc }),
+    ).rejects.toMatchObject({
+      name: "EscrowContractError",
+      method: "refund_after_timeout",
+      code: "DeadlineNotReached",
+    });
+    expect(server.sendTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("EscrowService timeout", () => {
+  it("reads the self-refund window without sending anything", async () => {
+    const server = fakeServer({
+      simulateTransaction: vi
+        .fn()
+        .mockResolvedValue(simSuccess(nativeToScVal(17_280, { type: "u32" }))),
+    });
+
+    expect(await service(server).getTimeout()).toBe(17_280);
+    expect(server.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("sets the window as the admin", async () => {
+    const server = fakeServer();
+    const { txHash } = await service(server).setTimeout(12);
+
+    expect(txHash).toBe(TX_HASH);
+    const sent = sentCall(server);
+    expect(sent.fn).toBe("set_timeout");
+    expect(sent.args[0]).toBe(12);
+    expect(sent.tx.source).toBe(admin.publicKey());
+    expect(signedBy(sent.tx, admin)).toBe(true);
+  });
+
+  it("reads the network's latest ledger", async () => {
+    const server = fakeServer({
+      getLatestLedger: vi
+        .fn()
+        .mockResolvedValue({ id: "x", protocolVersion: 23, sequence: 4_985_221 }),
+    });
+
+    expect(await service(server).getLatestLedger()).toBe(4_985_221);
+  });
+});
+
 describe("EscrowService.getJob", () => {
   it("decodes a stored job", async () => {
     const job = xdr.ScVal.scvMap([

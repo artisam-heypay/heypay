@@ -23,6 +23,8 @@ const escrow = vi.hoisted(() => ({
   refund: vi.fn(),
   getJob: vi.fn(),
   getFeeCharged: vi.fn(),
+  getTimeout: vi.fn(),
+  setTimeout: vi.fn(),
 }));
 vi.mock("@/server/stellar/escrow", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/server/stellar/escrow")>()),
@@ -129,6 +131,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.HEYPAY_TREASURY_SECRET_ENC;
   delete process.env.ESCROW_ENABLED;
+  delete process.env.ESCROW_TIMEOUT_LEDGERS;
 });
 
 describe("processSettleJob — happy path", () => {
@@ -607,6 +610,81 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     expect(fees).toHaveLength(1);
     expect(fees[0]!.amount.toFixed(7)).toBe("-0.1060597");
     expect(fees[0]!.stellarTxHash).toBeNull();
+  });
+
+  it("sets the contract's self-refund window from ESCROW_TIMEOUT_LEDGERS before depositing", async () => {
+    process.env.ESCROW_TIMEOUT_LEDGERS = "12";
+    escrow.getTimeout.mockResolvedValue(17_280);
+    escrow.setTimeout.mockResolvedValue({ txHash: "TIMEOUTHASH1" });
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-T1" });
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-T1" });
+    mockHappyRail();
+
+    const { payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(escrow.setTimeout).toHaveBeenCalledTimes(1);
+    expect(escrow.setTimeout).toHaveBeenCalledWith(12);
+    expect(escrow.setTimeout.mock.invocationCallOrder[0]!).toBeLessThan(
+      escrow.deposit.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("never asks the contract for its window when ESCROW_TIMEOUT_LEDGERS is unset", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-T2" });
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-T2" });
+    mockHappyRail();
+
+    const { payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(escrow.getTimeout).not.toHaveBeenCalled();
+    expect(escrow.setTimeout).not.toHaveBeenCalled();
+  });
+
+  it("leaves the window alone when it already matches", async () => {
+    process.env.ESCROW_TIMEOUT_LEDGERS = "12";
+    escrow.getTimeout.mockResolvedValue(12);
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-T3" });
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-T3" });
+    mockHappyRail();
+
+    const { payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(escrow.setTimeout).not.toHaveBeenCalled();
+  });
+
+  it("deposits when another job set the window at the same moment", async () => {
+    process.env.ESCROW_TIMEOUT_LEDGERS = "12";
+    escrow.getTimeout.mockResolvedValueOnce(17_280).mockResolvedValue(12);
+    escrow.setTimeout.mockRejectedValue(new Error("txBadSeq"));
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-T4" });
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-T4" });
+    mockHappyRail();
+
+    const { payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    expect(escrow.deposit).toHaveBeenCalledTimes(1);
+  });
+
+  it("FAILs before depositing when the window cannot be set", async () => {
+    process.env.ESCROW_TIMEOUT_LEDGERS = "12";
+    escrow.getTimeout.mockResolvedValue(17_280);
+    escrow.setTimeout.mockRejectedValue(new Error("rpc down"));
+
+    const { wallet, payment } = await makeAuthorized();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("FAILED");
+    expect(escrow.deposit).not.toHaveBeenCalled();
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
   });
 
   it("still settles when the deposit's fee cannot be read", async () => {

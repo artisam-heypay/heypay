@@ -1,6 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Icon, StatusBadge } from "@/components/ui";
+import { Button, Icon, StatusBadge } from "@/components/ui";
+import { WALLET_UPDATED_EVENT } from "./HoldingsLive";
+
+type EscrowRefund = { available: boolean; secondsUntilAvailable: number };
+
+/** About one Stellar ledger: the slack before asking again after the deadline. */
+const SECONDS_PER_LEDGER = 5;
 
 type PaymentDetail = {
   payment: {
@@ -16,6 +22,7 @@ type PaymentDetail = {
     stellarTxUrl: string | null;
     refundTxHash: string | null;
     refundTxUrl: string | null;
+    escrowRefund?: EscrowRefund | null;
     createdAt: string;
   };
   events: { fromStatus: string | null; toStatus: string; createdAt: string }[];
@@ -29,6 +36,8 @@ export function TransactionDrawer({
   onClose: () => void;
 }) {
   const [data, setData] = useState<PaymentDetail | null>(null);
+  // Bumped to load the payment again after an escrow refund.
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -37,7 +46,19 @@ export function TransactionDrawer({
       .then((d: PaymentDetail | null) => setData(d))
       .catch(() => {});
     return () => controller.abort();
-  }, [paymentId]);
+  }, [paymentId, version]);
+
+  // Look again once the escrow deadline should have passed, so the refund
+  // button appears without reopening the drawer.
+  const escrowRefund = data?.payment.escrowRefund;
+  useEffect(() => {
+    if (!escrowRefund || escrowRefund.available) return;
+    const id = setTimeout(
+      () => setVersion((v) => v + 1),
+      (escrowRefund.secondsUntilAvailable + SECONDS_PER_LEDGER) * 1000,
+    );
+    return () => clearTimeout(id);
+  }, [escrowRefund]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -108,6 +129,15 @@ export function TransactionDrawer({
               )}
             </dl>
 
+            {data.payment.escrowRefund && (
+              <EscrowRefundPanel
+                paymentId={paymentId}
+                asset={data.payment.asset}
+                state={data.payment.escrowRefund}
+                onRefunded={() => setVersion((v) => v + 1)}
+              />
+            )}
+
             <div>
               <h3 className="font-display text-body-lg">Timeline</h3>
               <ol className="mt-stack-sm flex flex-col gap-stack-sm">
@@ -124,6 +154,72 @@ export function TransactionDrawer({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function waitLabel(seconds: number): string {
+  return seconds < 90 ? `${seconds} seconds` : `${Math.ceil(seconds / 60)} minutes`;
+}
+
+/**
+ * Shown while the payment's crypto is held in the escrow. Once the escrow's
+ * deadline has passed the payer can take it back themselves; the refund then
+ * appears as "Refund on Stellar" above.
+ */
+function EscrowRefundPanel({
+  paymentId,
+  asset,
+  state,
+  onRefunded,
+}: {
+  paymentId: string;
+  asset: string;
+  state: EscrowRefund;
+  onRefunded: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function refund() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/payments/${paymentId}/escrow-refund`, { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setError(body?.error?.message ?? "Could not refund from escrow.");
+        return;
+      }
+      window.dispatchEvent(new Event(WALLET_UPDATED_EVENT));
+      onRefunded();
+    } catch {
+      setError("Network error. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-stack-sm rounded-lg bg-surface-container p-stack-md">
+      <h3 className="font-display text-body-lg">Held in escrow</h3>
+      <p className="text-body-sm text-on-surface-variant">
+        {state.available
+          ? `This payment has not been settled in time. You can take your ${asset} back now.`
+          : `If this payment is not settled, you can take your ${asset} back in about ${waitLabel(state.secondsUntilAvailable)}.`}
+      </p>
+      {error && (
+        <p role="alert" className="text-body-sm text-error">
+          {error}
+        </p>
+      )}
+      {state.available && (
+        <Button size="md" variant="outline-pill" onClick={refund} loading={busy}>
+          {busy ? "Refunding…" : "Refund from escrow"}
+        </Button>
+      )}
     </div>
   );
 }

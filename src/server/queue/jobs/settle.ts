@@ -4,7 +4,7 @@ import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { fastSettleEnabled, rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
-import { escrowAppliesTo } from "@/server/stellar/escrow-config";
+import { escrowAppliesTo, escrowTimeoutLedgers } from "@/server/stellar/escrow-config";
 import {
   escrowJobId,
   escrowService,
@@ -56,7 +56,7 @@ const FAST_SETTLE_OUTCOME = "payment.fast_settle_outcome";
  * this long. It is longer than the escrow's transaction lifetime (180s), so the
  * earlier attempt has either landed or expired by then.
  */
-const ESCROW_REFUND_RECLAIM_MS = 5 * 60_000;
+export const ESCROW_REFUND_RECLAIM_MS = 5 * 60_000;
 
 /** The payment's escrow job id as the contract's `BytesN<32>`. */
 function escrowJob(p: { escrowJobId: string | null }): Buffer {
@@ -198,6 +198,7 @@ async function stepDepositEscrow(p: PaymentWithRels): Promise<void> {
         data: { escrowJobId: jobId.toString("hex") },
       });
     }
+    await syncEscrowTimeout();
     // No withRetry: its timeout is shorter than the deposit's confirmation wait,
     // and a retry racing a deposit still in flight gains nothing.
     try {
@@ -244,6 +245,23 @@ async function stepDepositEscrow(p: PaymentWithRels): Promise<void> {
     stellarTxHash: txHash,
     escrowJobId: jobId.toString("hex"),
   });
+}
+
+/**
+ * Keeps the contract's payer self-refund window at ESCROW_TIMEOUT_LEDGERS. The
+ * contract reads the window when a deposit happens, so it is checked before
+ * each one; jobs already held keep the deadline they were given.
+ */
+async function syncEscrowTimeout(): Promise<void> {
+  const wanted = escrowTimeoutLedgers();
+  if (wanted === null || (await escrowService.getTimeout()) === wanted) return;
+  try {
+    await escrowService.setTimeout(wanted);
+  } catch (err) {
+    // Another deposit may have set it at the same moment, taking the treasury's
+    // sequence number; that is fine as long as the window is now the wanted one.
+    if ((await escrowService.getTimeout()) !== wanted) throw err;
+  }
 }
 
 // STELLAR_SUBMITTED → STELLAR_CONFIRMED (debit + release reservation) | FAILED (tx never landed)
@@ -671,40 +689,9 @@ async function stepRefundEscrow(p: PaymentWithRels): Promise<void> {
  * was lost; the contract's job status proved it landed.
  */
 async function creditRefund(p: PaymentWithRels, txHash: string | null): Promise<void> {
-  const wallet = p.payer.wallet!;
   const { asset, assetAmount } = legs(p);
   await db.$transaction(async (tx) => {
-    const existing = await tx.walletTransaction.findFirst({
-      where: { paymentId: p.id, type: "REFUND_CREDIT" },
-    });
-    if (!existing) {
-      // The deposit poller watches the payer's wallet too and may have already
-      // recorded this incoming transfer as a deposit. If so the balance is
-      // credited; relabel the entry rather than credit it a second time.
-      const seen = txHash
-        ? await tx.walletTransaction.findUnique({ where: { stellarTxHash: txHash } })
-        : null;
-      if (seen) {
-        await tx.walletTransaction.update({
-          where: { id: seen.id },
-          data: { type: "REFUND_CREDIT", paymentId: p.id, memo: `refund ${p.reference}` },
-        });
-      } else {
-        const balanceAfter = await creditAsset(tx, wallet.id, asset, assetAmount);
-        await tx.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            type: "REFUND_CREDIT",
-            asset,
-            amount: assetAmount.toFixed(7),
-            balanceAfter: balanceAfter.toFixed(7),
-            stellarTxHash: txHash,
-            paymentId: p.id,
-            memo: `refund ${p.reference}`,
-          },
-        });
-      }
-    }
+    await creditRefundEntry(tx, p, txHash);
     await applyTransition(tx, p, PaymentStatus.REFUNDED, {
       asset,
       refundedAsset: assetAmount.toFixed(7),
@@ -720,6 +707,54 @@ async function creditRefund(p: PaymentWithRels, txHash: string | null): Promise<
       refundedAsset: assetAmount.toFixed(7),
       refundTxHash: txHash,
       reason: p.failureReason ?? "settlement failed after crypto moved",
+    },
+  });
+}
+
+/**
+ * Writes the wallet entry that returns a payment's crypto to the payer's balance,
+ * at most once per payment. Shared with the payer's own escrow refund, which
+ * credits the balance while the payment is still in flight.
+ */
+export async function creditRefundEntry(
+  tx: TxClient,
+  p: Parameters<typeof legs>[0] & {
+    id: string;
+    reference: string;
+    payer: { wallet: { id: string } | null };
+  },
+  txHash: string | null,
+): Promise<void> {
+  const wallet = p.payer.wallet!;
+  const { asset, assetAmount } = legs(p);
+  const existing = await tx.walletTransaction.findFirst({
+    where: { paymentId: p.id, type: "REFUND_CREDIT" },
+  });
+  if (existing) return;
+  // The deposit poller watches the payer's wallet too and may have already
+  // recorded this incoming transfer as a deposit. If so the balance is
+  // credited; relabel the entry rather than credit it a second time.
+  const seen = txHash
+    ? await tx.walletTransaction.findUnique({ where: { stellarTxHash: txHash } })
+    : null;
+  if (seen) {
+    await tx.walletTransaction.update({
+      where: { id: seen.id },
+      data: { type: "REFUND_CREDIT", paymentId: p.id, memo: `refund ${p.reference}` },
+    });
+    return;
+  }
+  const balanceAfter = await creditAsset(tx, wallet.id, asset, assetAmount);
+  await tx.walletTransaction.create({
+    data: {
+      walletId: wallet.id,
+      type: "REFUND_CREDIT",
+      asset,
+      amount: assetAmount.toFixed(7),
+      balanceAfter: balanceAfter.toFixed(7),
+      stellarTxHash: txHash,
+      paymentId: p.id,
+      memo: `refund ${p.reference}`,
     },
   });
 }

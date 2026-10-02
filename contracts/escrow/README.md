@@ -107,6 +107,17 @@ holds the crypto leg of an XLM payment in this contract:
 3. `REFUND_PENDING → REFUNDED`: after a failed payout, `refund` to the payer
    (`Payment.refundTxHash`).
 
+4. Any time the job is still held past its deadline ledger: the payer can call
+   `refund_after_timeout` from the payment detail drawer ("Refund from escrow"),
+   signed by their custodial wallet (`Payment.refundTxHash`). The payment's
+   status is left to the settle job: if the payout then succeeds, `release`
+   finds the job refunded and the shortfall is audited; if it fails, the refund
+   is already done.
+
+`ESCROW_TIMEOUT_LEDGERS` sets the self-refund window from the app: before a
+deposit, the settle job calls `set_timeout` if the contract's window differs.
+Leave it empty to keep the contract's own window.
+
 USDC payments keep the direct treasury path until the escrow holds USDC (D2).
 
 ## Setup

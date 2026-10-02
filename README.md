@@ -308,6 +308,8 @@ sequenceDiagram
 
 The settle job uses the escrow when `ESCROW_ENABLED=true` (XLM payments only for now; `src/server/queue/jobs/settle.ts`, client in `src/server/stellar/escrow.ts`). With it off, the crypto goes straight to the custodial treasury through classic Horizon payments (`src/server/stellar/wallet.ts`).
 
+A payer can take a held payment back themselves once its deadline ledger has passed: the payment detail drawer shows **Refund from escrow**, which calls the contract's `refund_after_timeout` with the payer's custodial wallet (`POST /api/payments/:id/escrow-refund`, `src/server/payments/escrow-self-refund.ts`). The deadline is the contract's window (17,280 ledgers, ~24h) unless `ESCROW_TIMEOUT_LEDGERS` is set, in which case the settle job keeps the contract at that value. To try it on Testnet with a Xendit test key, set `ESCROW_TIMEOUT_LEDGERS=12` (~1 minute) and `PAYOUT_FAST_SETTLE=false`, so the payment waits on Xendit's simulator long enough for the deadline to pass.
+
 ## Ecosystem roadmap / research
 
 HeyPay currently touches Stellar only through custodial wallets, a custodial treasury account, and classic Horizon payments; it does not yet use any Stellar Ecosystem Proposal (SEP) or Soroban. HeyPay is today its own conversion counterparty: it holds the crypto it collects and fronts PHP payouts from a prefunded Xendit balance, carrying the price risk between quote and sale. Ongoing research evaluates how **SEP-6/24/31 anchors, on-chain liquidity (Stellar DEX path payments into a PHP-pegged asset), and Soroban escrow contracts** could remove that treasury exposure, reduce reliance on a single payout provider, and turn HeyPay into real Stellar-ecosystem infrastructure rather than a single-app demo.
