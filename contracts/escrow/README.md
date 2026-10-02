@@ -113,12 +113,19 @@ holds the crypto leg of an XLM payment in this contract:
    (`Payment.refundTxHash`). HeyPay never makes that call on its own. The
    payment then ends `REFUNDED`.
 
-   At the deadline the settle job first asks the rail to stop the payout, so the
-   merchant is not paid for a payment the payer can take back. A payout that was
-   stopped (or never requested) cancels the payment: it waits in
-   `REFUND_PENDING` for the payer's refund. One the rail can no longer stop
-   leaves the payment open; if it is paid after the payer's refund, that is
-   audited and reported for a person to follow up.
+   A payout the bank is already working on cannot be recalled, so the app
+   offers the refund only when the merchant will not be paid as well. At the
+   deadline the settle job asks the rail to stop the payout:
+   - stopped, or never requested: the payment is cancelled and waits in
+     `REFUND_PENDING` for the payer's refund;
+   - still in progress: the payer waits for its result (`release` if it is
+     paid, `refund` if it fails);
+   - held by the rail for over 24 hours without an answer: it has stalled, and
+     the payer can refund. With the default window (~24h) that is already true
+     at the deadline. A payout paid after such a refund is audited and reported.
+
+   The contract itself places no such condition on `refund_after_timeout`: once
+   the deadline ledger has passed, the payer's signature is all it needs.
 
 `ESCROW_TIMEOUT_LEDGERS` sets the self-refund window from the app: before a
 deposit, the settle job calls `set_timeout` if the contract's window differs.

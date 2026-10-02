@@ -51,6 +51,18 @@ import { escrowJobId, EscrowContractError } from "@/server/stellar/escrow";
 
 const DEADLINE = 1_000;
 
+/** Records when the payout was handed to the rail, `hoursAgo` hours back. */
+async function payoutSubmitted(paymentId: string, hoursAgo: number) {
+  await db.paymentEvent.create({
+    data: {
+      paymentId,
+      fromStatus: "STELLAR_CONFIRMED",
+      toStatus: "PAYOUT_SUBMITTED",
+      createdAt: new Date(Date.now() - hoursAgo * 60 * 60_000),
+    },
+  });
+}
+
 /** A payment whose crypto is held in the escrow and already debited from the payer. */
 async function makeEscrowed(status: PaymentStatus = "PAYOUT_SUBMITTED") {
   const { user, wallet } = await makePayer({ cachedXlm: "91.6666566", reservedXlm: "0.0000000" });
@@ -90,8 +102,9 @@ beforeEach(async () => {
   for (const fn of Object.values(escrow)) fn.mockReset();
   process.env.HEYPAY_TREASURY_SECRET_ENC = encryptSecret("STREASURYSECRET");
   escrow.getFeeCharged.mockResolvedValue(null);
-  // The rail can no longer stop the payout, unless a test says otherwise.
-  cancelPayout.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
+  // The rail stops the payout, unless a test says otherwise.
+  cancelPayout.mockReset().mockResolvedValue({ state: "FAILED", failureCode: "CANCELLED" });
+  getPayoutStatus.mockReset();
   await resetDb();
 });
 afterEach(() => {
@@ -167,16 +180,50 @@ describe("selfRefundEscrow", () => {
     expect(await balanceOf(wallet.id)).toBe("91.6666566");
   });
 
-  it("still refunds when the rail cannot be asked to stop the payout", async () => {
+  it("refuses while the bank transfer is in progress and cannot be stopped", async () => {
     const { user, wallet, payment } = await makeEscrowed();
+    await payoutSubmitted(payment.id, 0);
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    cancelPayout.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
+
+    await expect(selfRefundEscrow({ id: payment.id, payerId: user.id })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining("already on its way and can't be stopped"),
+    });
+    // Nothing was refunded: the payer cannot end up with the crypto and the goods.
+    expect(escrow.refundAfterTimeout).not.toHaveBeenCalled();
+    expect(await balanceOf(wallet.id)).toBe("91.6666566");
+    const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe("PAYOUT_SUBMITTED");
+    expect(after.refundSubmittedAt).toBeNull();
+  });
+
+  it("refuses when the rail cannot say whether the payout was stopped", async () => {
+    const { user, wallet, payment } = await makeEscrowed();
+    await payoutSubmitted(payment.id, 0);
     escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
     escrow.getLatestLedger.mockResolvedValue(DEADLINE);
     cancelPayout.mockRejectedValue(new Error("xendit down"));
+
+    await expect(selfRefundEscrow({ id: payment.id, payerId: user.id })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(escrow.refundAfterTimeout).not.toHaveBeenCalled();
+  });
+
+  it("refunds a payout the rail has held for over a day, though it cannot be stopped", async () => {
+    const { user, wallet, payment } = await makeEscrowed();
+    await payoutSubmitted(payment.id, 25);
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    cancelPayout.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
     escrow.refundAfterTimeout.mockResolvedValue({ txHash: "SELFREFUND-D" });
 
     const result = await selfRefundEscrow({ id: payment.id, payerId: user.id });
 
     expect(result.refundTxHash).toBe("SELFREFUND-D");
+    expect(await balanceOf(wallet.id)).toBe("100.0000000");
   });
 
   it("refuses before the deadline ledger, without calling the contract", async () => {
@@ -255,8 +302,13 @@ describe("selfRefundEscrow", () => {
 });
 
 describe("settle job after a payer's own escrow refund", () => {
-  async function selfRefunded() {
+  /** `stalled`: the rail could not stop the payout, which it has held for over a day. */
+  async function selfRefunded(stalled = false) {
     const made = await makeEscrowed();
+    if (stalled) {
+      await payoutSubmitted(made.payment.id, 25);
+      cancelPayout.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
+    }
     escrow.getJob.mockResolvedValue(heldJob(made.wallet.stellarPublicKey));
     escrow.getLatestLedger.mockResolvedValue(DEADLINE);
     escrow.refundAfterTimeout.mockResolvedValue({ txHash: "SELFREFUND2" });
@@ -283,8 +335,8 @@ describe("settle job after a payer's own escrow refund", () => {
     expect(await balanceOf(wallet.id)).toBe("100.0000000");
   });
 
-  it("records a payout that is still paid after the refund", async () => {
-    const { payment } = await selfRefunded();
+  it("records a stalled payout that is still paid after the refund", async () => {
+    const { payment } = await selfRefunded(true);
     getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
 
     await processSettleJob({ data: { paymentId: payment.id } }); // → REFUNDED
@@ -370,20 +422,61 @@ describe("settle job after a payer's own escrow refund", () => {
 
 describe("escrowSelfRefundState", () => {
   it("says when the refund opens, and that it is open once the deadline has passed", async () => {
-    const { wallet, payment } = await makeEscrowed();
+    // No payout has been requested yet, so nothing stands in the refund's way.
+    const { wallet, payment } = await makeEscrowed("STELLAR_CONFIRMED");
     escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
 
     escrow.getLatestLedger.mockResolvedValue(DEADLINE - 6);
     expect(await escrowSelfRefundState(payment)).toEqual({
       available: false,
       secondsUntilAvailable: 30,
+      waitingOnPayout: false,
     });
 
     escrow.getLatestLedger.mockResolvedValue(DEADLINE + 3);
     expect(await escrowSelfRefundState(payment)).toEqual({
       available: true,
       secondsUntilAvailable: 0,
+      waitingOnPayout: false,
     });
+    expect(getPayoutStatus).not.toHaveBeenCalled();
+  });
+
+  it("makes the payer wait while the bank transfer is in progress past the deadline", async () => {
+    const { wallet, payment } = await makeEscrowed();
+    await payoutSubmitted(payment.id, 0);
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    getPayoutStatus.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
+
+    expect(await escrowSelfRefundState(payment)).toEqual({
+      available: false,
+      secondsUntilAvailable: 0,
+      waitingOnPayout: true,
+    });
+  });
+
+  it("opens the refund once the payout has stalled for over a day", async () => {
+    const { wallet, payment } = await makeEscrowed();
+    await payoutSubmitted(payment.id, 25);
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    getPayoutStatus.mockResolvedValue({ state: "PENDING", railStatus: "REQUESTED" });
+
+    expect(await escrowSelfRefundState(payment)).toEqual({
+      available: true,
+      secondsUntilAvailable: 0,
+      waitingOnPayout: false,
+    });
+  });
+
+  it("offers nothing for a payout that has just been paid", async () => {
+    const { wallet, payment } = await makeEscrowed();
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
+
+    expect(await escrowSelfRefundState(payment)).toBeNull();
   });
 
   it("is null for a payment that is not held, without asking the contract", async () => {
@@ -405,6 +498,7 @@ describe("escrowSelfRefundState", () => {
     expect(await escrowSelfRefundState(payment)).toEqual({
       available: true,
       secondsUntilAvailable: 0,
+      waitingOnPayout: false,
     });
   });
 

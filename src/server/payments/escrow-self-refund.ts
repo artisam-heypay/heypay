@@ -3,6 +3,11 @@
 // The payer's own way out of the escrow: once a held job's deadline ledger has
 // passed, the payer's custodial wallet calls the contract's
 // `refund_after_timeout` and takes the crypto back, without the admin.
+//
+// The app offers it only when the merchant will not be paid for the same
+// payment: the payout was never requested, was stopped, or has stalled. A payout
+// the bank is still working on cannot be recalled, and refunding the payer
+// while it may still be paid would settle the purchase twice.
 import "server-only";
 import { PaymentStatus, type Payment } from "@/generated/prisma/client";
 import { db } from "@/server/db";
@@ -33,11 +38,28 @@ const SELF_REFUNDABLE: ReadonlySet<PaymentStatus> = new Set([
   PaymentStatus.REFUND_PENDING,
 ]);
 
+/**
+ * How long the rail may hold a payout without an answer before it counts as
+ * stalled. Until then a payout that cannot be stopped is still in progress. It
+ * matches the escrow's default window (~24h), so with that window a payout still
+ * unanswered at the deadline is already stalled and the payer can refund at once.
+ */
+const PAYOUT_STALLED_MS = 24 * 60 * 60_000;
+
+const PAYOUT_IN_PROGRESS =
+  "The bank transfer to the merchant is already on its way and can't be stopped. " +
+  "If it fails, your payment is refunded automatically.";
+
 export type EscrowSelfRefundState = {
-  /** The deadline has passed, so the payer can refund now. */
+  /** The deadline has passed and no payout is in progress: the payer can refund now. */
   available: boolean;
   /** Roughly how long until the deadline; 0 once it has passed. */
   secondsUntilAvailable: number;
+  /**
+   * The deadline has passed, but the payout is with the bank and cannot be
+   * stopped: the payer has to wait for its result.
+   */
+  waitingOnPayout: boolean;
 };
 
 function holdsEscrow(p: Pick<Payment, "status" | "escrowJobId" | "refundTxHash">): boolean {
@@ -52,13 +74,23 @@ async function secondsUntilRefundable(jobId: Buffer): Promise<number | null> {
   return Math.max(0, ledgersLeft) * SECONDS_PER_LEDGER;
 }
 
+/** Whether the rail has held the payment's payout long enough to call it stalled. */
+async function payoutStalled(paymentId: string): Promise<boolean> {
+  const submitted = await db.paymentEvent.findFirst({
+    where: { paymentId, toStatus: PaymentStatus.PAYOUT_SUBMITTED },
+    orderBy: { createdAt: "asc" },
+  });
+  return submitted !== null && Date.now() - submitted.createdAt.getTime() > PAYOUT_STALLED_MS;
+}
+
 /**
  * Whether the payer can refund this payment from the escrow, for the payment
- * detail view. Null when nothing of it is held there, and when the contract
- * cannot be read: the view must still load.
+ * detail view. Null when nothing of it is held there, when its payout has just
+ * been paid, and when the contract or the rail cannot be read: the view must
+ * still load.
  */
 export async function escrowSelfRefundState(
-  p: Pick<Payment, "id" | "status" | "escrowJobId" | "refundTxHash">,
+  p: Pick<Payment, "id" | "status" | "escrowJobId" | "refundTxHash" | "payoutRef">,
 ): Promise<EscrowSelfRefundState | null> {
   if (!holdsEscrow(p)) return null;
   try {
@@ -66,7 +98,14 @@ export async function escrowSelfRefundState(
     if (seconds === null) return null;
     // A refund HeyPay is already sending needs no countdown to the payer's own.
     if (seconds > 0 && p.status === PaymentStatus.REFUND_PENDING) return null;
-    return { available: seconds === 0, secondsUntilAvailable: seconds };
+    if (seconds === 0 && p.status === PaymentStatus.PAYOUT_SUBMITTED && p.payoutRef) {
+      const payout = await rail.getPayoutStatus(p.payoutRef);
+      if (payout.state === "SETTLED") return null; // about to be completed
+      if (payout.state === "PENDING" && !(await payoutStalled(p.id))) {
+        return { available: false, secondsUntilAvailable: 0, waitingOnPayout: true };
+      }
+    }
+    return { available: seconds === 0, secondsUntilAvailable: seconds, waitingOnPayout: false };
   } catch (err) {
     captureException(err, { source: "escrow.self_refund_state", paymentId: p.id });
     return null;
@@ -77,8 +116,8 @@ export async function escrowSelfRefundState(
  * Refunds a held payment from the escrow to its payer, signed by the payer's
  * wallet, and credits their balance. Only the payer starts this; HeyPay never
  * does it for them. The payment then moves to REFUND_PENDING and the settle job
- * closes it as REFUNDED, then checks whether the payout that was already running
- * still paid the merchant.
+ * closes it as REFUNDED. After a refund of a stalled payout, the settle job also
+ * checks whether that payout was still paid.
  */
 export async function selfRefundEscrow(input: {
   id: string;
@@ -106,9 +145,10 @@ export async function selfRefundEscrow(input: {
   }
 
   // Stop the payout first, so the merchant is not paid for a payment the payer
-  // takes back. A rail that cannot stop it any more does not block the refund:
-  // past the deadline it is the payer's right. One it has already paid does:
-  // the payment succeeded, so it is completed instead.
+  // takes back. One the rail has already paid means the payment succeeded, so it
+  // is completed instead. One it can no longer stop is still in progress, and the
+  // payer waits for its result, unless it has stalled: then the refund is the
+  // payer's right, and a payout paid afterwards is HeyPay's to chase.
   if (p.status === PaymentStatus.PAYOUT_SUBMITTED && p.payoutRef) {
     const stopped = await rail.cancelPayout(p.payoutRef).catch((err: unknown) => {
       captureException(err, {
@@ -122,6 +162,9 @@ export async function selfRefundEscrow(input: {
     if (stopped?.state === "SETTLED") {
       await enqueueSettle(p.id);
       throw conflict("The merchant has just been paid, so this payment is being completed.");
+    }
+    if (stopped?.state !== "FAILED" && !(await payoutStalled(p.id))) {
+      throw conflict(PAYOUT_IN_PROGRESS, { waitingOnPayout: true });
     }
   }
 
