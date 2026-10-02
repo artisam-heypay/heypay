@@ -100,7 +100,11 @@ describe("selfRefundEscrow", () => {
 
     const result = await selfRefundEscrow({ id: payment.id, payerId: user.id });
 
-    expect(result).toEqual({ refundTxHash: "SELFREFUND1" });
+    expect(result).toEqual({
+      refundTxHash: "SELFREFUND1",
+      status: "REFUND_PENDING",
+      failureReason: "Escrow deadline passed before the payment settled",
+    });
     const call = escrow.refundAfterTimeout.mock.calls[0]![0];
     expect(call.jobId.equals(escrowJobId(payment.id))).toBe(true);
     expect(call.encryptedSecret).toBe(wallet.encryptedSecret); // signed by the payer
@@ -245,6 +249,27 @@ describe("settle job after a payer's own escrow refund", () => {
         where: { action: "payment.expired_payout_outcome", target: payment.id },
       }),
     ).toBe(1);
+  });
+
+  it("never settles a payment whose release finds the payer already refunded", async () => {
+    // The settle job is still on the payout when the payer's refund lands on-chain.
+    const { wallet, payment } = await makeEscrowed();
+    getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
+    escrow.release.mockRejectedValue(new EscrowContractError("release", "NotHeld"));
+    escrow.refund.mockRejectedValue(new EscrowContractError("refund", "NotHeld"));
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey, "Refunded"));
+
+    await processSettleJob({ data: { paymentId: payment.id } }); // release refused → REFUND_PENDING
+    await processSettleJob({ data: { paymentId: payment.id } }); // → REFUNDED
+
+    const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe("REFUNDED");
+    expect(after.settledAt).toBeNull();
+    expect(
+      await db.auditLog.count({ where: { action: "payment.escrow_refunded_before_release" } }),
+    ).toBe(1);
+    // The crypto came back on-chain, so the balance is credited, once.
+    expect(await balanceOf(wallet.id)).toBe("100.0000000");
   });
 
   it("leaves a payment that was already being refunded in REFUND_PENDING", async () => {

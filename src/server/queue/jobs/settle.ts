@@ -611,15 +611,16 @@ async function releaseEscrow(p: PaymentWithRels): Promise<boolean> {
       // An earlier attempt released it but never saved the hash.
       if (job?.status === "Released") return true;
       if (job?.status === "Refunded") {
-        // The payer self-refunded after the deadline, yet the merchant was paid.
-        // The payment is settled; the treasury is short and a person must follow up.
+        // The payer took the crypto back after the deadline, yet the merchant was
+        // paid: the treasury is short and a person must follow up. The payer has
+        // their crypto, so the payment is refunded, never settled; failing here
+        // sends it down the refund path, which closes it as REFUNDED.
         await audit({
           action: "payment.escrow_refunded_before_release",
           target: p.id,
           metadata: { reference: p.reference, escrowJobId: p.escrowJobId },
         });
-        captureException(err, { source: "settle", paymentId: p.id, moneyAtRisk: true });
-        return true;
+        throw new Error(ESCROW_EXPIRED_REASON);
       }
     }
     captureException(err, {

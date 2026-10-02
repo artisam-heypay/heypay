@@ -10,6 +10,6 @@ export const POST = route(async (req, ctx) => {
   assertSameOrigin(req);
   const user = await requireRole("PAYER");
   const ip = req.headers.get("x-forwarded-for") ?? undefined;
-  const { refundTxHash } = await selfRefundEscrow({ id: ctx.params.id!, payerId: user.id, ip });
-  return json({ refundTxHash, refundTxUrl: stellarTxUrl(refundTxHash) });
+  const refund = await selfRefundEscrow({ id: ctx.params.id!, payerId: user.id, ip });
+  return json({ ...refund, refundTxUrl: stellarTxUrl(refund.refundTxHash) });
 });

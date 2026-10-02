@@ -80,7 +80,7 @@ export async function selfRefundEscrow(input: {
   id: string;
   payerId: string;
   ip?: string;
-}): Promise<{ refundTxHash: string }> {
+}): Promise<{ refundTxHash: string; status: PaymentStatus; failureReason: string | null }> {
   const p = await db.payment.findUnique({
     where: { id: input.id },
     include: { payer: { include: { wallet: true } } },
@@ -187,7 +187,13 @@ export async function selfRefundEscrow(input: {
       refund_tx_hash: txHash,
     },
   );
-  return { refundTxHash: txHash };
+  // What the payment now is, so the caller can show it without waiting for a poll.
+  return {
+    refundTxHash: txHash,
+    status: PaymentStatus.REFUND_PENDING,
+    failureReason:
+      p.status === PaymentStatus.REFUND_PENDING ? p.failureReason : ESCROW_EXPIRED_REASON,
+  };
 }
 
 /** The fee the refund charged, or null when it cannot be read. Never throws. */
