@@ -33,9 +33,12 @@ export const GET = route(async (req, ctx) => {
           select: { id: true },
         })
       : null;
+  const expired = payment.events.some(
+    (e) => (e.detail as Record<string, unknown> | null)?.escrowExpired === true,
+  );
   const refundKind = !payment.refundTxHash
     ? null
-    : selfRefunded
+    : selfRefunded || expired
       ? "timeout"
       : payment.escrowJobId
         ? "escrow"

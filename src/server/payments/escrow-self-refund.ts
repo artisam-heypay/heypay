@@ -11,9 +11,16 @@ import type { Decimal } from "@/lib/money";
 import { audit } from "@/server/auth/audit";
 import { captureException } from "@/server/observability/error-tracking";
 import { captureUserEvent } from "@/server/observability/analytics";
-import { creditRefundEntry, ESCROW_REFUND_RECLAIM_MS } from "@/server/queue/jobs/settle";
+import {
+  creditRefundEntry,
+  debitRefundFee,
+  ESCROW_EXPIRED_DETAIL,
+  ESCROW_EXPIRED_REASON,
+  ESCROW_REFUND_RECLAIM_MS,
+} from "@/server/queue/jobs/settle";
+import { enqueueSettle } from "@/server/queue/queues";
+import { applyTransition } from "@/server/payments/state-machine";
 import { escrowService, EscrowContractError, EscrowTxFailedError } from "@/server/stellar/escrow";
-import { debitAsset } from "@/server/wallet/balances";
 
 /** About how long a Stellar ledger takes to close. */
 const SECONDS_PER_LEDGER = 5;
@@ -64,10 +71,10 @@ export async function escrowSelfRefundState(
 
 /**
  * Refunds a held payment from the escrow to its payer, signed by the payer's
- * wallet, and credits their balance. The payment's status is left alone: the
- * payout may still be running, and the settle job finishes it either way. If
- * the payout then succeeds the merchant was paid and the treasury is short,
- * which the settle job reports; if it fails, the refund is already done.
+ * wallet, and credits their balance. Only the payer starts this; HeyPay never
+ * does it for them. The payment then moves to REFUND_PENDING and the settle job
+ * closes it as REFUNDED, then checks whether the payout that was already running
+ * still paid the merchant.
  */
 export async function selfRefundEscrow(input: {
   id: string;
@@ -140,22 +147,21 @@ export async function selfRefundEscrow(input: {
   // The payer's wallet paid the Soroban fee for the call; keep the balance in step.
   const fee = await refundFeeCharged(txHash, p);
   await db.$transaction(async (tx) => {
-    await creditRefundEntry(tx, p, txHash);
-    if (fee?.greaterThan(0)) {
-      const xlmAfter = await debitAsset(tx, wallet.id, "XLM", fee);
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: "PAYMENT_DEBIT",
-          asset: "XLM",
-          amount: fee.negated().toFixed(7),
-          balanceAfter: xlmAfter.toFixed(7),
-          paymentId: p.id,
-          memo: `${p.reference} escrow refund network fee`,
-        },
+    const credited = await creditRefundEntry(tx, p, txHash);
+    if (credited && fee?.greaterThan(0)) await debitRefundFee(tx, p, fee);
+    // A payment already REFUND_PENDING is on its way to REFUNDED as it is.
+    if (p.status !== PaymentStatus.REFUND_PENDING) {
+      await tx.payment.update({
+        where: { id: p.id },
+        data: { failureReason: ESCROW_EXPIRED_REASON },
+      });
+      await applyTransition(tx, p, PaymentStatus.REFUND_PENDING, {
+        failureReason: ESCROW_EXPIRED_REASON,
+        [ESCROW_EXPIRED_DETAIL]: true,
       });
     }
   });
+  await enqueueSettle(p.id); // REFUND_PENDING → REFUNDED
 
   await audit({
     actorId: input.payerId,

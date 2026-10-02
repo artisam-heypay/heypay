@@ -58,6 +58,13 @@ const FAST_SETTLE_OUTCOME = "payment.fast_settle_outcome";
  */
 export const ESCROW_REFUND_RECLAIM_MS = 5 * 60_000;
 
+/** Why a payment its payer took back from the escrow failed, as the payer reads it. */
+export const ESCROW_EXPIRED_REASON = "Escrow deadline passed before the payment settled";
+/** Marks, on the REFUND_PENDING event, a refund the payer made after the deadline. */
+export const ESCROW_EXPIRED_DETAIL = "escrowExpired";
+/** Audit action recording how the payout of such a payment really ended. */
+const EXPIRED_PAYOUT_OUTCOME = "payment.expired_payout_outcome";
+
 /** The payment's escrow job id as the contract's `BytesN<32>`. */
 function escrowJob(p: { escrowJobId: string | null }): Buffer {
   return Buffer.from(p.escrowJobId!, "hex");
@@ -95,6 +102,7 @@ export async function processSettleJob(job: { data: { paymentId: string } }): Pr
   if (isTerminal(payment.status)) {
     // A fast-settled payment is final already; only Xendit's own answer is still owed.
     if (payment.status === PaymentStatus.SETTLED) await verifyFastSettle(payment);
+    if (payment.status === PaymentStatus.REFUNDED) await verifyExpiredPayout(payment);
     return;
   }
 
@@ -504,6 +512,60 @@ async function verifyFastSettle(p: PaymentWithRels): Promise<void> {
   );
 }
 
+/** The REFUND_PENDING event of a payment its payer took back after the deadline. */
+function expiredEvent(paymentId: string) {
+  return db.paymentEvent.findFirst({
+    where: {
+      paymentId,
+      toStatus: PaymentStatus.REFUND_PENDING,
+      detail: { path: [ESCROW_EXPIRED_DETAIL], equals: true },
+    },
+  });
+}
+
+/**
+ * A payment its payer took back from the escrow may still be paid out by the
+ * rail, because the payout was already running. Records how that payout ended, once.
+ * One that succeeded means the merchant was paid and the payer refunded, which
+ * a person has to follow up; the payment stays REFUNDED.
+ */
+async function verifyExpiredPayout(p: PaymentWithRels): Promise<void> {
+  if (!p.payoutRef) return;
+  const expired = await expiredEvent(p.id);
+  if (!expired) return;
+  const recorded = await db.auditLog.findFirst({
+    where: { action: EXPIRED_PAYOUT_OUTCOME, target: p.id },
+  });
+  if (recorded) return;
+
+  const status = await rail.getPayoutStatus(p.payoutRef);
+  const overdue = Date.now() - expired.createdAt.getTime() > FAST_SETTLE_VERIFY_WINDOW_MS;
+  if (status.state === "PENDING" && !overdue) {
+    await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+    return;
+  }
+  await audit({
+    action: EXPIRED_PAYOUT_OUTCOME,
+    target: p.id,
+    metadata: {
+      reference: p.reference,
+      payoutRef: p.payoutRef,
+      railState: status.state,
+      railStatus: status.railStatus,
+      failureCode: status.failureCode,
+    },
+  });
+  if (status.state === "FAILED") return; // nobody was paid; the refund stands alone
+  captureException(
+    new Error(
+      status.state === "SETTLED"
+        ? `Payout ${p.payoutRef} was paid after the payer took ${p.reference} back from the escrow`
+        : `Payout ${p.payoutRef} of ${p.reference}, refunded from the escrow, is still pending at the rail`,
+    ),
+    { source: "settle", paymentId: p.id, reference: p.reference, moneyAtRisk: true },
+  );
+}
+
 /**
  * The fee an escrow deposit charged, or null when it cannot be read. Never
  * throws: the deposit has landed, and a failure here must not route the payment
@@ -628,7 +690,9 @@ async function stepRefund(p: PaymentWithRels): Promise<void> {
 }
 
 // REFUND_PENDING → REFUNDED for an escrowed payment: the contract returns the held
-// crypto to the payer (`refund`, signed by the treasury as the escrow admin).
+// crypto to the payer (`refund`, signed by the treasury as the escrow admin). A
+// payment its payer already took back with `refund_after_timeout` arrives here
+// with that refund's hash saved, and is only confirmed and closed.
 async function stepRefundEscrow(p: PaymentWithRels): Promise<void> {
   const jobId = escrowJob(p);
   let txHash = p.refundTxHash;
@@ -681,6 +745,10 @@ async function stepRefundEscrow(p: PaymentWithRels): Promise<void> {
   }
 
   await creditRefund(p, txHash);
+  // After the payer's own refund the payout may still be paid; see how it ends.
+  if (p.payoutRef && (await expiredEvent(p.id))) {
+    await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+  }
 }
 
 /**
@@ -724,13 +792,13 @@ export async function creditRefundEntry(
     payer: { wallet: { id: string } | null };
   },
   txHash: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const wallet = p.payer.wallet!;
   const { asset, assetAmount } = legs(p);
   const existing = await tx.walletTransaction.findFirst({
     where: { paymentId: p.id, type: "REFUND_CREDIT" },
   });
-  if (existing) return;
+  if (existing) return false;
   // The deposit poller watches the payer's wallet too and may have already
   // recorded this incoming transfer as a deposit. If so the balance is
   // credited; relabel the entry rather than credit it a second time.
@@ -742,7 +810,7 @@ export async function creditRefundEntry(
       where: { id: seen.id },
       data: { type: "REFUND_CREDIT", paymentId: p.id, memo: `refund ${p.reference}` },
     });
-    return;
+    return true;
   }
   const balanceAfter = await creditAsset(tx, wallet.id, asset, assetAmount);
   await tx.walletTransaction.create({
@@ -755,6 +823,32 @@ export async function creditRefundEntry(
       stellarTxHash: txHash,
       paymentId: p.id,
       memo: `refund ${p.reference}`,
+    },
+  });
+  return true;
+}
+
+/**
+ * Debits the Soroban fee the payer's wallet paid for its own escrow refund, so
+ * the balance matches the chain. The entry shares the refund's tx hash, which is
+ * unique on WalletTransaction, so it carries none.
+ */
+export async function debitRefundFee(
+  tx: TxClient,
+  p: { id: string; reference: string; payer: { wallet: { id: string } | null } },
+  fee: Decimal,
+): Promise<void> {
+  const wallet = p.payer.wallet!;
+  const xlmAfter = await debitAsset(tx, wallet.id, "XLM", fee);
+  await tx.walletTransaction.create({
+    data: {
+      walletId: wallet.id,
+      type: "PAYMENT_DEBIT",
+      asset: "XLM",
+      amount: fee.negated().toFixed(7),
+      balanceAfter: xlmAfter.toFixed(7),
+      paymentId: p.id,
+      memo: `${p.reference} escrow refund network fee`,
     },
   });
 }

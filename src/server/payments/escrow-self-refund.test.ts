@@ -31,9 +31,12 @@ vi.mock("@/server/rails", () => ({
   rail: { getPayoutStatus: (r: string) => getPayoutStatus(r) },
 }));
 
+const { enqueueSettle } = vi.hoisted(() => ({
+  enqueueSettle: vi.fn(async (_id: string, _opts?: { delayMs?: number }) => {}),
+}));
 vi.mock("@/server/queue/queues", () => ({
   QUEUE_NAMES: { settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" },
-  enqueueSettle: vi.fn(async () => {}),
+  enqueueSettle,
 }));
 
 import { escrowSelfRefundState, selfRefundEscrow } from "./escrow-self-refund";
@@ -104,7 +107,10 @@ describe("selfRefundEscrow", () => {
     expect(escrow.refund).not.toHaveBeenCalled(); // the admin plays no part
 
     const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    expect(after.status).toBe("PAYOUT_SUBMITTED"); // the payout is still the settle job's to finish
+    // The payment has expired; the settle job closes it as REFUNDED.
+    expect(after.status).toBe("REFUND_PENDING");
+    expect(after.failureReason).toBe("Escrow deadline passed before the payment settled");
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
     expect(after.refundTxHash).toBe("SELFREFUND1");
     // 91.6666566 + 8.3333434 (amount + base fee) - 0.0025226 (refund's Soroban fee)
     expect(await balanceOf(wallet.id)).toBe("99.9974774");
@@ -203,41 +209,54 @@ describe("settle job after a payer's own escrow refund", () => {
     escrow.refundAfterTimeout.mockResolvedValue({ txHash: "SELFREFUND2" });
     await selfRefundEscrow({ id: made.payment.id, payerId: made.user.id });
     escrow.getJob.mockResolvedValue(heldJob(made.wallet.stellarPublicKey, "Refunded"));
+    confirmTx.mockResolvedValue(true);
     return made;
   }
 
-  it("settles and reports the shortfall when the payout succeeds anyway", async () => {
+  it("closes the payment as REFUNDED without refunding or crediting a second time", async () => {
     const { wallet, payment } = await selfRefunded();
-    getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
-    escrow.release.mockRejectedValue(new EscrowContractError("release", "NotHeld"));
+    getPayoutStatus.mockResolvedValue({ state: "PENDING" });
 
-    await processSettleJob({ data: { paymentId: payment.id } });
-
-    const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    expect(after.status).toBe("SETTLED");
-    expect(after.escrowReleaseTxHash).toBeNull();
-    expect(
-      await db.auditLog.count({ where: { action: "payment.escrow_refunded_before_release" } }),
-    ).toBe(1);
-    expect(await balanceOf(wallet.id)).toBe("100.0000000");
-  });
-
-  it("closes as REFUNDED without a second credit when the payout fails", async () => {
-    const { wallet, payment } = await selfRefunded();
-    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "INVALID_DESTINATION" });
-    confirmTx.mockResolvedValue(true);
-
-    // PAYOUT_SUBMITTED → REFUND_PENDING → REFUNDED
-    await processSettleJob({ data: { paymentId: payment.id } });
     await processSettleJob({ data: { paymentId: payment.id } });
 
     const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe("REFUNDED");
     expect(after.refundTxHash).toBe("SELFREFUND2");
-    expect(escrow.refund).not.toHaveBeenCalled(); // already refunded by the payer
+    expect(escrow.refund).not.toHaveBeenCalled();
+    expect(escrow.refundAfterTimeout).toHaveBeenCalledTimes(1); // the payer's own call
     expect(
       await db.walletTransaction.count({ where: { paymentId: payment.id, type: "REFUND_CREDIT" } }),
     ).toBe(1);
+    expect(await balanceOf(wallet.id)).toBe("100.0000000");
+  });
+
+  it("records a payout that is still paid after the refund", async () => {
+    const { payment } = await selfRefunded();
+    getPayoutStatus.mockResolvedValue({ state: "SETTLED", netPhp: dec("100") });
+
+    await processSettleJob({ data: { paymentId: payment.id } }); // → REFUNDED
+    await processSettleJob({ data: { paymentId: payment.id } }); // the payout's real end
+
+    const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe("REFUNDED");
+    expect(escrow.release).not.toHaveBeenCalled();
+    expect(
+      await db.auditLog.count({
+        where: { action: "payment.expired_payout_outcome", target: payment.id },
+      }),
+    ).toBe(1);
+  });
+
+  it("leaves a payment that was already being refunded in REFUND_PENDING", async () => {
+    const { user, wallet, payment } = await makeEscrowed("REFUND_PENDING");
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    escrow.refundAfterTimeout.mockResolvedValue({ txHash: "SELFREFUND3" });
+
+    await selfRefundEscrow({ id: payment.id, payerId: user.id });
+
+    const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe("REFUND_PENDING");
     expect(await balanceOf(wallet.id)).toBe("100.0000000");
   });
 });

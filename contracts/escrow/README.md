@@ -107,12 +107,13 @@ holds the crypto leg of an XLM payment in this contract:
 3. `REFUND_PENDING → REFUNDED`: after a failed payout, `refund` to the payer
    (`Payment.refundTxHash`).
 
-4. Any time the job is still held past its deadline ledger: the payer can call
-   `refund_after_timeout` from the payment detail drawer ("Refund from escrow"),
-   signed by their custodial wallet (`Payment.refundTxHash`). The payment's
-   status is left to the settle job: if the payout then succeeds, `release`
-   finds the job refunded and the shortfall is audited; if it fails, the refund
-   is already done.
+4. Still held when the deadline ledger passes (the payout has not finished, or
+   was never requested): the payment expires. The settle job calls
+   `refund_after_timeout`, signed by the payer's custodial wallet
+   (`Payment.refundTxHash`), and the payment ends `REFUNDED`. The payer can
+   trigger the same call from the payment detail drawer ("Refund from escrow").
+   A payout already running is not cancelled; its outcome is audited, and one
+   that is still paid is reported for a person to follow up.
 
 `ESCROW_TIMEOUT_LEDGERS` sets the self-refund window from the app: before a
 deposit, the settle job calls `set_timeout` if the contract's window differs.
