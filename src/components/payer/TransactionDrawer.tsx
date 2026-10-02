@@ -152,6 +152,7 @@ export function TransactionDrawer({
                 paymentId={paymentId}
                 asset={data.payment.asset}
                 state={data.payment.escrowRefund}
+                cancelled={data.payment.status === "REFUND_PENDING"}
                 onRefunded={() => setVersion((v) => v + 1)}
               />
             )}
@@ -189,11 +190,14 @@ function EscrowRefundPanel({
   paymentId,
   asset,
   state,
+  cancelled,
   onRefunded,
 }: {
   paymentId: string;
   asset: string;
   state: EscrowRefund;
+  /** The payment was cancelled at the deadline: it can no longer settle. */
+  cancelled: boolean;
   onRefunded: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -224,9 +228,11 @@ function EscrowRefundPanel({
     <div className="flex flex-col gap-stack-sm rounded-lg bg-surface-container p-stack-md">
       <h3 className="font-display text-body-lg">Held in escrow</h3>
       <p className="text-body-sm text-on-surface-variant">
-        {state.available
-          ? `This payment has not been settled in time. You can take your ${asset} back now, or keep waiting for it to settle.`
-          : `If this payment is not settled, you can take your ${asset} back in about ${waitLabel(state.secondsUntilAvailable)}.`}
+        {cancelled
+          ? `This payment was cancelled and can't proceed. You can take your ${asset} back now.`
+          : state.available
+            ? `This payment has not been settled in time. You can take your ${asset} back now, or keep waiting for it to settle.`
+            : `If this payment is not settled, you can take your ${asset} back in about ${waitLabel(state.secondsUntilAvailable)}.`}
       </p>
       {error && (
         <p role="alert" className="text-body-sm text-error">
