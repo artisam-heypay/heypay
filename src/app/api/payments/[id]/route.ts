@@ -24,6 +24,22 @@ export const GET = route(async (req, ctx) => {
     req.nextUrl.searchParams.get("escrow") === "1" && payment.payerId === user.id
       ? await escrowSelfRefundState(payment)
       : null;
+  // Who sent the crypto back: the payer themselves after the escrow's deadline,
+  // HeyPay through the escrow, or HeyPay from the treasury (no escrow).
+  const selfRefunded =
+    payment.refundTxHash && payment.escrowJobId
+      ? await db.auditLog.findFirst({
+          where: { action: "payment.escrow_self_refund", target: payment.id },
+          select: { id: true },
+        })
+      : null;
+  const refundKind = !payment.refundTxHash
+    ? null
+    : selfRefunded
+      ? "timeout"
+      : payment.escrowJobId
+        ? "escrow"
+        : "treasury";
 
   return json({
     payment: {
@@ -41,6 +57,12 @@ export const GET = route(async (req, ctx) => {
       stellarTxUrl: payment.stellarTxHash ? stellarTxUrl(payment.stellarTxHash) : null,
       refundTxHash: payment.refundTxHash,
       refundTxUrl: payment.refundTxHash ? stellarTxUrl(payment.refundTxHash) : null,
+      refundKind,
+      escrowed: Boolean(payment.escrowJobId),
+      escrowReleaseTxHash: payment.escrowReleaseTxHash,
+      escrowReleaseTxUrl: payment.escrowReleaseTxHash
+        ? stellarTxUrl(payment.escrowReleaseTxHash)
+        : null,
       escrowRefund,
       failureReason: payment.failureReason,
       quoteExpiresAt: payment.quoteExpiresAt?.toISOString() ?? null,

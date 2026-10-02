@@ -5,6 +5,13 @@ import { WALLET_UPDATED_EVENT } from "./HoldingsLive";
 
 type EscrowRefund = { available: boolean; secondsUntilAvailable: number };
 
+/** The refund link's label says who returned the crypto, and how. */
+const REFUND_LABELS = {
+  timeout: "Timeout refund on Stellar",
+  escrow: "Escrow refund on Stellar",
+  treasury: "Refund on Stellar",
+} as const;
+
 /** About one Stellar ledger: the slack before asking again after the deadline. */
 const SECONDS_PER_LEDGER = 5;
 
@@ -22,6 +29,10 @@ type PaymentDetail = {
     stellarTxUrl: string | null;
     refundTxHash: string | null;
     refundTxUrl: string | null;
+    refundKind?: "timeout" | "escrow" | "treasury" | null;
+    escrowed?: boolean;
+    escrowReleaseTxHash?: string | null;
+    escrowReleaseTxUrl?: string | null;
     escrowRefund?: EscrowRefund | null;
     createdAt: string;
   };
@@ -115,14 +126,21 @@ export function TransactionDrawer({
               <Row label="Network fee" value={`${data.payment.networkFeeXlm} XLM`} />
               {data.payment.stellarTxHash && data.payment.stellarTxUrl && (
                 <TxLinkRow
-                  label="Payment on Stellar"
+                  label={data.payment.escrowed ? "Escrow deposit on Stellar" : "Payment on Stellar"}
                   hash={data.payment.stellarTxHash}
                   href={data.payment.stellarTxUrl}
                 />
               )}
+              {data.payment.escrowReleaseTxHash && data.payment.escrowReleaseTxUrl && (
+                <TxLinkRow
+                  label="Escrow release on Stellar"
+                  hash={data.payment.escrowReleaseTxHash}
+                  href={data.payment.escrowReleaseTxUrl}
+                />
+              )}
               {data.payment.refundTxHash && data.payment.refundTxUrl && (
                 <TxLinkRow
-                  label="Refund on Stellar"
+                  label={REFUND_LABELS[data.payment.refundKind ?? "treasury"]}
                   hash={data.payment.refundTxHash}
                   href={data.payment.refundTxUrl}
                 />
@@ -165,7 +183,7 @@ function waitLabel(seconds: number): string {
 /**
  * Shown while the payment's crypto is held in the escrow. Once the escrow's
  * deadline has passed the payer can take it back themselves; the refund then
- * appears as "Refund on Stellar" above.
+ * appears as "Timeout refund on Stellar" above.
  */
 function EscrowRefundPanel({
   paymentId,
