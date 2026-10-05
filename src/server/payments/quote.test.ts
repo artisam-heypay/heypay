@@ -6,14 +6,20 @@ import { AppError } from "@/lib/errors";
 import type { PaymentAsset } from "@/lib/assets";
 
 const RATES: Record<PaymentAsset, string> = { XLM: "12", USDT: "58", USDC: "62.34" };
-const { getDepositAddress, canReceive, getQuote } = vi.hoisted(() => ({
+const XLM_ESCROW = "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J";
+const { getDepositAddress, canReceive, getQuote, findStrictSendPaths } = vi.hoisted(() => ({
   getDepositAddress: vi.fn(async (_asset: string) => ({ address: "GTREASURY", memo: null })),
   canReceive: vi.fn(async (_pk: string, _asset: string) => true),
   getQuote: vi.fn(),
+  findStrictSendPaths: vi.fn(),
 }));
 
 vi.mock("@/server/stellar/wallet", () => ({
   walletService: { canReceive: (pk: string, a: string) => canReceive(pk, a) },
+}));
+
+vi.mock("@/server/stellar/paths", () => ({
+  findStrictSendPaths: (...args: unknown[]) => findStrictSendPaths(...args),
 }));
 
 vi.mock("@/server/rails", () => ({
@@ -43,11 +49,13 @@ beforeEach(async () => {
   getDepositAddress.mockResolvedValue({ address: "GTREASURY", memo: null });
   canReceive.mockResolvedValue(true);
   getQuote.mockImplementation(liveQuote);
+  findStrictSendPaths.mockResolvedValue([]);
   await resetDb();
 });
 afterEach(() => {
   delete process.env.PAYMENT_ASSETS;
   delete process.env.ESCROW_ENABLED;
+  delete process.env.ESCROW_CONTRACT_ID;
 });
 
 describe("createQuote", () => {
@@ -119,6 +127,7 @@ describe("createQuote", () => {
     const { merchant } = await makeMerchant();
 
     process.env.ESCROW_ENABLED = "true";
+    process.env.ESCROW_CONTRACT_ID = XLM_ESCROW;
     await expect(
       createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }),
     ).rejects.toMatchObject({ status: 409 });
@@ -159,7 +168,7 @@ describe("createQuote", () => {
     // Stellar rejects a payment to an account with no trustline (op_no_trust),
     // but only at submission — after the payer has confirmed. Catch it at quote.
     process.env.PAYMENT_ASSETS = "XLM,USDC";
-    canReceive.mockResolvedValue(false);
+    canReceive.mockImplementation(async (pk: string) => pk !== "GTREASURY");
     const { user } = await makePayer({ assets: { USDC: { cached: "50.0000000" } } });
     const { merchant } = await makeMerchant();
     await expect(
@@ -169,9 +178,94 @@ describe("createQuote", () => {
         amountPhp: dec("100"),
         asset: "USDC",
       }),
-    ).rejects.toMatchObject({ status: 400 });
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "HeyPay cannot receive USDC payments right now.",
+      details: { reason: "destination_no_trustline" },
+    });
     expect(canReceive).toHaveBeenCalledWith("GTREASURY", "USDC");
-    expect(getQuote).not.toHaveBeenCalled();
+    expect(await db.payment.count()).toBe(0);
+  });
+});
+
+describe("createQuote (settlement route preflight)", () => {
+  beforeEach(() => {
+    process.env.PAYMENT_ASSETS = "XLM,USDC";
+  });
+
+  const usdcQuote = (payerId: string, merchantId: string) =>
+    createQuote({ payerId, merchantId, amountPhp: dec("100"), asset: "USDC" });
+
+  it("records the escrow that will hold the payment on the quote event", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    process.env.ESCROW_CONTRACT_ID = XLM_ESCROW;
+    const { user } = await makePayer({ cachedXlm: "100.0000000" });
+    const { merchant } = await makeMerchant();
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("100"),
+    });
+    const event = await db.paymentEvent.findFirstOrThrow({ where: { paymentId: res.paymentId } });
+    expect(event.detail).toMatchObject({ escrowId: XLM_ESCROW });
+  });
+
+  it("refuses when the escrow is on but no instance is deployed for the asset", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    const { user } = await makePayer({ cachedXlm: "100.0000000" });
+    const { merchant } = await makeMerchant();
+    await expect(
+      createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "HeyPay cannot hold XLM payments in escrow right now.",
+      details: { reason: "no_escrow" },
+    });
+    expect(await db.payment.count()).toBe(0);
+  });
+
+  it("refuses when the payer's wallet has no trustline on-chain, whatever the cache says", async () => {
+    const { user, wallet } = await makePayer({ assets: { USDC: { cached: "50.0000000" } } });
+    const { merchant } = await makeMerchant();
+    canReceive.mockImplementation(async (pk: string) => pk !== wallet.stellarPublicKey);
+    await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
+      status: 400,
+      message:
+        "Your wallet is not set up to hold USDC. Turn on USDC on the Prefund page, then try again.",
+      details: { reason: "payer_no_trustline" },
+    });
+    expect(await db.payment.count()).toBe(0);
+  });
+
+  it("refuses when USDC would have to be converted and the DEX has no route", async () => {
+    const { user } = await makePayer({ assets: { USDC: { cached: "50.0000000" } } });
+    const { merchant } = await makeMerchant();
+    // The treasury takes XLM but holds no USDC trustline.
+    canReceive.mockImplementation(
+      async (pk: string, asset: string) => pk !== "GTREASURY" || asset === "XLM",
+    );
+    await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
+      status: 400,
+      message:
+        "USDC cannot be converted for this amount right now. Try a smaller amount or another asset.",
+      details: { reason: "no_dex_path" },
+    });
+    // 100 / 62.34 → 1.6041066 USDC is the amount the DEX was asked to convert.
+    expect(findStrictSendPaths.mock.calls[0]![2].toFixed(7)).toBe("1.6041066");
+    expect(await db.payment.count()).toBe(0);
+  });
+
+  it("still refuses when a DEX route exists: settlement delivers the payer's own asset only", async () => {
+    const { user } = await makePayer({ assets: { USDC: { cached: "50.0000000" } } });
+    const { merchant } = await makeMerchant();
+    canReceive.mockImplementation(
+      async (pk: string, asset: string) => pk !== "GTREASURY" || asset === "XLM",
+    );
+    findStrictSendPaths.mockResolvedValue([{ destAmount: dec("9.7684000"), path: [] }]);
+    await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
+      status: 400,
+      details: { reason: "destination_no_trustline" },
+    });
     expect(await db.payment.count()).toBe(0);
   });
 });

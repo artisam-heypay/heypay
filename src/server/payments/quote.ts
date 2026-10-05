@@ -3,13 +3,13 @@ import "server-only";
 import { dec, phpToAsset, Decimal } from "@/lib/money";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
-import { walletService } from "@/server/stellar/wallet";
 import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-config";
 import { withRetry } from "@/lib/retry";
 import { AppError, badRequest, conflict, notFound } from "@/lib/errors";
 import { assertAssetEnabled, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { getAssetBalance } from "@/server/wallet/balances";
 import { newPaymentReference } from "./reference";
+import { resolveSettlementRoute, type RouteRefusal } from "./settlement-route";
 
 // One Stellar payment operation costs the base fee of 100 stroops = 0.0000100 XLM.
 // Fees are charged in XLM for every asset, so a USDC payment still needs a sliver
@@ -39,9 +39,6 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   const asset: PaymentAsset = input.asset ?? "XLM";
   assertAssetEnabled(asset); // gated behind PAYMENT_ASSETS
 
-  // Refuse here, before the payer confirms, rather than fail on-chain later.
-  await assertTreasuryAccepts(asset);
-
   const merchant = await db.merchant.findUnique({ where: { id: input.merchantId } });
   if (!merchant || merchant.status !== "ACTIVE")
     throw notFound("merchant not available for payment");
@@ -59,6 +56,17 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   // Computed here rather than taken from the rail: ROUND_UP at 7dp means the
   // payer always covers the merchant's full PHP amount, whatever the rail rounds.
   const amountAsset = phpToAsset(input.amountPhp, rate);
+
+  // Refuse here, before the payer confirms, rather than fail on-chain later.
+  const preflight = await resolveSettlementRoute({
+    asset,
+    amount: amountAsset,
+    payerPublicKey: wallet.stellarPublicKey,
+  });
+  if (!preflight.ok) throw routeRefused(asset, preflight.reason);
+  // The settle job delivers the payer's own asset and nothing else. A converting
+  // route means the treasury cannot hold that asset, so there is no way to settle.
+  if (preflight.route.mode !== "direct") throw routeRefused(asset, "destination_no_trustline");
 
   const networkFeeXlm = STELLAR_BASE_FEE_XLM;
   await assertFundsAvailable(wallet.id, asset, amountAsset, networkFeeXlm);
@@ -87,7 +95,12 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
         paymentId: p.id,
         fromStatus: "CREATED",
         toStatus: "QUOTED",
-        detail: { asset, rate: rate.toFixed(8), rateSource: quote.source },
+        detail: {
+          asset,
+          rate: rate.toFixed(8),
+          rateSource: quote.source,
+          ...(preflight.escrowId && { escrowId: preflight.escrowId }),
+        },
       },
     });
     return p;
@@ -106,16 +119,18 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   };
 }
 
-/**
- * The treasury must exist and, for an issued asset, hold a trustline to it — the
- * network rejects anything else, and it would do so only after the payer had
- * confirmed.
- */
-async function assertTreasuryAccepts(asset: PaymentAsset): Promise<void> {
-  const deposit = await rail.getDepositAddress(asset);
-  if (!(await walletService.canReceive(deposit.address, asset))) {
-    throw badRequest(`HeyPay cannot receive ${asset} payments right now.`, { asset });
-  }
+/** Why a payment cannot settle, as the payer reads it on the confirm screen. */
+const ROUTE_REFUSAL_MESSAGE: Record<RouteRefusal, (asset: PaymentAsset) => string> = {
+  no_escrow: (asset) => `HeyPay cannot hold ${asset} payments in escrow right now.`,
+  payer_no_trustline: (asset) =>
+    `Your wallet is not set up to hold ${asset}. Turn on ${asset} on the Prefund page, then try again.`,
+  destination_no_trustline: (asset) => `HeyPay cannot receive ${asset} payments right now.`,
+  no_dex_path: (asset) =>
+    `${asset} cannot be converted for this amount right now. Try a smaller amount or another asset.`,
+};
+
+function routeRefused(asset: PaymentAsset, reason: RouteRefusal): AppError {
+  return badRequest(ROUTE_REFUSAL_MESSAGE[reason](asset), { asset, reason });
 }
 
 /**
