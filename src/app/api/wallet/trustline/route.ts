@@ -12,6 +12,7 @@ import { db } from "@/server/db";
 import { dec } from "@/lib/money";
 import { assertAssetEnabled, isIssuedAsset } from "@/lib/assets";
 import { badRequest, conflict, notFound } from "@/lib/errors";
+import { stellarTxUrl } from "@/lib/stellar-explorer";
 import { walletService } from "@/server/stellar/wallet";
 import { TRUSTLINE_XLM_REQUIREMENT } from "@/server/stellar/assets";
 import { getAssetBalance, markTrustlineEstablished } from "@/server/wallet/balances";
@@ -49,7 +50,7 @@ export const POST = route(async (req) => {
     encryptedSecret: wallet.encryptedSecret,
     asset,
   });
-  await markTrustlineEstablished(wallet.id, asset);
+  await markTrustlineEstablished(wallet.id, asset, result.txHash);
   if (!result.alreadyEstablished) {
     captureUserEvent("wallet_trustline_added", user, {
       asset,
@@ -60,9 +61,13 @@ export const POST = route(async (req) => {
     });
   }
 
+  // The transaction that created the trustline: this call's, or the one saved
+  // when it was created earlier. Null when the line was never made by HeyPay.
+  const txHash = result.txHash ?? (await getAssetBalance(db, wallet.id, asset)).trustlineTxHash;
   return json({
     asset,
-    txHash: result.txHash,
+    txHash,
+    txUrl: txHash ? stellarTxUrl(txHash) : null,
     alreadyEstablished: result.alreadyEstablished,
     canReceive: true,
   });

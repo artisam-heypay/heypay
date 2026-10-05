@@ -118,6 +118,9 @@ model WalletBalance {
   // Set once the account holds a changeTrust line to the asset's issuer; until
   // then the wallet cannot receive this asset at all.
   trustlineEstablishedAt DateTime?
+  // The changeTrust transaction HeyPay submitted to create that line. Null for
+  // a line that already existed on-chain.
+  trustlineTxHash        String?
   updatedAt              DateTime        @updatedAt
   @@unique([walletId, asset])
 }

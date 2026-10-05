@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Card, Icon } from "@/components/ui";
+import { TurnOnAsset } from "./TurnOnAsset";
 
 export function DepositCard({
   publicKey,
@@ -9,6 +10,7 @@ export function DepositCard({
   issuer = null,
   trustlineRequired = false,
   canReceive = true,
+  trustlineTxUrl = null,
   onTrustlineEstablished,
 }: {
   publicKey: string;
@@ -24,12 +26,12 @@ export function DepositCard({
   /** True for issued assets (USDC/USDT), which the network won't deliver untrusted. */
   trustlineRequired?: boolean;
   canReceive?: boolean;
-  onTrustlineEstablished?: () => void;
+  /** Block-explorer link to the change_trust transaction, when it is known. */
+  trustlineTxUrl?: string | null;
+  onTrustlineEstablished?: (txUrl: string | null) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [issuerCopied, setIssuerCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const needsTrustline = trustlineRequired && !canReceive;
 
@@ -54,30 +56,6 @@ export function DepositCard({
     }
   }
 
-  async function establishTrustline() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/wallet/trustline", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ asset }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setError(body?.error?.message ?? `Could not enable ${asset}.`);
-        return;
-      }
-      onTrustlineEstablished?.();
-    } catch {
-      setError("Network error. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <Card>
       <h2 className="font-display text-headline-md">Prefund your wallet</h2>
@@ -85,26 +63,8 @@ export function DepositCard({
       {needsTrustline ? (
         // Showing the address before the trustline exists invites a deposit the
         // network will reject, so gate it behind the one-time setup.
-        <div className="mt-stack-md flex flex-col gap-stack-md rounded-lg bg-surface-container p-stack-md">
-          <p className="text-body-md">
-            Your wallet needs a one-time trustline before it can receive {asset}. This costs a small
-            XLM reserve (0.5 XLM, refundable) plus a network fee.
-          </p>
-          <button
-            type="button"
-            onClick={establishTrustline}
-            disabled={busy}
-            aria-busy={busy || undefined}
-            className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
-          >
-            {busy ? "Enabling…" : `Enable ${asset}`}
-            <Icon name="link" />
-          </button>
-          {error && (
-            <p role="alert" className="text-body-sm text-error">
-              {error}
-            </p>
-          )}
+        <div className="mt-stack-md rounded-lg bg-surface-container p-stack-md">
+          <TurnOnAsset asset={asset} on={false} onTurnedOn={onTrustlineEstablished} />
         </div>
       ) : (
         <>
@@ -137,6 +97,11 @@ export function DepositCard({
                 : "Keep a little XLM in the wallet to cover network fees."}
             </span>
           </div>
+          {trustlineRequired && (
+            <div className="mt-stack-md">
+              <TurnOnAsset asset={asset} on txUrl={trustlineTxUrl} />
+            </div>
+          )}
         </>
       )}
 

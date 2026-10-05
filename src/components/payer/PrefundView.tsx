@@ -15,6 +15,8 @@ export type PrefundAsset = {
   /** Issued assets need a trustline before the wallet can receive them. */
   trustlineRequired: boolean;
   canReceive: boolean;
+  /** Block-explorer link to the change_trust that turned the asset on, when known. */
+  trustlineTxUrl?: string | null;
   /** Issuer account this asset must come from; null for native XLM. */
   issuer: string | null;
 };
@@ -36,6 +38,9 @@ export function PrefundView({
   const [selected, setSelected] = useState(assets[0]?.asset ?? "XLM");
   const [trustlines, setTrustlines] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(assets.map((a) => [a.asset, a.canReceive])),
+  );
+  const [trustlineTxUrls, setTrustlineTxUrls] = useState<Record<string, string | null>>(() =>
+    Object.fromEntries(assets.map((a) => [a.asset, a.trustlineTxUrl ?? null])),
   );
 
   const current = assets.find((a) => a.asset === selected) ?? assets[0];
@@ -73,7 +78,11 @@ export function PrefundView({
         issuer={current.issuer}
         trustlineRequired={current.trustlineRequired}
         canReceive={trustlines[current.asset] ?? current.canReceive}
-        onTrustlineEstablished={() => setTrustlines((prev) => ({ ...prev, [current.asset]: true }))}
+        trustlineTxUrl={trustlineTxUrls[current.asset] ?? null}
+        onTrustlineEstablished={(txUrl) => {
+          setTrustlines((prev) => ({ ...prev, [current.asset]: true }));
+          setTrustlineTxUrls((prev) => ({ ...prev, [current.asset]: txUrl }));
+        }}
       />
     </>
   );
