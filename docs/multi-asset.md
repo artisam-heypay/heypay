@@ -129,43 +129,85 @@ Consequences, all enforced in code rather than discovered mid-payment:
   `Invalid Quantity Step` (OT010029) — a rejection that would otherwise land
   _after_ the crypto had left the payer's wallet.
 
-## Settling an asset the rail cannot take
+## Checking the settlement route at quote time
 
-PDAX's UAT wallet accepts XLM, holds no USDC trustline, and has no USDT wallet at
-all. Rather than refuse those payments, HeyPay converts on the way in — strategy
-B from #164:
+`resolveSettlementRoute` (`src/server/payments/settlement-route.ts`) runs inside
+`createQuote`, after the amount is priced and before anything is saved. It asks
+whether the payment can settle, so a payment the network would reject is refused
+before the payer confirms instead of failing after their crypto has moved. A
+refusal carries a `reason` in the error details and a plain message, which the
+scan and confirm screens show as they show any refused quote:
 
-- **direct** — the rail has a wallet for the asset and trades the pair. Send it
-  straight there (XLM today).
-- **path** — convert the asset into XLM on the Stellar DEX _in the same
-  transaction that delivers it_ (`path_payment_strict_send`). The rail only ever
-  sees XLM; the payer's wallet is debited exactly once, in their own asset.
+| Reason                     | What was checked                                                                     | Message                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `no_escrow`                | The escrow is on for the asset (`ESCROW_ENABLED`) but its contract ID is not set     | HeyPay cannot hold XLM payments in escrow right now.                                       |
+| `payer_no_trustline`       | Horizon shows no trustline for the asset on the payer's wallet                       | Your wallet is not set up to hold USDC. Turn on USDC on the Prefund page, then try again.  |
+| `destination_no_trustline` | The treasury cannot hold the asset                                                   | HeyPay cannot receive USDC payments right now.                                             |
+| `no_dex_path`              | The asset would have to be converted to XLM, and the DEX has no route for the amount | USDC cannot be converted for this amount right now. Try a smaller amount or another asset. |
 
-`resolveSettlementRoute` decides at **quote** time by asking Horizon whether the
-rail's deposit account exists and trusts the asset — which is what turns a
-mid-flight `op_no_trust` into a plain refusal before the payer confirms.
+When every check passes the route is `direct`: the payer's own asset goes to
+the escrow instance named in `escrowId`, or straight to the treasury when the
+escrow does not apply, and it stays that asset end to end. The escrow that will
+hold the payment is recorded on the `QUOTED` payment event.
 
-`Payment.settlementAsset` / `Payment.settlementAmount` record what the rail is
-owed. Settlement sends `amountAsset` of the payer's asset with `destMin` set to
-`settlementAmount`, so the transaction fails on-chain rather than short-changing
-the merchant, and the payer is never charged more than quoted.
+The resolver also reports a `path` route (convert to XLM on the DEX with
+`findStrictSendPaths`) when the destination takes only XLM and the asset is not
+escrowed. The settle job does not run converting payments, so `createQuote`
+refuses that case as `destination_no_trustline`. An escrowed asset is never
+converted: `release` pays the treasury in the escrow's own token, so the
+treasury has to hold it.
 
-Three guards, because a DEX is not an oracle:
+## Testnet USDC: issuer, escrow and DEX depth
 
-- **No route → refuse.** Testnet USDT has ~0.3 XLM of depth; a payment quoting it
-  is refused with "the Stellar DEX has too little USDT liquidity right now"
-  instead of submitting a transaction that would fail.
-- **Overpricing → refuse.** A thin or manipulated book can quote any price. A
-  conversion costing more than `SETTLEMENT_MAX_PREMIUM_BPS` (default 5%) above
-  the reference rate is refused. _Cheaper_ is allowed: the counterparty
-  subsidises the payer and the rail still receives everything the merchant is
-  owed.
-- **Slippage head-room.** `SETTLEMENT_SLIPPAGE_BPS` (default 1%) covers the book
-  moving between quote and submission. The route is re-found at submission, since
-  the one quoted may no longer be cheapest — or may have vanished.
+**Issuer.** Testnet USDC is Circle's testnet issuer
+`GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` (the default above),
+not one we mint with `scripts/stellar-issue-test-asset.mjs`. It is the USDC
+other testnet wallets hold, the treasury already trusts it, its Stellar Asset
+Contract is deployed (`CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`)
+and the DEX already has USDC/XLM depth for it. Our own issuer would give a
+supply we control, but an asset nobody else holds and an empty order book.
 
-Measured on testnet: XLM settles directly; USDC quotes and settles as XLM via the
-DEX; USDT is refused for lack of liquidity.
+**Escrow.** One escrow holds one token, so USDC has its own instance, set in
+`ESCROW_CONTRACT_ID_USDC` (see [contracts/escrow/README.md](../contracts/escrow/README.md)).
+`escrowFor(asset)` in `src/server/stellar/escrow.ts` returns the client for an
+asset's instance. Changing `USDC_ASSET_ISSUER` needs a new instance, because the
+deployed one holds that issuer's USDC only.
+
+**DEX depth.** `node scripts/seed-dex-offers.mjs` prints the USDC/XLM order book
+and the best strict-send route in each direction, and exits 1 when 10 XLM to
+USDC or 1 USDC to XLM has no route. Checked on 2026-10-05:
+
+| Spend   | Receives        | Route    |
+| ------- | --------------- | -------- |
+| 1 XLM   | 0.9445860 USDC  | direct   |
+| 10 XLM  | 9.4458598 USDC  | direct   |
+| 100 XLM | 94.4584942 USDC | direct   |
+| 1 USDC  | 6.9753911 XLM   | direct   |
+| 10 USDC | 60.8939227 XLM  | via LUSD |
+
+Routes exist both ways at every size, so nothing was seeded. The two directions
+do not agree on a price (about 1.06 XLM per USDC one way, 6 to 7 the other):
+testnet liquidity is whatever was last posted, not a market. That is enough to
+show a swap and to pass the route check, and it is why a payment is priced from
+the rate source and never from the DEX.
+
+If the book goes thin, seed it from an account HeyPay controls:
+
+```bash
+DEX_SEED_SECRET=S... node scripts/seed-dex-offers.mjs --seed --price 8 --amount 50
+DEX_SEED_SECRET=S... node scripts/seed-dex-offers.mjs --remove   # take them down again
+```
+
+`--seed` places a sell and a buy offer for the amount, 1% either side of
+`--price` (XLM per USDC). The account needs a USDC trustline, that much USDC and
+the XLM to buy as much again. The CLI identity `heypay-test-payer`
+(`GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W`) is set up for it:
+it holds a USDC trustline and about 8 USDC bought on the DEX. The script was
+run once on 2026-10-05 with 1 USDC offers, placed in
+[`c86ea82b…`](https://stellar.expert/explorer/testnet/tx/c86ea82b2bcf19ce7314a3c378a82a14ab80299a01c9a7544fb1e50ba33bb1e2)
+and removed in
+[`8373f408…`](https://stellar.expert/explorer/testnet/tx/8373f408faec8921ccbdf309fa265eafd917761340c53982c8ca157182311f84);
+no HeyPay offers are open now.
 
 ## Trustlines are automatic
 
@@ -173,9 +215,17 @@ Stellar cannot be talked out of requiring a trustline: the network rejects an
 untrusted incoming payment. A custodial wallet can, however, add the trustline on
 the payer's behalf, and does — `syncWalletDeposits` establishes any missing
 trustline for an enabled asset as soon as the wallet holds enough XLM to cover
-the extra 0.5 XLM reserve. The payer never has to press "Enable"; the manual
-`POST /api/wallet/trustline` remains for an unfunded wallet that has just been
-topped up.
+the extra 0.5 XLM reserve. So most payers never have to press anything; the
+manual `POST /api/wallet/trustline` remains for an unfunded wallet that has just
+been topped up.
+
+The payer sees this as a **Turn on USDC** card, on Prefund (when USDC is picked)
+and on Settings. While the trustline is missing it explains the step in one line
+and offers the button. Once it exists, however it was created, the card reads
+"USDC is on" with no button, and links to the `change_trust` transaction on
+Stellar Expert. That hash is kept in `WalletBalance.trustlineTxHash` for both
+the manual and the automatic path; a trustline that already existed on-chain
+before HeyPay saw it has no hash and shows no link.
 
 ## Deploying it
 
