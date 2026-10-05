@@ -17,6 +17,26 @@ export function escrowAppliesTo(asset: PaymentAsset): boolean {
 }
 
 /**
+ * Where each asset's escrow contract ID is configured. One contract holds one
+ * token, so every escrowed asset has its own deployed instance.
+ */
+const ESCROW_CONTRACT_ENV_KEY: Partial<Record<PaymentAsset, string>> = {
+  XLM: "ESCROW_CONTRACT_ID",
+  USDC: "ESCROW_CONTRACT_ID_USDC",
+};
+
+/** The env var naming `asset`'s escrow instance, or null when the asset has none. */
+export function escrowContractEnvKey(asset: PaymentAsset): string | null {
+  return ESCROW_CONTRACT_ENV_KEY[asset] ?? null;
+}
+
+/** The escrow instance that holds `asset`, or null when none is deployed for it. */
+export function escrowContractId(asset: PaymentAsset): string | null {
+  const key = escrowContractEnvKey(asset);
+  return (key && process.env[key]?.trim()) || null;
+}
+
+/**
  * What an escrow deposit is expected to cost in fees, before it runs. A contract
  * call pays a Soroban resource fee far above the classic 100-stroop base fee
  * (~0.106 XLM for a deposit on Testnet), so the quote reserves this much on top

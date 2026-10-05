@@ -182,7 +182,12 @@ The script builds the WASM, deploys it with the `heypay-deployer` identity
 `initialize(admin, native XLM SAC)` in the same run, checks the stored admin,
 and prints `ESCROW_CONTRACT_ID=...` for `.env`. See the header of
 `scripts/escrow-deploy.sh` for the other variables (`ESCROW_NETWORK`,
-`ESCROW_TOKEN`, `ESCROW_TIMEOUT_LEDGERS`).
+`ESCROW_ASSET`, `ESCROW_TOKEN`, `ESCROW_TIMEOUT_LEDGERS`).
+
+One contract holds one token. To hold an issued asset, deploy another instance
+with `ESCROW_ASSET=CODE:ISSUER`; the script initializes it with that asset's
+Stellar Asset Contract and prints `ESCROW_CONTRACT_ID_<CODE>=...`. The admin
+must already trust the asset, or `release` cannot pay it.
 
 In the app, the admin must be the HeyPay treasury: the settle job signs
 `release`/`refund` with `HEYPAY_TREASURY_SECRET_ENC`, and `release` pays the
@@ -212,6 +217,24 @@ stellar contract invoke --id CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73
   -- get_job --job_id <64 hex chars>
 ```
 
+### USDC instance
+
+Holds Testnet USDC (`ESCROW_CONTRACT_ID_USDC`). Deployed with
+`ESCROW_ASSET=USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 pnpm escrow:deploy:treasury`.
+`escrowFor("USDC")` in `src/server/stellar/escrow.ts` returns its client; the
+settle job still escrows XLM payments only.
+
+| Field       | Value                                                                                                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract ID | [`CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG`](https://stellar.expert/explorer/testnet/contract/CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG) |
+| WASM hash   | `f3ccfe37fa39403a82bc835f18f0b68c83d1503a5d058ec02ae5878143872f60` (same as the XLM instance)                                                                           |
+| Admin       | `GDZ2BQPZQLLXTBFVKJX6UVZQAIZCIC4HDGT4XDLH5JOWO7WWP2KLIN37` (HeyPay treasury)                                                                                            |
+| Token       | `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` (SAC of `USDC:GBBD47IF…FLA5`, Circle's testnet issuer)                                                       |
+| Timeout     | 17,280 ledgers (~24h), the contract's default                                                                                                                           |
+| Deploy tx   | [`d2a14670…`](https://stellar.expert/explorer/testnet/tx/d2a1467037b54bc2e881a9de3b93e9e1c53bb5db0642bf9db52e6dffa29e0f22)                                              |
+| Init tx     | [`cf784b7e…`](https://stellar.expert/explorer/testnet/tx/cf784b7e9622c0ad434b7779188fcf120e3eea60a4f8dcf3b1574a7a35444a5c)                                              |
+| Deployed    | 2026-10-05, ledger 5034994                                                                                                                                              |
+
 ### Other Testnet deployments (same WASM, not used by the app)
 
 | Contract ID                                                                                                                  | Admin                                                | Purpose                                |
@@ -236,6 +259,23 @@ CLI run on 2026-09-29 against `CDGIYVER…LE5E` (CLI-admin contract above). Paye
 
 A second `release` of `d1-cli-release-1` fails simulation with
 `Error(Contract, #5)` (`NotHeld`), so a job settles once.
+
+### USDC deposit and release (CLI)
+
+CLI run on 2026-10-05 against the USDC instance `CAR76EFU…66EG`. Payer:
+`heypay-test-payer`, which first took a USDC trustline and bought USDC on the
+DEX. `release` was signed by the treasury, the instance's admin. The job id is
+`sha256` of the label.
+
+| Step                | Job (label)             | Amount                    | Tx                                                                                                                         |
+| ------------------- | ----------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| change_trust (USDC) | —                       | —                         | [`bd9d1645…`](https://stellar.expert/explorer/testnet/tx/bd9d1645df555018f46f1bfb5e7b1adf2f96de89773201bf562e0cd6f633381f) |
+| path payment        | —                       | 10 XLM for 9.4458621 USDC | [`3f8acfd2…`](https://stellar.expert/explorer/testnet/tx/3f8acfd2a71f383cf3530ec73ee5dc17a72108073803d9e3b2faf4ff86f52d72) |
+| deposit             | `d2-cli-usdc-release-1` | 1 USDC                    | [`07b2c88d…`](https://stellar.expert/explorer/testnet/tx/07b2c88d57bb51fe12b534190ad38039e6d5195f1888b2721d925ab1e39e9ceb) |
+| release             | `d2-cli-usdc-release-1` | 1 USDC                    | [`d095ed96…`](https://stellar.expert/explorer/testnet/tx/d095ed96142ffb30126bab21d5adafbd05a4a0225502afb6ea864e3a457474b1) |
+
+After the release `get_job` reports `Released`, and the treasury's USDC balance
+went from 48.0339338 to 49.0339338.
 
 ### Forced payout failure (app)
 

@@ -7,8 +7,10 @@ import {
   type Result,
 } from "@stellar/stellar-sdk/contract";
 import { Decimal } from "@/lib/money";
+import type { PaymentAsset } from "@/lib/assets";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { Client, Error as ContractErrors, type Job } from "./escrow-bindings";
+import { escrowContractEnvKey, escrowContractId } from "./escrow-config";
 import { getNetworkPassphrase } from "./horizon";
 
 /** The escrow contract's `Error` enum, by name. */
@@ -53,7 +55,7 @@ export type EscrowJobStatus = "Held" | "Released" | "Refunded";
 
 export type EscrowJob = {
   from: string;
-  /** In the escrow token's units (XLM), not stroops. */
+  /** In the escrow token's units (XLM or USDC), not stroops. */
   amount: Decimal;
   deadlineLedger: number;
   status: EscrowJobStatus;
@@ -157,7 +159,8 @@ function contractError(method: string, tx: AssembledTransaction<unknown>): Error
 export function createEscrowService(
   options: {
     server?: rpc.Server;
-    contractId?: string;
+    /** Default: ESCROW_CONTRACT_ID. A function is read on each call. */
+    contractId?: string | (() => string);
     networkPassphrase?: string;
     /** Envelope-encrypted admin secret. Default: HEYPAY_TREASURY_SECRET_ENC. */
     adminEncryptedSecret?: string;
@@ -165,7 +168,10 @@ export function createEscrowService(
 ): EscrowService {
   const server = () => options.server ?? getSorobanRpc();
   const net = () => options.networkPassphrase ?? getNetworkPassphrase();
-  const contractId = () => options.contractId ?? requireEnv("ESCROW_CONTRACT_ID");
+  const contractId = () =>
+    typeof options.contractId === "function"
+      ? options.contractId()
+      : (options.contractId ?? requireEnv("ESCROW_CONTRACT_ID"));
   const adminSecret = () =>
     options.adminEncryptedSecret ?? requireEnv("HEYPAY_TREASURY_SECRET_ENC");
 
@@ -281,3 +287,20 @@ export function createEscrowService(
 }
 
 export const escrowService: EscrowService = createEscrowService();
+
+/**
+ * The escrow instance that holds `asset`. Each instance holds one token, so a
+ * USDC job lives in a different contract from an XLM one. Throws when the asset
+ * has no escrow; a missing contract ID fails the first call that needs it.
+ */
+export function escrowFor(asset: PaymentAsset): EscrowService {
+  const key = escrowContractEnvKey(asset);
+  if (!key) throw new Error(`No escrow holds ${asset}`);
+  return createEscrowService({
+    contractId: () => {
+      const id = escrowContractId(asset);
+      if (!id) throw new Error(`${key} is not set`);
+      return id;
+    },
+  });
+}

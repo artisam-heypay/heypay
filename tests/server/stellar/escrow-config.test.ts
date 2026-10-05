@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@/server/observability/error-tracking", () => ({ captureException }));
 
-import { escrowTimeoutLedgers } from "@/server/stellar/escrow-config";
+import { escrowContractId, escrowTimeoutLedgers } from "@/server/stellar/escrow-config";
 
 describe("escrowTimeoutLedgers", () => {
   beforeEach(() => {
@@ -32,5 +32,27 @@ describe("escrowTimeoutLedgers", () => {
     expect(escrowTimeoutLedgers()).toBeNull();
     expect(escrowTimeoutLedgers()).toBeNull();
     expect(captureException).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("escrowContractId", () => {
+  afterEach(() => {
+    delete process.env.ESCROW_CONTRACT_ID;
+    delete process.env.ESCROW_CONTRACT_ID_USDC;
+  });
+
+  it("reads each asset's own escrow instance", () => {
+    process.env.ESCROW_CONTRACT_ID = "CXLM";
+    process.env.ESCROW_CONTRACT_ID_USDC = " CUSDC ";
+    expect(escrowContractId("XLM")).toBe("CXLM");
+    expect(escrowContractId("USDC")).toBe("CUSDC");
+  });
+
+  it("is null for an asset with no instance configured, and for one that has no escrow", () => {
+    process.env.ESCROW_CONTRACT_ID = "CXLM";
+    expect(escrowContractId("USDC")).toBeNull();
+    process.env.ESCROW_CONTRACT_ID_USDC = "  ";
+    expect(escrowContractId("USDC")).toBeNull();
+    expect(escrowContractId("USDT")).toBeNull();
   });
 });
