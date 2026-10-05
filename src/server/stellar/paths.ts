@@ -18,7 +18,15 @@ export type ConversionRoute = {
   path: Asset[];
 };
 
+export type SendRoute = {
+  /** How much of the destination asset `sourceAmount` buys along this route. */
+  destAmount: Decimal;
+  /** Intermediate hops, excluding source and destination. Empty for a direct trade. */
+  path: Asset[];
+};
+
 type HorizonPathRecord = { source_amount: string; path: HorizonPathAsset[] };
+type HorizonSendRecord = { destination_amount: string; path: HorizonPathAsset[] };
 type HorizonPathAsset = { asset_type: string; asset_code?: string; asset_issuer?: string };
 
 function toAsset(a: HorizonPathAsset): Asset {
@@ -70,4 +78,35 @@ export async function findConversionRoute(
     dec(a.source_amount).lessThanOrEqualTo(dec(b.source_amount)) ? a : b,
   );
   return { sourceAmount: dec(best.source_amount), path: best.path.map(toAsset) };
+}
+
+/**
+ * Every route that spends exactly `sourceAmount` of `from` and delivers `to`,
+ * the one that delivers the most first.
+ *
+ * Empty when the DEX has no route with enough depth, and when Horizon cannot
+ * answer: either way there is nothing safe to submit.
+ */
+export async function findStrictSendPaths(
+  from: PaymentAsset,
+  to: PaymentAsset,
+  sourceAmount: Decimal,
+  server?: Horizon.Server,
+): Promise<SendRoute[]> {
+  const srv = server ?? getHorizon();
+  const source = resolveStellarAsset(from);
+  const destination = resolveStellarAsset(to);
+
+  let records: HorizonSendRecord[];
+  try {
+    const page = await srv.strictSendPaths(source, sourceAmount.toFixed(7), [destination]).call();
+    records = page.records as unknown as HorizonSendRecord[];
+  } catch {
+    return [];
+  }
+
+  const candidates = DIRECT_ONLY ? records.filter((r) => r.path.length === 0) : records;
+  return candidates
+    .map((r) => ({ destAmount: dec(r.destination_amount), path: r.path.map(toAsset) }))
+    .sort((a, b) => b.destAmount.comparedTo(a.destAmount));
 }

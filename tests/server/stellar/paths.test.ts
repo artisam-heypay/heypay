@@ -70,3 +70,69 @@ describe("findConversionRoute", () => {
     expect(await find("USDC", "XLM", dec("100"), server)).toBeNull();
   });
 });
+
+/** Both routes Horizon returned for 1 USDC -> XLM on testnet, 2026-10-05. */
+const SEND_RECORDS = [
+  { destination_amount: "5.8215818", path: [] },
+  {
+    destination_amount: "6.0893922",
+    path: [{ asset_type: "credit_alphanum4", asset_code: "LUSD", asset_issuer: ISSUER }],
+  },
+];
+
+function fakeSendServer(records: unknown[]) {
+  const strictSendPaths = vi.fn().mockReturnValue({ call: vi.fn().mockResolvedValue({ records }) });
+  return { server: { strictSendPaths } as unknown as Horizon.Server, strictSendPaths };
+}
+
+async function loadSend() {
+  process.env.USDC_ASSET_ISSUER = ISSUER;
+  return (await import("@/server/stellar/paths")).findStrictSendPaths;
+}
+
+describe("findStrictSendPaths", () => {
+  it("asks Horizon to spend exactly the source amount and puts the best route first", async () => {
+    const find = await loadSend();
+    const { server, strictSendPaths } = fakeSendServer(SEND_RECORDS);
+    const routes = await find("USDC", "XLM", dec("1"), server);
+
+    const [source, amount, destinations] = strictSendPaths.mock.calls[0]!;
+    expect(source.getCode()).toBe("USDC");
+    expect(source.getIssuer()).toBe(ISSUER);
+    expect(amount).toBe("1.0000000");
+    expect(destinations[0].isNative()).toBe(true);
+
+    expect(routes.map((r) => r.destAmount.toFixed(7))).toEqual(["6.0893922", "5.8215818"]);
+    expect(routes[0]!.path).toHaveLength(1); // via LUSD
+  });
+
+  it("finds a route in the other direction too", async () => {
+    const find = await loadSend();
+    const { server, strictSendPaths } = fakeSendServer([
+      { destination_amount: "9.4508468", path: [] },
+    ]);
+    const routes = await find("XLM", "USDC", dec("10"), server);
+
+    expect(strictSendPaths.mock.calls[0]![0].isNative()).toBe(true);
+    expect(routes).toHaveLength(1);
+    expect(routes[0]!.destAmount.toFixed(7)).toBe("9.4508468");
+  });
+
+  it("keeps only the direct book when SETTLEMENT_DIRECT_ONLY is set", async () => {
+    process.env.SETTLEMENT_DIRECT_ONLY = "true";
+    const find = await loadSend();
+    const routes = await find("USDC", "XLM", dec("1"), fakeSendServer(SEND_RECORDS).server);
+    expect(routes.map((r) => r.destAmount.toFixed(7))).toEqual(["5.8215818"]);
+  });
+
+  it("returns no routes when the DEX offers none or Horizon errors", async () => {
+    const find = await loadSend();
+    expect(await find("USDC", "XLM", dec("1"), fakeSendServer([]).server)).toEqual([]);
+    const failing = {
+      strictSendPaths: vi
+        .fn()
+        .mockReturnValue({ call: vi.fn().mockRejectedValue(new Error("404")) }),
+    } as unknown as Horizon.Server;
+    expect(await find("USDC", "XLM", dec("1"), failing)).toEqual([]);
+  });
+});
