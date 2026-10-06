@@ -3,7 +3,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@/server/observability/error-tracking", () => ({ captureException }));
 
-import { escrowContractId, escrowTimeoutLedgers } from "@/server/stellar/escrow-config";
+import {
+  escrowAppliesTo,
+  escrowContractId,
+  escrowTimeoutLedgers,
+} from "@/server/stellar/escrow-config";
+
+describe("escrowAppliesTo", () => {
+  afterEach(() => {
+    delete process.env.ESCROW_ENABLED;
+  });
+
+  it("is off for every asset unless ESCROW_ENABLED is true", () => {
+    expect(escrowAppliesTo("XLM")).toBe(false);
+    process.env.ESCROW_ENABLED = "false";
+    expect(escrowAppliesTo("USDC")).toBe(false);
+  });
+
+  it("covers the assets that have an escrow instance: XLM and USDC, not USDT", () => {
+    process.env.ESCROW_ENABLED = "true";
+    expect(escrowAppliesTo("XLM")).toBe(true);
+    expect(escrowAppliesTo("USDC")).toBe(true);
+    expect(escrowAppliesTo("USDT")).toBe(false);
+  });
+});
 
 describe("escrowTimeoutLedgers", () => {
   beforeEach(() => {

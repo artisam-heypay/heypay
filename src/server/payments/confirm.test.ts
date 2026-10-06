@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { resetDb, makePayer, makeMerchant } from "../../../tests/helpers/db";
 import { db } from "@/server/db";
@@ -11,6 +11,30 @@ vi.mock("@/server/queue/queues", () => ({
 }));
 
 import { confirmPayment } from "./confirm";
+
+/** A quoted USDC payment of 1.6039 USDC, with the payer's balances as given. */
+async function makeQuotedUsdc(balances: { cachedXlm: string; cachedUsdc: string }) {
+  const { user, wallet } = await makePayer({
+    cachedXlm: balances.cachedXlm,
+    assets: { USDC: { cached: balances.cachedUsdc } },
+  });
+  const { merchant } = await makeMerchant();
+  const payment = await db.payment.create({
+    data: {
+      reference: newPaymentReference(),
+      payerId: user.id,
+      merchantId: merchant.id,
+      asset: "USDC",
+      amountPhp: "100.00",
+      quotedRate: "62.34000000",
+      amountAsset: "1.6039000",
+      networkFeeXlm: "0.0000100",
+      status: "QUOTED",
+      quoteExpiresAt: new Date(Date.now() + 90_000),
+    },
+  });
+  return { user, wallet, payment };
+}
 
 async function makeQuoted(opts?: { cachedXlm?: string; expiresInMs?: number }) {
   const { user, wallet } = await makePayer({ cachedXlm: opts?.cachedXlm ?? "100.0000000" });
@@ -35,6 +59,9 @@ describe("confirmPayment", () => {
   beforeEach(async () => {
     await resetDb();
     enqueueSettle.mockClear();
+  });
+  afterEach(() => {
+    delete process.env.ESCROW_ENABLED;
   });
 
   it("reserves funds, sets AUTHORIZED, enqueues settlement", async () => {
@@ -146,5 +173,48 @@ describe("confirmPayment", () => {
     expect(usdt.reserved.toFixed(7)).toBe("0.0000000");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+  });
+  it("checks an escrowed USDC payment's escrow fee against XLM, not USDC", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    // Just enough USDC for the amount; the 0.2 XLM fee estimate must not count against it.
+    const { user, wallet, payment } = await makeQuotedUsdc({
+      cachedXlm: "10.0000000",
+      cachedUsdc: "1.7000000",
+    });
+
+    const res = await confirmPayment({
+      paymentId: payment.id,
+      payerId: user.id,
+      idemKey: randomUUID(),
+    });
+
+    expect(res.status).toBe("AUTHORIZED");
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.reserved.toFixed(7)).toBe("1.6039000");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    // The escrow fee is checked, not held: its real size is debited when the deposit lands.
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000100");
+  });
+
+  it("rejects an escrowed USDC payment when XLM cannot cover the escrow fee, leaving no holds", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    const { user, wallet, payment } = await makeQuotedUsdc({
+      cachedXlm: "0.1000000",
+      cachedUsdc: "50.0000000",
+    });
+
+    await expect(
+      confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: randomUUID() }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.reserved.toFixed(7)).toBe("0.0000000");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+    expect(enqueueSettle).not.toHaveBeenCalled();
   });
 });

@@ -4,12 +4,18 @@ import { PaymentStatus } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { fastSettleEnabled, rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
-import { escrowAppliesTo, escrowTimeoutLedgers } from "@/server/stellar/escrow-config";
 import {
+  escrowAppliesTo,
+  escrowContractId,
+  escrowTimeoutLedgers,
+} from "@/server/stellar/escrow-config";
+import {
+  escrowFor,
   escrowJobId,
   escrowService,
   EscrowContractError,
   EscrowTxFailedError,
+  type EscrowService,
 } from "@/server/stellar/escrow";
 import { dec, type Decimal } from "@/lib/money";
 import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
@@ -203,6 +209,8 @@ async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
 async function stepDepositEscrow(p: PaymentWithRels): Promise<void> {
   const wallet = p.payer.wallet!;
   const { asset, assetAmount } = legs(p);
+  // Each escrow instance holds one token, so the asset picks the contract.
+  const escrow = escrowFor(asset);
   const jobId = escrowJobId(p.id);
   let txHash = p.stellarTxHash;
   if (!txHash) {
@@ -214,11 +222,11 @@ async function stepDepositEscrow(p: PaymentWithRels): Promise<void> {
         data: { escrowJobId: jobId.toString("hex") },
       });
     }
-    await syncEscrowTimeout();
+    await syncEscrowTimeout(escrow);
     // No withRetry: its timeout is shorter than the deposit's confirmation wait,
     // and a retry racing a deposit still in flight gains nothing.
     try {
-      const res = await escrowService.deposit({
+      const res = await escrow.deposit({
         jobId,
         encryptedSecret: wallet.encryptedSecret,
         amount: assetAmount,
@@ -231,7 +239,7 @@ async function stepDepositEscrow(p: PaymentWithRels): Promise<void> {
       } else if (err instanceof EscrowContractError && err.code === "JobExists") {
         // An earlier attempt deposited but crashed before saving its hash. The
         // contract refuses a second deposit, so nothing moved twice.
-        const job = await escrowService.getJob(jobId);
+        const job = await escrow.getJob(jobId);
         if (job?.from !== wallet.stellarPublicKey) throw err;
       } else {
         throw err;
@@ -251,7 +259,7 @@ async function stepDepositEscrow(p: PaymentWithRels): Promise<void> {
         ...assetContract(asset),
         amount_asset: assetAmount.toFixed(7),
         payer_wallet_address: wallet.stellarPublicKey,
-        destination_address: process.env.ESCROW_CONTRACT_ID,
+        destination_address: escrowContractId(asset) ?? undefined,
         escrow_job_id: jobId.toString("hex"),
         stellar_tx_hash: txHash ?? undefined,
       },
@@ -266,17 +274,18 @@ async function stepDepositEscrow(p: PaymentWithRels): Promise<void> {
 /**
  * Keeps the contract's payer self-refund window at ESCROW_TIMEOUT_LEDGERS. The
  * contract reads the window when a deposit happens, so it is checked before
- * each one; jobs already held keep the deadline they were given.
+ * each one, on the instance about to take it; jobs already held keep the
+ * deadline they were given.
  */
-async function syncEscrowTimeout(): Promise<void> {
+async function syncEscrowTimeout(escrow: EscrowService): Promise<void> {
   const wanted = escrowTimeoutLedgers();
-  if (wanted === null || (await escrowService.getTimeout()) === wanted) return;
+  if (wanted === null || (await escrow.getTimeout()) === wanted) return;
   try {
-    await escrowService.setTimeout(wanted);
+    await escrow.setTimeout(wanted);
   } catch (err) {
     // Another deposit may have set it at the same moment, taking the treasury's
     // sequence number; that is fine as long as the window is now the wanted one.
-    if ((await escrowService.getTimeout()) !== wanted) throw err;
+    if ((await escrow.getTimeout()) !== wanted) throw err;
   }
 }
 
@@ -288,7 +297,7 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
   // deposit whose hash was lost has none; the contract holding the job proves it.
   const ok = p.stellarTxHash
     ? await withRetry(() => walletService.confirmTx(p.stellarTxHash!), { label: "confirmTx" })
-    : (await escrowService.getJob(escrowJob(p))) !== null;
+    : (await escrowFor(asset).getJob(escrowJob(p))) !== null;
   // A contract call pays a Soroban resource fee that `networkFeeXlm` (the classic
   // base fee) does not cover. Read what the deposit really charged, so the
   // payer's balance matches the chain. Skipped on a rerun that already debited.
@@ -296,6 +305,10 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
     ok &&
     (await db.walletTransaction.findFirst({ where: { paymentId: p.id, type: "PAYMENT_DEBIT" } }));
   const sorobanFee = ok && p.escrowJobId && !debited ? await escrowFeeCharged(p) : null;
+  // The deposit is one transaction, so what it charged already includes the base
+  // fee. An issued asset's base fee is debited from XLM on its own below; only
+  // the rest is added here, and the two entries add up to what the chain took.
+  const escrowFee = sorobanFee && xlmFee ? sorobanFee.minus(xlmFee) : sorobanFee;
 
   if (!ok) {
     // Tx definitively failed → crypto never moved → release reservations, FAILED (no refund needed).
@@ -348,15 +361,15 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
           },
         });
       }
-      if (sorobanFee?.greaterThan(0)) {
+      if (escrowFee?.greaterThan(0)) {
         // Shares the deposit's tx hash like the fee entry above, so it carries none.
-        const xlmAfter = await debitAsset(tx, wallet.id, "XLM", sorobanFee);
+        const xlmAfter = await debitAsset(tx, wallet.id, "XLM", escrowFee);
         await tx.walletTransaction.create({
           data: {
             walletId: wallet.id,
             type: "PAYMENT_DEBIT",
             asset: "XLM",
-            amount: sorobanFee.negated().toFixed(7),
+            amount: escrowFee.negated().toFixed(7),
             balanceAfter: xlmAfter.toFixed(7),
             paymentId: p.id,
             memo: `${p.reference} escrow network fee`,
@@ -368,7 +381,7 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
       asset,
       debitedAsset: assetAmount.toFixed(7),
       debitedXlmFee: xlmFee?.toFixed(7),
-      debitedEscrowFeeXlm: sorobanFee?.toFixed(7),
+      debitedEscrowFeeXlm: escrowFee?.toFixed(7),
     });
   });
 }
@@ -608,11 +621,12 @@ async function escrowHold(
 ): Promise<"held" | "expired" | "refunded" | "unknown"> {
   if (p.refundTxHash) return "refunded";
   try {
-    const job = await escrowService.getJob(escrowJob(p));
+    const escrow = escrowFor(p.asset);
+    const job = await escrow.getJob(escrowJob(p));
     if (!job) return "unknown";
     if (job.status === "Refunded") return "refunded";
     if (job.status !== "Held") return "held";
-    return (await escrowService.getLatestLedger()) >= job.deadlineLedger ? "expired" : "held";
+    return (await escrow.getLatestLedger()) >= job.deadlineLedger ? "expired" : "held";
   } catch (err) {
     captureException(err, {
       source: "settle",
@@ -752,7 +766,7 @@ async function escrowFeeCharged(p: PaymentWithRels): Promise<Decimal | null> {
   try {
     // A deposit whose hash was lost has no transaction to read the fee from.
     if (!txHash) throw new Error(`Escrow deposit for ${p.reference} has no saved tx hash`);
-    const fee = await withRetry(() => escrowService.getFeeCharged(txHash), {
+    const fee = await withRetry(() => escrowFor(p.asset).getFeeCharged(txHash), {
       label: "escrow.getFeeCharged",
     });
     if (fee) return fee;
@@ -775,14 +789,15 @@ async function escrowFeeCharged(p: PaymentWithRels): Promise<Decimal | null> {
  * PAYOUT_SUBMITTED, is re-checked shortly, and the reconcile job re-drives it too.
  */
 async function releaseEscrow(p: PaymentWithRels): Promise<boolean> {
+  const escrow = escrowFor(p.asset);
   const jobId = escrowJob(p);
   try {
-    const { txHash } = await escrowService.release(jobId);
+    const { txHash } = await escrow.release(jobId);
     await db.payment.update({ where: { id: p.id }, data: { escrowReleaseTxHash: txHash } });
     return true;
   } catch (err) {
     if (err instanceof EscrowContractError && err.code === "NotHeld") {
-      const job = await escrowService.getJob(jobId);
+      const job = await escrow.getJob(jobId);
       // An earlier attempt released it but never saved the hash.
       if (job?.status === "Released") return true;
       if (job?.status === "Refunded") {

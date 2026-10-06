@@ -41,18 +41,20 @@ export async function confirmPayment(input: ConfirmPaymentInput): Promise<Confir
     // an issued asset the fee is a separate XLM hold.
     const assetHold = isIssuedAsset(asset) ? amountAsset : amountAsset.plus(networkFeeXlm);
     // An escrow deposit's Soroban fee must still be there when it runs. It is not
-    // reserved (its real size is debited once the deposit lands), only checked.
+    // reserved (its real size is debited once the deposit lands), only checked,
+    // and it is XLM whatever the asset.
     const escrowFee = escrowAppliesTo(asset) ? escrowFeeEstimateXlm() : dec("0");
 
     const updated = await db.$transaction(async (tx) => {
       const balance = await getAssetBalance(tx, wallet.id, asset);
-      if (balance.available.lessThan(assetHold.plus(escrowFee)))
+      const needed = isIssuedAsset(asset) ? assetHold : assetHold.plus(escrowFee);
+      if (balance.available.lessThan(needed))
         throw conflict(`insufficient available ${asset} balance`);
       await reserveAsset(tx, wallet.id, asset, assetHold);
 
       if (isIssuedAsset(asset)) {
         const xlm = await getAssetBalance(tx, wallet.id, "XLM");
-        if (xlm.available.lessThan(networkFeeXlm))
+        if (xlm.available.lessThan(networkFeeXlm.plus(escrowFee)))
           throw conflict("insufficient XLM to cover the Stellar network fee");
         await reserveAsset(tx, wallet.id, "XLM", networkFeeXlm);
       }

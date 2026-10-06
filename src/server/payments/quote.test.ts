@@ -7,6 +7,7 @@ import type { PaymentAsset } from "@/lib/assets";
 
 const RATES: Record<PaymentAsset, string> = { XLM: "12", USDT: "58", USDC: "62.34" };
 const XLM_ESCROW = "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J";
+const USDC_ESCROW = "CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG";
 const { getDepositAddress, canReceive, getQuote, findStrictSendPaths } = vi.hoisted(() => ({
   getDepositAddress: vi.fn(async (_asset: string) => ({ address: "GTREASURY", memo: null })),
   canReceive: vi.fn(async (_pk: string, _asset: string) => true),
@@ -56,6 +57,7 @@ afterEach(() => {
   delete process.env.PAYMENT_ASSETS;
   delete process.env.ESCROW_ENABLED;
   delete process.env.ESCROW_CONTRACT_ID;
+  delete process.env.ESCROW_CONTRACT_ID_USDC;
 });
 
 describe("createQuote", () => {
@@ -314,6 +316,61 @@ describe("createQuote (USDC)", () => {
         asset: "USDC",
       }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("names the USDC escrow, not the XLM one, as the holder of a USDC payment", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    process.env.ESCROW_CONTRACT_ID = XLM_ESCROW;
+    process.env.ESCROW_CONTRACT_ID_USDC = USDC_ESCROW;
+    const { user } = await makePayer({
+      cachedXlm: "5.0000000",
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    const { merchant } = await makeMerchant();
+    const res = await createQuote({
+      payerId: user.id,
+      merchantId: merchant.id,
+      amountPhp: dec("100"),
+      asset: "USDC",
+    });
+    const event = await db.paymentEvent.findFirstOrThrow({ where: { paymentId: res.paymentId } });
+    expect(event.detail).toMatchObject({ escrowId: USDC_ESCROW });
+  });
+
+  it("refuses USDC when the escrow is on and no USDC instance is deployed", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    process.env.ESCROW_CONTRACT_ID = XLM_ESCROW;
+    const { user } = await makePayer({ assets: { USDC: { cached: "50.0000000" } } });
+    const { merchant } = await makeMerchant();
+    await expect(
+      createQuote({
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: dec("100"),
+        asset: "USDC",
+      }),
+    ).rejects.toMatchObject({ status: 400, details: { reason: "no_escrow" } });
+    expect(await db.payment.count()).toBe(0);
+  });
+
+  it("needs XLM for the escrow deposit's fee, on top of the USDC amount", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    process.env.ESCROW_CONTRACT_ID_USDC = USDC_ESCROW;
+    // Plenty of USDC, but less XLM than the 0.2 XLM fee estimate.
+    const { user } = await makePayer({
+      cachedXlm: "0.1000000",
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    const { merchant } = await makeMerchant();
+    await expect(
+      createQuote({
+        payerId: user.id,
+        merchantId: merchant.id,
+        amountPhp: dec("100"),
+        asset: "USDC",
+      }),
+    ).rejects.toMatchObject({ status: 409, details: { requiredXlm: "0.2000100" } });
+    expect(await db.payment.count()).toBe(0);
   });
 
   it("rejects when the wallet holds USDC but no XLM for the network fee", async () => {

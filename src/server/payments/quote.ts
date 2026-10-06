@@ -144,13 +144,15 @@ async function assertFundsAvailable(
   amountAsset: Decimal,
   networkFeeXlm: Decimal,
 ): Promise<void> {
+  // An escrowed payment also pays the deposit's Soroban resource fee, in XLM
+  // whatever the asset. It is only known once the deposit lands; require the
+  // estimate so the deposit cannot fail for want of it.
+  const escrowFee = escrowAppliesTo(asset) ? escrowFeeEstimateXlm() : dec("0");
+  const xlmFees = networkFeeXlm.plus(escrowFee);
+
   if (!isIssuedAsset(asset)) {
     const { available } = await getAssetBalance(db, walletId, asset);
-    // An escrowed payment also pays the deposit's Soroban resource fee, which is
-    // only known once it lands; reserve the estimate so the deposit cannot fail
-    // for want of it.
-    const escrowFee = escrowAppliesTo(asset) ? escrowFeeEstimateXlm() : dec("0");
-    const required = amountAsset.plus(networkFeeXlm).plus(escrowFee);
+    const required = amountAsset.plus(xlmFees);
     if (available.lessThan(required)) {
       throw conflict("insufficient available XLM balance", {
         asset,
@@ -172,10 +174,10 @@ async function assertFundsAvailable(
       required: amountAsset.toFixed(7),
     });
   }
-  if (xlmBalance.available.lessThan(networkFeeXlm)) {
+  if (xlmBalance.available.lessThan(xlmFees)) {
     throw conflict("insufficient XLM to cover the Stellar network fee", {
       availableXlm: xlmBalance.available.toFixed(7),
-      requiredXlm: networkFeeXlm.toFixed(7),
+      requiredXlm: xlmFees.toFixed(7),
     });
   }
 }

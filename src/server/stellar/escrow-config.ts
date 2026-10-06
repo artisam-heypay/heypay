@@ -8,15 +8,6 @@ import type { PaymentAsset } from "@/lib/assets";
 import { captureException } from "@/server/observability/error-tracking";
 
 /**
- * Whether a new payment in `asset` goes through the escrow. D1 escrows XLM only
- * (the deployed contract holds the native XLM SAC); USDC keeps the direct
- * treasury path until D2.
- */
-export function escrowAppliesTo(asset: PaymentAsset): boolean {
-  return process.env.ESCROW_ENABLED === "true" && asset === "XLM";
-}
-
-/**
  * Where each asset's escrow contract ID is configured. One contract holds one
  * token, so every escrowed asset has its own deployed instance.
  */
@@ -24,6 +15,15 @@ const ESCROW_CONTRACT_ENV_KEY: Partial<Record<PaymentAsset, string>> = {
   XLM: "ESCROW_CONTRACT_ID",
   USDC: "ESCROW_CONTRACT_ID_USDC",
 };
+
+/**
+ * Whether a new payment in `asset` goes through the escrow: XLM and USDC do,
+ * each in its own instance. USDT has no escrow and keeps the direct treasury
+ * path. An escrowed asset whose contract ID is not set is refused at quote time.
+ */
+export function escrowAppliesTo(asset: PaymentAsset): boolean {
+  return process.env.ESCROW_ENABLED === "true" && asset in ESCROW_CONTRACT_ENV_KEY;
+}
 
 /** The env var naming `asset`'s escrow instance, or null when the asset has none. */
 export function escrowContractEnvKey(asset: PaymentAsset): string | null {
