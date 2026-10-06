@@ -24,8 +24,8 @@ const REASONS: readonly PaymentRefusalReason[] = [
 ];
 
 /**
- * Where an `asset_mismatch` was found. The payer reads one message for all
- * three; this is for whoever looks into it.
+ * Where an `asset_mismatch` was found. A payer whose own asset is the wrong one
+ * is told so; the other two are HeyPay's side and read the same.
  */
 export type AssetMismatchCause =
   /** The escrow instance set for the asset holds a different token. */
@@ -39,6 +39,8 @@ export type PaymentRefusal = {
   reason: PaymentRefusalReason;
   /** The asset the payment was to be made in. */
   asset: PaymentAsset;
+  /** Where the mismatch is, for `asset_mismatch`. */
+  cause?: AssetMismatchCause;
   /** Another asset the payer could use for this payment, when there is one. */
   payWith?: PaymentAsset;
   /** Roughly how much XLM the network fees need, for `insufficient_fee`. */
@@ -46,11 +48,16 @@ export type PaymentRefusal = {
 };
 
 /** What the payer reads: what is wrong, then what to do about it. */
-export function refusalMessage({ reason, asset, payWith, feeXlm }: PaymentRefusal): string {
+export function refusalMessage({ reason, asset, cause, payWith, feeXlm }: PaymentRefusal): string {
   switch (reason) {
     case "payer_no_trustline":
       return `Turn on ${asset} first.`;
     case "asset_mismatch":
+      // The payer can see this asset in their wallet, so say why it is not taken.
+      if (cause === "payer_issuer") {
+        const why = `Your ${asset} is from a different issuer than the one HeyPay accepts, so it can't be used here.`;
+        return payWith ? `${why} Pay with ${payWith} instead.` : why;
+      }
       return payWith
         ? `This shop is paid in a different currency. Pay with ${payWith} instead.`
         : "This shop is paid in a different currency.";

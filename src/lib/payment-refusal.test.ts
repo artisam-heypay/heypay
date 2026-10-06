@@ -17,6 +17,25 @@ describe("refusalMessage", () => {
     );
   });
 
+  it("tells a payer whose own asset is the wrong one why it is not taken", () => {
+    expect(
+      refusalMessage({
+        reason: "asset_mismatch",
+        asset: "USDC",
+        cause: "payer_issuer",
+        payWith: "XLM",
+      }),
+    ).toBe(
+      "Your USDC is from a different issuer than the one HeyPay accepts, so it can't be used here. Pay with XLM instead.",
+    );
+    // A mismatch on HeyPay's side is not blamed on the payer's asset.
+    for (const cause of ["escrow", "destination"] as const) {
+      expect(
+        refusalMessage({ reason: "asset_mismatch", asset: "USDC", cause, payWith: "XLM" }),
+      ).toBe("This shop is paid in a different currency. Pay with XLM instead.");
+    }
+  });
+
   it("names no other asset when there is none to pay with", () => {
     expect(refusalMessage({ reason: "asset_mismatch", asset: "XLM" })).toBe(
       "This shop is paid in a different currency.",

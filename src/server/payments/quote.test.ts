@@ -468,7 +468,8 @@ describe("createQuote (USDC edge cases)", () => {
 
     await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
       status: 400,
-      message: "This shop is paid in a different currency. Pay with XLM instead.",
+      message:
+        "Your USDC is from a different issuer than the one HeyPay accepts, so it can't be used here. Pay with XLM instead.",
       details: { reason: "asset_mismatch", cause: "payer_issuer", asset: "USDC", payWith: "XLM" },
     });
     expect(holdsOtherIssuer).toHaveBeenCalledWith(wallet.stellarPublicKey, "USDC");
@@ -485,7 +486,8 @@ describe("createQuote (USDC edge cases)", () => {
 
     await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
       status: 400,
-      message: "This shop is paid in a different currency. Pay with XLM instead.",
+      message:
+        "Your USDC is from a different issuer than the one HeyPay accepts, so it can't be used here. Pay with XLM instead.",
       details: { reason: "asset_mismatch", cause: "payer_issuer" },
     });
     await expectNothingMoved(wallet.id, "0.5000000", "10.0000000");

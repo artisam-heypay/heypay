@@ -35,6 +35,7 @@ export function paymentRefused(
   const refusal: PaymentRefusal = {
     reason,
     asset,
+    ...(cause && { cause }),
     // Fees are XLM for every asset, so another asset does not help a short fee.
     ...(reason !== "insufficient_fee" && { payWith: alternativeTo(asset) }),
     ...(reason === "insufficient_fee" &&
@@ -44,7 +45,6 @@ export function paymentRefused(
   };
   const details = {
     ...refusal,
-    ...(cause && { cause }),
     ...Object.fromEntries(Object.entries(amounts).map(([k, v]) => [k, v.toFixed(7)])),
   };
   return (short ? conflict : badRequest)(refusalMessage(refusal), details);
