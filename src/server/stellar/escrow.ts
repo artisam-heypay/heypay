@@ -10,6 +10,7 @@ import { Decimal } from "@/lib/money";
 import type { PaymentAsset } from "@/lib/assets";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { Client, Error as ContractErrors, type Job } from "./escrow-bindings";
+import { resolveStellarAsset } from "./assets";
 import { escrowContractEnvKey, escrowContractId } from "./escrow-config";
 import { getNetworkPassphrase } from "./horizon";
 
@@ -82,6 +83,8 @@ export interface EscrowService {
   }): Promise<{ txHash: string }>;
   /** The job as stored on-chain, or null if it was never deposited. */
   getJob(jobId: Buffer): Promise<EscrowJob | null>;
+  /** The contract address of the one token this instance holds. */
+  getToken(): Promise<string>;
   /** The payer self-refund window new deposits get, in ledgers. */
   getTimeout(): Promise<number>;
   /** Admin: changes that window. Jobs already held keep their deadline. */
@@ -248,6 +251,12 @@ export function createEscrowService(
       );
     },
 
+    async getToken() {
+      const tx = await clientFor(null).token();
+      if (tx.result.isErr()) throw contractError("token", tx);
+      return tx.result.unwrap();
+    },
+
     async getTimeout() {
       return (await clientFor(null).timeout()).result;
     },
@@ -302,4 +311,35 @@ export function escrowFor(asset: PaymentAsset): EscrowService {
       return id;
     },
   });
+}
+
+// An instance's token is set once, by `initialize`, so a match is kept for good.
+const confirmedTokens = new Set<string>();
+
+/**
+ * Whether `asset`'s escrow instance holds `asset`. An instance holds the one
+ * token it was initialized with, so a contract ID set under the wrong asset
+ * would take that other token from the payer and hand it back in a refund.
+ * False as well for an instance that was never initialized.
+ */
+export async function escrowHoldsAsset(
+  asset: PaymentAsset,
+  escrow: Pick<EscrowService, "getToken"> = escrowFor(asset),
+): Promise<boolean> {
+  const expected = resolveStellarAsset(asset).contractId(getNetworkPassphrase());
+  const key = `${escrowContractId(asset)}:${expected}`;
+  if (confirmedTokens.has(key)) return true;
+  let token: string;
+  try {
+    token = await escrow.getToken();
+  } catch (err) {
+    if (err instanceof EscrowContractError) return false;
+    throw err;
+  }
+  if (token === expected) confirmedTokens.add(key);
+  return token === expected;
+}
+
+export function __resetEscrowTokensForTests(): void {
+  confirmedTokens.clear();
 }

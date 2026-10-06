@@ -3,16 +3,18 @@
 // Whether a payment in a given asset can settle, decided at quote time.
 //
 // Everything checked here is something the network would otherwise refuse only
-// after the payer has confirmed: an escrow that is not deployed for the asset, a
-// payer account that could not take the asset back in a refund, a destination
-// that cannot hold the asset, or a DEX with no route when the asset would have
-// to be converted on the way.
+// after the payer has confirmed, or would get wrong: an escrow that is not
+// deployed for the asset or holds a different one, a payer account that could
+// not take the asset back in a refund, a destination that cannot hold the
+// asset, or a DEX with no route when the asset would have to be converted on
+// the way.
 import "server-only";
 import type { Asset } from "@stellar/stellar-sdk";
 import type { Decimal } from "@/lib/money";
 import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
+import { escrowHoldsAsset } from "@/server/stellar/escrow";
 import { escrowAppliesTo, escrowContractId } from "@/server/stellar/escrow-config";
 import { findStrictSendPaths } from "@/server/stellar/paths";
 
@@ -22,6 +24,8 @@ const FALLBACK_ASSET: PaymentAsset = "XLM";
 export type RouteRefusal =
   /** The escrow is on for this asset but no instance is deployed for it. */
   | "no_escrow"
+  /** The escrow instance set for this asset holds a different one. */
+  | "asset_mismatch"
   /** The payer's account holds no trustline for the asset. */
   | "payer_no_trustline"
   /** The destination cannot hold the asset, and converting it is not possible. */
@@ -75,6 +79,8 @@ export async function resolveSettlementRoute(input: {
   if (escrowAppliesTo(asset)) {
     escrowId = escrowContractId(asset);
     if (!escrowId) return refuse("no_escrow");
+    // The payment must be held, released and refunded in the asset it was paid in.
+    if (!(await escrowHoldsAsset(asset))) return refuse("asset_mismatch");
   }
 
   const deposit = await rail.getDepositAddress(asset);

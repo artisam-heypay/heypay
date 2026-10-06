@@ -141,9 +141,18 @@ scan and confirm screens show as they show any refused quote:
 | Reason                     | What was checked                                                                     | Message                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
 | `no_escrow`                | The escrow is on for the asset (`ESCROW_ENABLED`) but its contract ID is not set     | HeyPay cannot hold XLM payments in escrow right now.                                       |
-| `payer_no_trustline`       | Horizon shows no trustline for the asset on the payer's wallet                       | Your wallet is not set up to hold USDC. Turn on USDC on the Prefund page, then try again.  |
+| `asset_mismatch`           | The escrow instance set for the asset holds a different token                        | This shop is paid in a different currency. Pay with XLM instead.                           |
+| `payer_no_trustline`       | Horizon shows no trustline for the asset on the payer's wallet                       | Turn on USDC first.                                                                        |
 | `destination_no_trustline` | The treasury cannot hold the asset                                                   | HeyPay cannot receive USDC payments right now.                                             |
 | `no_dex_path`              | The asset would have to be converted to XLM, and the DEX has no route for the amount | USDC cannot be converted for this amount right now. Try a smaller amount or another asset. |
+
+`asset_mismatch` guards the one way a USDC payment could stop being USDC: an
+instance holds the token it was initialized with, so a contract ID set under
+the wrong asset (say, the XLM instance in `ESCROW_CONTRACT_ID_USDC`) would take
+XLM from the payer and return XLM in a refund. `escrowHoldsAsset` in
+`src/server/stellar/escrow.ts` reads the instance's `token()` and compares it
+with the asset's Stellar Asset Contract. A match is remembered, since the token
+never changes after `initialize`.
 
 When every check passes the route is `direct`: the payer's own asset goes to
 the escrow instance named in `escrowId`, or straight to the treasury when the
@@ -156,6 +165,32 @@ escrowed. The settle job does not run converting payments, so `createQuote`
 refuses that case as `destination_no_trustline`. An escrowed asset is never
 converted: `release` pays the treasury in the escrow's own token, so the
 treasury has to hold it.
+
+## Refusals the payer can fix
+
+Three cases are refused before any money moves, each with a message a payer
+can act on and a next step on the confirm screen. `paymentRefused`
+(`src/server/payments/refusal.ts`) builds the error for the quote and for the
+confirm step alike; the reason, the asset and the amounts are in the error
+details, and `src/lib/payment-refusal.ts` holds the wording.
+
+| Case                 | Reason                 | Message                                                          | Next step on the confirm screen                   |
+| -------------------- | ---------------------- | ---------------------------------------------------------------- | ------------------------------------------------- |
+| Missing trustline    | `payer_no_trustline`   | Turn on USDC first.                                              | **Turn on USDC** button, then the quote is redone |
+| Asset mismatch       | `asset_mismatch`       | This shop is paid in a different currency. Pay with XLM instead. | **Pay with XLM** button                           |
+| Insufficient balance | `insufficient_balance` | Not enough USDC — add more or pay with XLM.                      | **Add USDC** link and **Pay with XLM** button     |
+| Short network fee    | `insufficient_fee`     | Not enough XLM for the network fee — add about 0.21 XLM.         | **Add XLM** link                                  |
+
+- The quote refuses all four and saves no payment. Balances are compared after
+  holds for other payments are taken off.
+- The confirm step checks the balances again inside the transaction that takes
+  the holds, so a refusal there rolls back and leaves nothing reserved. A
+  wallet short of an asset it cannot hold at all is told to turn it on.
+- The fee case exists because fees are XLM for every asset: a wallet with
+  plenty of USDC still needs the base fee and, when the escrow is on, the
+  deposit's fee estimate in XLM.
+- **Pay with XLM** is left out when the payment on screen is already the XLM
+  one, and for an XLM payment, which has no other asset to fall back on.
 
 ## Testnet USDC: issuer, escrow and DEX depth
 
@@ -297,7 +332,12 @@ is XLM. `Payment.networkFeeXlm` remains XLM by definition.
 
 - `tests/server/stellar/assets.test.ts` — issuer resolution, impostor rejection.
 - `tests/integration/wallet-trustline.test.ts` — trustline API, reserve check.
-- `src/server/payments/quote.test.ts` — USDT quoting, per-asset balance checks.
+- `src/server/payments/quote.test.ts` — USDT quoting, per-asset balance checks,
+  and the USDC edge cases (missing trustline, asset mismatch, insufficient
+  balance), each with nothing saved or held.
+- `src/server/payments/confirm.test.ts` — the same refusals at confirm.
+- `src/components/payer/ConfirmPayment.test.tsx` — the message and the next step
+  the confirm screen shows for each.
 - `src/server/queue/jobs/settle.test.ts` — USDT settlement, split debits, refunds;
   USDC held, released and refunded by the USDC escrow.
 - `tests/server/rails/pdax-insti.test.ts` — deposit-address lookup, tag-as-memo,

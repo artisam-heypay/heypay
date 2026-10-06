@@ -8,6 +8,7 @@ import { conflict, forbidden, notFound } from "@/lib/errors";
 import { getAssetBalance, reserveAsset } from "@/server/wallet/balances";
 import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-config";
 import { withIdempotencyKey } from "./idempotency";
+import { paymentRefused } from "./refusal";
 import { applyTransition } from "./state-machine";
 import { enqueueSettle } from "@/server/queue/queues";
 
@@ -48,14 +49,27 @@ export async function confirmPayment(input: ConfirmPaymentInput): Promise<Confir
     const updated = await db.$transaction(async (tx) => {
       const balance = await getAssetBalance(tx, wallet.id, asset);
       const needed = isIssuedAsset(asset) ? assetHold : assetHold.plus(escrowFee);
-      if (balance.available.lessThan(needed))
-        throw conflict(`insufficient available ${asset} balance`);
+      // Refused inside the transaction, before anything is held: a throw here
+      // leaves no reservation behind.
+      if (balance.available.lessThan(needed)) {
+        // A wallet that cannot hold the asset at all needs it turned on first.
+        const reason =
+          isIssuedAsset(asset) && !balance.canReceive
+            ? "payer_no_trustline"
+            : "insufficient_balance";
+        throw paymentRefused(reason, asset, { available: balance.available, required: needed });
+      }
       await reserveAsset(tx, wallet.id, asset, assetHold);
 
       if (isIssuedAsset(asset)) {
         const xlm = await getAssetBalance(tx, wallet.id, "XLM");
-        if (xlm.available.lessThan(networkFeeXlm.plus(escrowFee)))
-          throw conflict("insufficient XLM to cover the Stellar network fee");
+        const xlmFees = networkFeeXlm.plus(escrowFee);
+        if (xlm.available.lessThan(xlmFees)) {
+          throw paymentRefused("insufficient_fee", asset, {
+            availableXlm: xlm.available,
+            requiredXlm: xlmFees,
+          });
+        }
         await reserveAsset(tx, wallet.id, "XLM", networkFeeXlm);
       }
 

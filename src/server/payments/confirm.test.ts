@@ -217,4 +217,94 @@ describe("confirmPayment", () => {
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
     expect(enqueueSettle).not.toHaveBeenCalled();
   });
+  it("insufficient balance: refuses a USDC payment with a reason and a next step", async () => {
+    const { user, wallet, payment } = await makeQuotedUsdc({
+      cachedXlm: "10.0000000",
+      cachedUsdc: "1.0000000",
+    });
+
+    await expect(
+      confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: randomUUID() }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: "Not enough USDC — add more or pay with XLM.",
+      details: {
+        reason: "insufficient_balance",
+        asset: "USDC",
+        payWith: "XLM",
+        available: "1.0000000",
+        required: "1.6039000",
+      },
+    });
+
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.cached.toFixed(7)).toBe("1.0000000");
+    expect(usdc.reserved.toFixed(7)).toBe("0.0000000");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+    expect((await db.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe(
+      "QUOTED",
+    );
+    expect(await db.walletTransaction.count()).toBe(0);
+    expect(enqueueSettle).not.toHaveBeenCalled();
+  });
+
+  it("insufficient balance: names the network fee when only XLM is short", async () => {
+    const { user, wallet, payment } = await makeQuotedUsdc({
+      cachedXlm: "0.0000000",
+      cachedUsdc: "50.0000000",
+    });
+
+    await expect(
+      confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: randomUUID() }),
+    ).rejects.toMatchObject({
+      status: 409,
+      details: { reason: "insufficient_fee", asset: "USDC", requiredXlm: "0.0000100" },
+    });
+
+    // The USDC hold taken just before the fee check is rolled back with it.
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.reserved.toFixed(7)).toBe("0.0000000");
+    expect(enqueueSettle).not.toHaveBeenCalled();
+  });
+
+  it("missing trustline: a wallet that cannot hold USDC is told to turn it on", async () => {
+    const { user, wallet } = await makePayer({
+      cachedXlm: "10.0000000",
+      assets: { USDC: { cached: "0.0000000", trustline: false } },
+    });
+    const { merchant } = await makeMerchant();
+    const payment = await db.payment.create({
+      data: {
+        reference: newPaymentReference(),
+        payerId: user.id,
+        merchantId: merchant.id,
+        asset: "USDC",
+        amountPhp: "100.00",
+        quotedRate: "62.34000000",
+        amountAsset: "1.6039000",
+        networkFeeXlm: "0.0000100",
+        status: "QUOTED",
+        quoteExpiresAt: new Date(Date.now() + 90_000),
+      },
+    });
+
+    await expect(
+      confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: randomUUID() }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "Turn on USDC first.",
+      details: { reason: "payer_no_trustline", asset: "USDC" },
+    });
+
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.reserved.toFixed(7)).toBe("0.0000000");
+    expect(enqueueSettle).not.toHaveBeenCalled();
+  });
 });

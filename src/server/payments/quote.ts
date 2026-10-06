@@ -6,9 +6,11 @@ import { rail } from "@/server/rails";
 import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-config";
 import { withRetry } from "@/lib/retry";
 import { AppError, badRequest, conflict, notFound } from "@/lib/errors";
+import type { PaymentRefusalReason } from "@/lib/payment-refusal";
 import { assertAssetEnabled, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { getAssetBalance } from "@/server/wallet/balances";
 import { newPaymentReference } from "./reference";
+import { paymentRefused } from "./refusal";
 import { resolveSettlementRoute, type RouteRefusal } from "./settlement-route";
 
 // One Stellar payment operation costs the base fee of 100 stroops = 0.0000100 XLM.
@@ -119,17 +121,22 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   };
 }
 
+/** The route refusals the payer can do nothing about but pick another asset or wait. */
+type OutageRefusal = Exclude<RouteRefusal, PaymentRefusalReason>;
+
 /** Why a payment cannot settle, as the payer reads it on the confirm screen. */
-const ROUTE_REFUSAL_MESSAGE: Record<RouteRefusal, (asset: PaymentAsset) => string> = {
+const ROUTE_REFUSAL_MESSAGE: Record<OutageRefusal, (asset: PaymentAsset) => string> = {
   no_escrow: (asset) => `HeyPay cannot hold ${asset} payments in escrow right now.`,
-  payer_no_trustline: (asset) =>
-    `Your wallet is not set up to hold ${asset}. Turn on ${asset} on the Prefund page, then try again.`,
   destination_no_trustline: (asset) => `HeyPay cannot receive ${asset} payments right now.`,
   no_dex_path: (asset) =>
     `${asset} cannot be converted for this amount right now. Try a smaller amount or another asset.`,
 };
 
 function routeRefused(asset: PaymentAsset, reason: RouteRefusal): AppError {
+  // A missing trustline and a mismatched asset come with a next step for the payer.
+  if (reason === "payer_no_trustline" || reason === "asset_mismatch") {
+    return paymentRefused(reason, asset);
+  }
   return badRequest(ROUTE_REFUSAL_MESSAGE[reason](asset), { asset, reason });
 }
 
@@ -154,11 +161,7 @@ async function assertFundsAvailable(
     const { available } = await getAssetBalance(db, walletId, asset);
     const required = amountAsset.plus(xlmFees);
     if (available.lessThan(required)) {
-      throw conflict("insufficient available XLM balance", {
-        asset,
-        available: available.toFixed(7),
-        required: required.toFixed(7),
-      });
+      throw paymentRefused("insufficient_balance", asset, { available, required });
     }
     return;
   }
@@ -168,16 +171,15 @@ async function assertFundsAvailable(
     getAssetBalance(db, walletId, "XLM"),
   ]);
   if (assetBalance.available.lessThan(amountAsset)) {
-    throw conflict(`insufficient available ${asset} balance`, {
-      asset,
-      available: assetBalance.available.toFixed(7),
-      required: amountAsset.toFixed(7),
+    throw paymentRefused("insufficient_balance", asset, {
+      available: assetBalance.available,
+      required: amountAsset,
     });
   }
   if (xlmBalance.available.lessThan(xlmFees)) {
-    throw conflict("insufficient XLM to cover the Stellar network fee", {
-      availableXlm: xlmBalance.available.toFixed(7),
-      requiredXlm: xlmFees.toFixed(7),
+    throw paymentRefused("insufficient_fee", asset, {
+      availableXlm: xlmBalance.available,
+      requiredXlm: xlmFees,
     });
   }
 }

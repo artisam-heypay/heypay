@@ -2,9 +2,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { dec, displayPhp } from "@/lib/money";
+import { readRefusal, type RefusedRequest } from "@/lib/payment-refusal";
 import { Icon } from "@/components/ui";
 import { AssetPicker } from "./AssetPicker";
 import { ConversionBreakdown } from "./ConversionBreakdown";
+import { PaymentRefusalNotice } from "./PaymentRefusalNotice";
 import { WalletSourceRow } from "./WalletSourceRow";
 import { ProcessingOverlay } from "./ProcessingOverlay";
 import type { PaymentStatus } from "@/generated/prisma/client";
@@ -46,7 +48,10 @@ export function ConfirmPayment(props: {
   const [processing, setProcessing] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [status, setStatus] = useState<PaymentStatus>("AUTHORIZED");
+  // Why the payment being followed failed, as the overlay shows it.
   const [failureReason, setFailureReason] = useState<string | null>(null);
+  // The last quote or confirmation the server turned down, and why.
+  const [refused, setRefused] = useState<RefusedRequest | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollBusyRef = useRef(false);
@@ -72,12 +77,13 @@ export function ConfirmPayment(props: {
 
   /**
    * A quote locks one asset's rate, so picking a different asset means cancelling
-   * this payment and quoting a fresh one rather than mutating it in place.
+   * this payment and quoting a fresh one rather than mutating it in place. The
+   * same goes for trying again in the same asset once a refusal has been fixed.
    */
   async function switchAsset(asset: string) {
-    if (asset === props.asset || switching) return;
+    if (switching) return;
     setSwitching(true);
-    setFailureReason(null);
+    setRefused(null);
     try {
       const res = await fetch("/api/payments/quote", {
         method: "POST",
@@ -89,10 +95,7 @@ export function ConfirmPayment(props: {
         }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setFailureReason(body?.error?.message ?? `Could not quote in ${asset}.`);
+        setRefused(readRefusal(await res.json().catch(() => null), `Could not quote in ${asset}.`));
         return;
       }
       const { paymentId } = (await res.json()) as { paymentId: string };
@@ -103,7 +106,7 @@ export function ConfirmPayment(props: {
       }).catch(() => {});
       router.replace(`/payer/pay/${paymentId}/confirm`);
     } catch {
-      setFailureReason("Network error.");
+      setRefused({ message: "Network error.", refusal: null });
     } finally {
       setSwitching(false);
     }
@@ -111,6 +114,7 @@ export function ConfirmPayment(props: {
 
   async function confirm() {
     setProcessing(true);
+    setRefused(null);
     try {
       const res = await fetch(`/api/payments/${props.paymentId}/confirm`, {
         method: "POST",
@@ -118,11 +122,18 @@ export function ConfirmPayment(props: {
         body: "{}",
       });
       if (!res.ok) {
+        const failed = readRefusal(
+          await res.json().catch(() => null),
+          "Could not authorize the payment.",
+        );
+        // A refusal held nothing, so the payer can fix it here and try again.
+        if (failed.refusal) {
+          setRefused(failed);
+          setProcessing(false);
+          return;
+        }
         setStatus("FAILED");
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setFailureReason(body?.error?.message ?? "Could not authorize the payment.");
+        setFailureReason(failed.message);
         return;
       }
       const { status: s } = (await res.json()) as { status: PaymentStatus };
@@ -177,7 +188,7 @@ export function ConfirmPayment(props: {
             canReceive: o.canReceive,
           }))}
           value={props.asset}
-          onChange={switchAsset}
+          onChange={(asset) => asset !== props.asset && switchAsset(asset)}
           busy={switching || processing}
         />
 
@@ -205,10 +216,13 @@ export function ConfirmPayment(props: {
         {secondsLeft !== null && secondsLeft > 0 && (
           <p className="text-body-sm text-on-surface-variant">Rate locked for {secondsLeft}s</p>
         )}
-        {!processing && failureReason && (
-          <p role="alert" className="text-body-md text-error">
-            {failureReason}
-          </p>
+        {!processing && refused && (
+          <PaymentRefusalNotice
+            refused={refused}
+            currentAsset={props.asset}
+            busy={switching}
+            onPayWith={switchAsset}
+          />
         )}
 
         <div className="flex flex-wrap gap-stack-md">

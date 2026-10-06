@@ -30,11 +30,11 @@ export function WalletSourceRow({
       </div>
       {insufficient && (
         <p className="mt-stack-sm text-body-sm text-error">
-          Insufficient {asset} balance.{" "}
+          Not enough {asset} —{" "}
           <Link href="/payer/prefund" className="underline">
-            Prefund your wallet
+            add more
           </Link>
-          .
+          {asset === "XLM" ? "." : " or pay with XLM."}
         </p>
       )}
     </div>

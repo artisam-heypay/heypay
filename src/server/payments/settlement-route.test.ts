@@ -5,10 +5,11 @@ const TREASURY = "GTREASURY";
 const PAYER = "GPAYER";
 const XLM_ESCROW = "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J";
 
-const { getDepositAddress, canReceive, findStrictSendPaths } = vi.hoisted(() => ({
+const { getDepositAddress, canReceive, findStrictSendPaths, escrowHoldsAsset } = vi.hoisted(() => ({
   getDepositAddress: vi.fn(),
   canReceive: vi.fn(),
   findStrictSendPaths: vi.fn(),
+  escrowHoldsAsset: vi.fn(),
 }));
 
 vi.mock("@/server/rails", () => ({
@@ -16,6 +17,9 @@ vi.mock("@/server/rails", () => ({
 }));
 vi.mock("@/server/stellar/wallet", () => ({
   walletService: { canReceive: (pk: string, a: string) => canReceive(pk, a) },
+}));
+vi.mock("@/server/stellar/escrow", () => ({
+  escrowHoldsAsset: (asset: string) => escrowHoldsAsset(asset),
 }));
 vi.mock("@/server/stellar/paths", () => ({
   findStrictSendPaths: (...args: unknown[]) => findStrictSendPaths(...args),
@@ -38,10 +42,12 @@ beforeEach(() => {
   getDepositAddress.mockResolvedValue({ address: TREASURY, memo: null });
   holdings({ [PAYER]: ["XLM", "USDC"], [TREASURY]: ["XLM", "USDC"] });
   findStrictSendPaths.mockResolvedValue([]);
+  escrowHoldsAsset.mockResolvedValue(true);
 });
 afterEach(() => {
   delete process.env.ESCROW_ENABLED;
   delete process.env.ESCROW_CONTRACT_ID;
+  delete process.env.ESCROW_CONTRACT_ID_USDC;
 });
 
 describe("resolveSettlementRoute", () => {
@@ -72,6 +78,27 @@ describe("resolveSettlementRoute", () => {
     });
     // Nothing on-chain is asked about a payment that has nowhere to be held.
     expect(canReceive).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the instance set for the asset holds a different one", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    // The XLM instance's ID, set under USDC by mistake.
+    process.env.ESCROW_CONTRACT_ID_USDC = XLM_ESCROW;
+    escrowHoldsAsset.mockResolvedValue(false);
+    expect(await resolve("USDC")).toEqual({
+      ok: false,
+      reason: "asset_mismatch",
+      escrowId: XLM_ESCROW,
+      route: null,
+    });
+    expect(escrowHoldsAsset).toHaveBeenCalledWith("USDC");
+    // Nothing else is asked about a payment that would be held in the wrong asset.
+    expect(canReceive).not.toHaveBeenCalled();
+  });
+
+  it("does not ask what the escrow holds while the escrow is off", async () => {
+    await resolve("USDC");
+    expect(escrowHoldsAsset).not.toHaveBeenCalled();
   });
 
   it("refuses when the payer's account holds no trustline for the asset", async () => {
