@@ -28,7 +28,7 @@ vi.mock("@/server/auth/sessions", () => ({
 }));
 vi.mock("@/server/auth/rate-limit", () => ({ rateLimit: vi.fn(async () => {}) }));
 vi.mock("@/server/stellar/wallet", () => ({
-  walletService: { canReceive: async () => true },
+  walletService: { canReceive: async () => true, holdsOtherIssuer: async () => false },
 }));
 vi.mock("@/server/rails", () => ({
   rail: {

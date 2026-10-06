@@ -3,10 +3,11 @@ import "server-only";
 import { dec, phpToAsset, Decimal } from "@/lib/money";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
+import { walletService } from "@/server/stellar/wallet";
 import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-config";
 import { withRetry } from "@/lib/retry";
 import { AppError, badRequest, conflict, notFound } from "@/lib/errors";
-import type { PaymentRefusalReason } from "@/lib/payment-refusal";
+import type { AssetMismatchCause } from "@/lib/payment-refusal";
 import { assertAssetEnabled, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { getAssetBalance } from "@/server/wallet/balances";
 import { newPaymentReference } from "./reference";
@@ -71,7 +72,7 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   if (preflight.route.mode !== "direct") throw routeRefused(asset, "destination_no_trustline");
 
   const networkFeeXlm = STELLAR_BASE_FEE_XLM;
-  await assertFundsAvailable(wallet.id, asset, amountAsset, networkFeeXlm);
+  await assertFundsAvailable(wallet, asset, amountAsset, networkFeeXlm);
 
   const payment = await db.$transaction(async (tx) => {
     await tx.exchangeRateSnapshot.create({
@@ -121,8 +122,19 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   };
 }
 
+/**
+ * The route refusals that come down to the wrong asset: what would hold the
+ * payment, what the payer has, or what the treasury takes is not the asset
+ * being paid. The payer reads one message for all of them.
+ */
+const MISMATCH_CAUSE: Partial<Record<RouteRefusal, AssetMismatchCause>> = {
+  escrow_holds_other_asset: "escrow",
+  payer_other_issuer: "payer_issuer",
+  destination_no_trustline: "destination",
+};
+
 /** The route refusals the payer can do nothing about but pick another asset or wait. */
-type OutageRefusal = Exclude<RouteRefusal, PaymentRefusalReason>;
+type OutageRefusal = "no_escrow" | "destination_no_trustline" | "no_dex_path";
 
 /** Why a payment cannot settle, as the payer reads it on the confirm screen. */
 const ROUTE_REFUSAL_MESSAGE: Record<OutageRefusal, (asset: PaymentAsset) => string> = {
@@ -133,11 +145,13 @@ const ROUTE_REFUSAL_MESSAGE: Record<OutageRefusal, (asset: PaymentAsset) => stri
 };
 
 function routeRefused(asset: PaymentAsset, reason: RouteRefusal): AppError {
-  // A missing trustline and a mismatched asset come with a next step for the payer.
-  if (reason === "payer_no_trustline" || reason === "asset_mismatch") {
-    return paymentRefused(reason, asset);
-  }
-  return badRequest(ROUTE_REFUSAL_MESSAGE[reason](asset), { asset, reason });
+  if (reason === "payer_no_trustline") return paymentRefused(reason, asset);
+  const cause = MISMATCH_CAUSE[reason];
+  // A treasury that cannot take XLM is an outage, not a mismatch: every account
+  // takes XLM, and there is no other asset to send the payer to.
+  const outage = reason === "destination_no_trustline" && !isIssuedAsset(asset);
+  if (cause && !outage) return paymentRefused("asset_mismatch", asset, {}, cause);
+  return badRequest(ROUTE_REFUSAL_MESSAGE[reason as OutageRefusal](asset), { asset, reason });
 }
 
 /**
@@ -146,11 +160,12 @@ function routeRefused(asset: PaymentAsset, reason: RouteRefusal): AppError {
  * balance and must be checked as one total.
  */
 async function assertFundsAvailable(
-  walletId: string,
+  wallet: { id: string; stellarPublicKey: string },
   asset: PaymentAsset,
   amountAsset: Decimal,
   networkFeeXlm: Decimal,
 ): Promise<void> {
+  const walletId = wallet.id;
   // An escrowed payment also pays the deposit's Soroban resource fee, in XLM
   // whatever the asset. It is only known once the deposit lands; require the
   // estimate so the deposit cannot fail for want of it.
@@ -171,6 +186,13 @@ async function assertFundsAvailable(
     getAssetBalance(db, walletId, "XLM"),
   ]);
   if (assetBalance.available.lessThan(amountAsset)) {
+    // The wallet may hold plenty of "USDC" from another issuer. That is a
+    // different asset, so adding more of HeyPay's is not what the payer is told.
+    // If the chain cannot be read, the short balance is still the answer.
+    const lookalike = await walletService
+      .holdsOtherIssuer(wallet.stellarPublicKey, asset)
+      .catch(() => false);
+    if (lookalike) throw paymentRefused("asset_mismatch", asset, {}, "payer_issuer");
     throw paymentRefused("insufficient_balance", asset, {
       available: assetBalance.available,
       required: amountAsset,

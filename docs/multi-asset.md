@@ -141,18 +141,33 @@ scan and confirm screens show as they show any refused quote:
 | Reason                     | What was checked                                                                     | Message                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
 | `no_escrow`                | The escrow is on for the asset (`ESCROW_ENABLED`) but its contract ID is not set     | HeyPay cannot hold XLM payments in escrow right now.                                       |
-| `asset_mismatch`           | The escrow instance set for the asset holds a different token                        | This shop is paid in a different currency. Pay with XLM instead.                           |
+| `escrow_holds_other_asset` | The escrow instance set for the asset holds a different token                        | This shop is paid in a different currency. Pay with XLM instead.                           |
 | `payer_no_trustline`       | Horizon shows no trustline for the asset on the payer's wallet                       | Turn on USDC first.                                                                        |
-| `destination_no_trustline` | The treasury cannot hold the asset                                                   | HeyPay cannot receive USDC payments right now.                                             |
+| `payer_other_issuer`       | No trustline, but the wallet holds the same code from another issuer                 | This shop is paid in a different currency. Pay with XLM instead.                           |
+| `destination_no_trustline` | The treasury cannot hold the asset                                                   | This shop is paid in a different currency. Pay with XLM instead.                           |
 | `no_dex_path`              | The asset would have to be converted to XLM, and the DEX has no route for the amount | USDC cannot be converted for this amount right now. Try a smaller amount or another asset. |
 
-`asset_mismatch` guards the one way a USDC payment could stop being USDC: an
-instance holds the token it was initialized with, so a contract ID set under
-the wrong asset (say, the XLM instance in `ESCROW_CONTRACT_ID_USDC`) would take
-XLM from the payer and return XLM in a refund. `escrowHoldsAsset` in
-`src/server/stellar/escrow.ts` reads the instance's `token()` and compares it
-with the asset's Stellar Asset Contract. A match is remembered, since the token
-never changes after `initialize`.
+Three of these are the same thing to the payer, an **asset mismatch**: the asset
+being paid is not the asset that the escrow, the payer's wallet or the treasury
+deals in. The payer reads one message for all three, and the error details
+carry `reason: "asset_mismatch"` with a `cause`:
+
+- **`escrow`.** An instance holds the token it was initialized with, so a
+  contract ID set under the wrong asset (say, the XLM instance in
+  `ESCROW_CONTRACT_ID_USDC`) would take XLM from the payer and return XLM in a
+  refund. `escrowHoldsAsset` in `src/server/stellar/escrow.ts` reads the
+  instance's `token()` and compares it with the asset's Stellar Asset Contract.
+  A match is remembered, since the token never changes after `initialize`.
+- **`payer_issuer`.** "USDC" from another issuer is a different asset. It shows
+  as USDC in other wallets, but HeyPay never credits it and it cannot pay here.
+  `walletService.holdsOtherIssuer` looks for it on the payer's account when the
+  payment cannot be funded from HeyPay's USDC: when the wallet has no trustline
+  for it, and when its balance is short. Such a payer is not told to turn on
+  USDC or to add more, which would not help.
+- **`destination`.** The treasury holds no trustline for the asset, so it could
+  not be paid. For XLM, which every account takes, a treasury that cannot be
+  paid is an outage and keeps the message "HeyPay cannot receive XLM payments
+  right now."
 
 When every check passes the route is `direct`: the payer's own asset goes to
 the escrow instance named in `escrowId`, or straight to the treasury when the
@@ -183,6 +198,10 @@ details, and `src/lib/payment-refusal.ts` holds the wording.
 
 - The quote refuses all four and saves no payment. Balances are compared after
   holds for other payments are taken off.
+- An asset mismatch has three causes, listed under
+  [Checking the settlement route at quote time](#checking-the-settlement-route-at-quote-time):
+  the escrow holds another token, the payer's USDC is from another issuer, or
+  the treasury cannot receive the asset.
 - The confirm step checks the balances again inside the transaction that takes
   the holds, so a refusal there rolls back and leaves nothing reserved. A
   wallet short of an asset it cannot hold at all is told to turn it on.

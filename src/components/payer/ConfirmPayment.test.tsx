@@ -163,8 +163,8 @@ describe("ConfirmPayment — refused payments", () => {
     const user = userEvent.setup();
     mockApi({
       "/api/payments/quote": [
-        refused(400, "HeyPay cannot receive USDC payments right now.", {
-          reason: "destination_no_trustline",
+        refused(400, "HeyPay cannot hold USDC payments in escrow right now.", {
+          reason: "no_escrow",
           asset: "USDC",
         }),
       ],
@@ -174,7 +174,7 @@ describe("ConfirmPayment — refused payments", () => {
     await user.click(screen.getByRole("radio", { name: /USDC/ }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "HeyPay cannot receive USDC payments right now.",
+      "HeyPay cannot hold USDC payments in escrow right now.",
     );
     expect(screen.queryByRole("link", { name: /^Add / })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Turn on|Pay with/ })).not.toBeInTheDocument();

@@ -9,6 +9,7 @@ import { isAssetEnabled, type PaymentAsset } from "@/lib/assets";
 import { Decimal } from "@/lib/money";
 import {
   refusalMessage,
+  type AssetMismatchCause,
   type PaymentRefusal,
   type PaymentRefusalReason,
 } from "@/lib/payment-refusal";
@@ -19,14 +20,16 @@ function alternativeTo(asset: PaymentAsset): PaymentAsset | undefined {
 }
 
 /**
- * `amounts` are added to the error details as 7-decimal strings. A short balance
- * is a conflict (409): the same request succeeds once the wallet is topped up.
- * The other reasons are a bad request (400), like every other refused route.
+ * `amounts` are added to the error details as 7-decimal strings, and `cause`
+ * says where an asset mismatch was found. A short balance is a conflict (409):
+ * the same request succeeds once the wallet is topped up. The other reasons are
+ * a bad request (400), like every other refused route.
  */
 export function paymentRefused(
   reason: PaymentRefusalReason,
   asset: PaymentAsset,
   amounts: Record<string, Decimal> = {},
+  cause?: AssetMismatchCause,
 ): AppError {
   const short = reason === "insufficient_balance" || reason === "insufficient_fee";
   const refusal: PaymentRefusal = {
@@ -41,6 +44,7 @@ export function paymentRefused(
   };
   const details = {
     ...refusal,
+    ...(cause && { cause }),
     ...Object.fromEntries(Object.entries(amounts).map(([k, v]) => [k, v.toFixed(7)])),
   };
   return (short ? conflict : badRequest)(refusalMessage(refusal), details);

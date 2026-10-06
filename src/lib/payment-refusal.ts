@@ -9,7 +9,7 @@ import type { PaymentAsset } from "@/lib/assets";
 export type PaymentRefusalReason =
   /** The payer's wallet has no trustline for the asset yet. */
   | "payer_no_trustline"
-  /** The payment cannot be taken in this asset: what would hold it holds another. */
+  /** The asset the payer has, or what would take it, is not the asset HeyPay accepts. */
   | "asset_mismatch"
   /** The wallet holds less of the asset than the payment needs. */
   | "insufficient_balance"
@@ -22,6 +22,18 @@ const REASONS: readonly PaymentRefusalReason[] = [
   "insufficient_balance",
   "insufficient_fee",
 ];
+
+/**
+ * Where an `asset_mismatch` was found. The payer reads one message for all
+ * three; this is for whoever looks into it.
+ */
+export type AssetMismatchCause =
+  /** The escrow instance set for the asset holds a different token. */
+  | "escrow"
+  /** The payer's wallet holds the same code from another issuer. */
+  | "payer_issuer"
+  /** The treasury cannot receive the asset. */
+  | "destination";
 
 export type PaymentRefusal = {
   reason: PaymentRefusalReason;

@@ -5,18 +5,23 @@ const TREASURY = "GTREASURY";
 const PAYER = "GPAYER";
 const XLM_ESCROW = "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J";
 
-const { getDepositAddress, canReceive, findStrictSendPaths, escrowHoldsAsset } = vi.hoisted(() => ({
-  getDepositAddress: vi.fn(),
-  canReceive: vi.fn(),
-  findStrictSendPaths: vi.fn(),
-  escrowHoldsAsset: vi.fn(),
-}));
+const { getDepositAddress, canReceive, holdsOtherIssuer, findStrictSendPaths, escrowHoldsAsset } =
+  vi.hoisted(() => ({
+    getDepositAddress: vi.fn(),
+    canReceive: vi.fn(),
+    holdsOtherIssuer: vi.fn(),
+    findStrictSendPaths: vi.fn(),
+    escrowHoldsAsset: vi.fn(),
+  }));
 
 vi.mock("@/server/rails", () => ({
   rail: { getDepositAddress: (a: string) => getDepositAddress(a) },
 }));
 vi.mock("@/server/stellar/wallet", () => ({
-  walletService: { canReceive: (pk: string, a: string) => canReceive(pk, a) },
+  walletService: {
+    canReceive: (pk: string, a: string) => canReceive(pk, a),
+    holdsOtherIssuer: (pk: string, a: string) => holdsOtherIssuer(pk, a),
+  },
 }));
 vi.mock("@/server/stellar/escrow", () => ({
   escrowHoldsAsset: (asset: string) => escrowHoldsAsset(asset),
@@ -43,6 +48,7 @@ beforeEach(() => {
   holdings({ [PAYER]: ["XLM", "USDC"], [TREASURY]: ["XLM", "USDC"] });
   findStrictSendPaths.mockResolvedValue([]);
   escrowHoldsAsset.mockResolvedValue(true);
+  holdsOtherIssuer.mockResolvedValue(false);
 });
 afterEach(() => {
   delete process.env.ESCROW_ENABLED;
@@ -87,7 +93,7 @@ describe("resolveSettlementRoute", () => {
     escrowHoldsAsset.mockResolvedValue(false);
     expect(await resolve("USDC")).toEqual({
       ok: false,
-      reason: "asset_mismatch",
+      reason: "escrow_holds_other_asset",
       escrowId: XLM_ESCROW,
       route: null,
     });
@@ -104,6 +110,18 @@ describe("resolveSettlementRoute", () => {
   it("refuses when the payer's account holds no trustline for the asset", async () => {
     holdings({ [PAYER]: ["XLM"], [TREASURY]: ["XLM", "USDC"] });
     expect(await resolve("USDC")).toMatchObject({ ok: false, reason: "payer_no_trustline" });
+  });
+
+  it("tells apart a payer who holds the asset's code from another issuer", async () => {
+    holdings({ [PAYER]: ["XLM"], [TREASURY]: ["XLM", "USDC"] });
+    holdsOtherIssuer.mockResolvedValue(true);
+    expect(await resolve("USDC")).toMatchObject({ ok: false, reason: "payer_other_issuer" });
+    expect(holdsOtherIssuer).toHaveBeenCalledWith(PAYER, "USDC");
+  });
+
+  it("does not look for another issuer's asset when the payer holds the right one", async () => {
+    await resolve("USDC");
+    expect(holdsOtherIssuer).not.toHaveBeenCalled();
   });
 
   it("does not ask about a payer trustline for XLM, which needs none", async () => {

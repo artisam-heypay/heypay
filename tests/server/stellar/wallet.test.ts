@@ -277,3 +277,60 @@ describe("WalletService.listIncomingPayments", () => {
     expect(builder.cursor).toHaveBeenCalledWith("c0");
   });
 });
+
+describe("WalletService.holdsOtherIssuer", () => {
+  // Circle's testnet issuer is the default; any other issuer's USDC is a different asset.
+  const OURS = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+  const OTHER = "GCKFBEIYV2U22IO2BJ4KVJOIP7XPWQGQFKKWXR6DOSJBV7STMAQSMTGG";
+  const native = { asset_type: "native", balance: "20.0000000" };
+  const usdc = (issuer: string, balance: string) => ({
+    asset_type: "credit_alphanum4",
+    asset_code: "USDC",
+    asset_issuer: issuer,
+    balance,
+  });
+  const holding = (...balances: unknown[]) =>
+    createWalletService(
+      fakeServer({ loadAccount: vi.fn().mockResolvedValue({ balances }) }),
+      PASSPHRASE,
+    );
+
+  it("is true when the account holds USDC from an issuer that is not ours", async () => {
+    const svc = holding(native, usdc(OTHER, "20.0000000"));
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(true);
+  });
+
+  it("is true even when the account also holds ours", async () => {
+    const svc = holding(native, usdc(OURS, "0.5000000"), usdc(OTHER, "20.0000000"));
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(true);
+  });
+
+  it("is false when the only USDC is ours", async () => {
+    const svc = holding(native, usdc(OURS, "50.0000000"));
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(false);
+  });
+
+  it("is false for an empty trustline to another issuer: nothing is held", async () => {
+    const svc = holding(native, usdc(OTHER, "0.0000000"));
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(false);
+  });
+
+  it("is false for XLM, which has no issuer, without asking Horizon", async () => {
+    const loadAccount = vi.fn();
+    const svc = createWalletService(fakeServer({ loadAccount }), PASSPHRASE);
+    expect(await svc.holdsOtherIssuer("GABC", "XLM")).toBe(false);
+    expect(loadAccount).not.toHaveBeenCalled();
+  });
+
+  it("is false for an account that does not exist yet", async () => {
+    const svc = createWalletService(
+      fakeServer({
+        loadAccount: vi
+          .fn()
+          .mockRejectedValue({ name: "NotFoundError", response: { status: 404 } }),
+      }),
+      PASSPHRASE,
+    );
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(false);
+  });
+});

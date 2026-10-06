@@ -25,9 +25,11 @@ export type RouteRefusal =
   /** The escrow is on for this asset but no instance is deployed for it. */
   | "no_escrow"
   /** The escrow instance set for this asset holds a different one. */
-  | "asset_mismatch"
+  | "escrow_holds_other_asset"
   /** The payer's account holds no trustline for the asset. */
   | "payer_no_trustline"
+  /** No trustline for the asset, but the payer holds its code from another issuer. */
+  | "payer_other_issuer"
   /** The destination cannot hold the asset, and converting it is not possible. */
   | "destination_no_trustline"
   /** The asset would have to be converted, and the DEX has no route for the amount. */
@@ -80,7 +82,7 @@ export async function resolveSettlementRoute(input: {
     escrowId = escrowContractId(asset);
     if (!escrowId) return refuse("no_escrow");
     // The payment must be held, released and refunded in the asset it was paid in.
-    if (!(await escrowHoldsAsset(asset))) return refuse("asset_mismatch");
+    if (!(await escrowHoldsAsset(asset))) return refuse("escrow_holds_other_asset");
   }
 
   const deposit = await rail.getDepositAddress(asset);
@@ -89,7 +91,12 @@ export async function resolveSettlementRoute(input: {
     isIssuedAsset(asset) ? walletService.canReceive(payerPublicKey, asset) : true,
     walletService.canReceive(deposit.address, asset),
   ]);
-  if (!payerHolds) return refuse("payer_no_trustline");
+  if (!payerHolds) {
+    // "USDC" from another issuer is a different asset. Turning on HeyPay's USDC
+    // would not make it spendable, so the payer is not sent to do that.
+    const lookalike = await walletService.holdsOtherIssuer(payerPublicKey, asset);
+    return refuse(lookalike ? "payer_other_issuer" : "payer_no_trustline");
+  }
   if (destinationHolds) {
     return {
       ok: true,

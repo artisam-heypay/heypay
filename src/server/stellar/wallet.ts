@@ -36,6 +36,12 @@ export interface WalletService {
   getBalances(publicKey: string, assets?: readonly PaymentAsset[]): Promise<AssetBalance[]>;
   /** Whether `publicKey` exists and, for an issued asset, trusts its issuer. */
   canReceive(publicKey: string, asset: PaymentAsset): Promise<boolean>;
+  /**
+   * Whether `publicKey` holds an asset with `asset`'s code from another issuer.
+   * That is a different asset: it shows as "USDC" in other wallets, but it is
+   * not the USDC HeyPay accepts and cannot pay here.
+   */
+  holdsOtherIssuer(publicKey: string, asset: PaymentAsset): Promise<boolean>;
   sendAsset(input: {
     encryptedSecret: string;
     destination: string;
@@ -263,6 +269,24 @@ export function createWalletService(
         return findBalance(balances, asset) !== undefined;
       } catch (e) {
         if (isNotFound(e)) return false; // account doesn't exist on this network
+        throw e;
+      }
+    },
+
+    async holdsOtherIssuer(publicKey, asset) {
+      if (!isIssuedAsset(asset)) return false; // XLM has no issuer to differ
+      const issuer = assetIssuer(asset);
+      try {
+        const account = await srv().loadAccount(publicKey);
+        const balances = account.balances as HorizonBalance[];
+        return balances.some(
+          (b) =>
+            b.asset_code === assetCode(asset) &&
+            b.asset_issuer !== issuer &&
+            dec(b.balance).greaterThan(0),
+        );
+      } catch (e) {
+        if (isNotFound(e)) return false;
         throw e;
       }
     },

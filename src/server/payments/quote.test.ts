@@ -8,21 +8,31 @@ import type { PaymentAsset } from "@/lib/assets";
 const RATES: Record<PaymentAsset, string> = { XLM: "12", USDT: "58", USDC: "62.34" };
 const XLM_ESCROW = "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J";
 const USDC_ESCROW = "CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG";
-const { getDepositAddress, canReceive, getQuote, findStrictSendPaths, escrowHoldsAsset } =
-  vi.hoisted(() => ({
-    getDepositAddress: vi.fn(async (_asset: string) => ({ address: "GTREASURY", memo: null })),
-    canReceive: vi.fn(async (_pk: string, _asset: string) => true),
-    getQuote: vi.fn(),
-    findStrictSendPaths: vi.fn(),
-    escrowHoldsAsset: vi.fn(async (_asset: string) => true),
-  }));
+const {
+  getDepositAddress,
+  canReceive,
+  holdsOtherIssuer,
+  getQuote,
+  findStrictSendPaths,
+  escrowHoldsAsset,
+} = vi.hoisted(() => ({
+  getDepositAddress: vi.fn(async (_asset: string) => ({ address: "GTREASURY", memo: null })),
+  canReceive: vi.fn(async (_pk: string, _asset: string) => true),
+  holdsOtherIssuer: vi.fn(async (_pk: string, _asset: string) => false),
+  getQuote: vi.fn(),
+  findStrictSendPaths: vi.fn(),
+  escrowHoldsAsset: vi.fn(async (_asset: string) => true),
+}));
 
 vi.mock("@/server/stellar/escrow", () => ({
   escrowHoldsAsset: (asset: string) => escrowHoldsAsset(asset),
 }));
 
 vi.mock("@/server/stellar/wallet", () => ({
-  walletService: { canReceive: (pk: string, a: string) => canReceive(pk, a) },
+  walletService: {
+    canReceive: (pk: string, a: string) => canReceive(pk, a),
+    holdsOtherIssuer: (pk: string, a: string) => holdsOtherIssuer(pk, a),
+  },
 }));
 
 vi.mock("@/server/stellar/paths", () => ({
@@ -58,6 +68,7 @@ beforeEach(async () => {
   getQuote.mockImplementation(liveQuote);
   findStrictSendPaths.mockResolvedValue([]);
   escrowHoldsAsset.mockResolvedValue(true);
+  holdsOtherIssuer.mockResolvedValue(false);
   await resetDb();
 });
 afterEach(() => {
@@ -189,8 +200,8 @@ describe("createQuote", () => {
       }),
     ).rejects.toMatchObject({
       status: 400,
-      message: "HeyPay cannot receive USDC payments right now.",
-      details: { reason: "destination_no_trustline" },
+      message: "This shop is paid in a different currency. Pay with XLM instead.",
+      details: { reason: "asset_mismatch", cause: "destination", asset: "USDC", payWith: "XLM" },
     });
     expect(canReceive).toHaveBeenCalledWith("GTREASURY", "USDC");
     expect(await db.payment.count()).toBe(0);
@@ -272,7 +283,7 @@ describe("createQuote (settlement route preflight)", () => {
     findStrictSendPaths.mockResolvedValue([{ destAmount: dec("9.7684000"), path: [] }]);
     await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
       status: 400,
-      details: { reason: "destination_no_trustline" },
+      details: { reason: "asset_mismatch", cause: "destination" },
     });
     expect(await db.payment.count()).toBe(0);
   });
@@ -444,9 +455,84 @@ describe("createQuote (USDC edge cases)", () => {
     await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
       status: 400,
       message: "This shop is paid in a different currency. Pay with XLM instead.",
-      details: { reason: "asset_mismatch", asset: "USDC", payWith: "XLM" },
+      details: { reason: "asset_mismatch", cause: "escrow", asset: "USDC", payWith: "XLM" },
     });
     await expectNothingMoved(wallet.id, "50.0000000", "10.0000000");
+  });
+
+  it("asset mismatch: the payer's USDC is from another issuer, with ours never turned on", async () => {
+    const { user, wallet } = await makePayer({ cachedXlm: "10.0000000" });
+    const { merchant } = await makeMerchant();
+    canReceive.mockImplementation(async (pk: string) => pk !== wallet.stellarPublicKey);
+    holdsOtherIssuer.mockResolvedValue(true);
+
+    await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
+      status: 400,
+      message: "This shop is paid in a different currency. Pay with XLM instead.",
+      details: { reason: "asset_mismatch", cause: "payer_issuer", asset: "USDC", payWith: "XLM" },
+    });
+    expect(holdsOtherIssuer).toHaveBeenCalledWith(wallet.stellarPublicKey, "USDC");
+    await expectNothingMoved(wallet.id, "0.0000000", "10.0000000");
+  });
+
+  it("asset mismatch: too little of our USDC, but another issuer's in the wallet", async () => {
+    const { user, wallet } = await makePayer({
+      cachedXlm: "10.0000000",
+      assets: { USDC: { cached: "0.5000000" } },
+    });
+    const { merchant } = await makeMerchant();
+    holdsOtherIssuer.mockResolvedValue(true);
+
+    await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
+      status: 400,
+      message: "This shop is paid in a different currency. Pay with XLM instead.",
+      details: { reason: "asset_mismatch", cause: "payer_issuer" },
+    });
+    await expectNothingMoved(wallet.id, "0.5000000", "10.0000000");
+  });
+
+  it("asset mismatch: the treasury cannot receive USDC", async () => {
+    const { user, wallet } = await makePayer({
+      cachedXlm: "10.0000000",
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    const { merchant } = await makeMerchant();
+    canReceive.mockImplementation(async (pk: string) => pk !== "GTREASURY");
+
+    await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
+      status: 400,
+      message: "This shop is paid in a different currency. Pay with XLM instead.",
+      details: { reason: "asset_mismatch", cause: "destination", asset: "USDC", payWith: "XLM" },
+    });
+    await expectNothingMoved(wallet.id, "50.0000000", "10.0000000");
+  });
+
+  it("a treasury that cannot take XLM is an outage, not a mismatch", async () => {
+    const { user } = await makePayer({ cachedXlm: "100.0000000" });
+    const { merchant } = await makeMerchant();
+    canReceive.mockImplementation(async (pk: string) => pk !== "GTREASURY");
+
+    await expect(
+      createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "HeyPay cannot receive XLM payments right now.",
+      details: { reason: "destination_no_trustline", asset: "XLM" },
+    });
+  });
+
+  it("insufficient balance stands when the chain cannot be asked about other issuers", async () => {
+    const { user } = await makePayer({
+      cachedXlm: "10.0000000",
+      assets: { USDC: { cached: "1.0000000" } },
+    });
+    const { merchant } = await makeMerchant();
+    holdsOtherIssuer.mockRejectedValue(new Error("horizon down"));
+
+    await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
+      status: 409,
+      details: { reason: "insufficient_balance" },
+    });
   });
 
   it("insufficient balance: says to add USDC or pay with XLM", async () => {
