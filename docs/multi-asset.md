@@ -173,6 +173,29 @@ supply we control, but an asset nobody else holds and an empty order book.
 asset's instance. Changing `USDC_ASSET_ISSUER` needs a new instance, because the
 deployed one holds that issuer's USDC only.
 
+With `ESCROW_ENABLED=true` a USDC payment is held by that instance from the
+payer's confirmation to the payout's result, and it stays USDC throughout:
+
+- **Deposit.** The settle job deposits the USDC amount, signed by the payer's
+  wallet. The escrow holds USDC only, so no fee goes into it.
+- **Release.** Once the merchant is paid, the contract pays the treasury in USDC.
+- **Refund.** If the payout fails, the contract's `refund` returns the same USDC
+  to the payer, and the payer's USDC balance is credited. After the deadline the
+  payer can take it back themselves with `refund_after_timeout`. Neither refund
+  can come back as XLM: an instance pays out only its own token.
+- **Fees.** They are XLM for every asset and are not refunded. The base fee
+  (0.00001 XLM) is reserved at confirm as before. The deposit's Soroban fee is
+  only known once it lands, so the quote and the confirm step require the
+  estimate (`ESCROW_FEE_ESTIMATE_XLM`, 0.2 XLM) to be available in XLM, and the
+  real fee is debited afterwards. That fee includes the base fee, so the two
+  XLM entries add up to what the chain charged (0.0652119 XLM on Testnet).
+- **Stuck refunds.** A refund that did not finish stays `REFUND_PENDING`; the
+  reconcile job runs the settle job again, which asks the same instance.
+
+The hashes of a settled and a refunded USDC payment are in
+[contracts/escrow/README.md](../contracts/escrow/README.md#usdc-payments-from-the-settle-job).
+USDT has no escrow instance and still goes straight to the treasury.
+
 **DEX depth.** `node scripts/seed-dex-offers.mjs` prints the USDC/XLM order book
 and the best strict-send route in each direction, and exits 1 when 10 XLM to
 USDC or 1 USDC to XLM has no route. Checked on 2026-10-05:
@@ -275,7 +298,8 @@ is XLM. `Payment.networkFeeXlm` remains XLM by definition.
 - `tests/server/stellar/assets.test.ts` — issuer resolution, impostor rejection.
 - `tests/integration/wallet-trustline.test.ts` — trustline API, reserve check.
 - `src/server/payments/quote.test.ts` — USDT quoting, per-asset balance checks.
-- `src/server/queue/jobs/settle.test.ts` — USDT settlement, split debits, refunds.
+- `src/server/queue/jobs/settle.test.ts` — USDT settlement, split debits, refunds;
+  USDC held, released and refunded by the USDC escrow.
 - `tests/server/rails/pdax-insti.test.ts` — deposit-address lookup, tag-as-memo,
   USDC quoting and per-pair quantity steps.
 - `tests/server/stellar/usdt.integration.test.ts` — **live testnet**: mint, trust,

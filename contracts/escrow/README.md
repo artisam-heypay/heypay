@@ -98,7 +98,8 @@ can only move them to the treasury or back to the payer.
 ## In the app
 
 With `ESCROW_ENABLED=true`, the settle job (`src/server/queue/jobs/settle.ts`)
-holds the crypto leg of an XLM payment in this contract:
+holds the crypto leg of an XLM or USDC payment in this contract. Each asset
+has its own instance, and `escrowFor(payment.asset)` picks it for every call:
 
 1. `AUTHORIZED → STELLAR_SUBMITTED`: `deposit`, signed by the payer's custodial
    wallet, under job id `sha256(payment.id)` (stored as `Payment.escrowJobId`).
@@ -156,7 +157,14 @@ app waits for the bank's answer instead of refunding, as described above.
 deposit, the settle job calls `set_timeout` if the contract's window differs.
 Leave it empty to keep the contract's own window.
 
-USDC payments keep the direct treasury path until the escrow holds USDC (D2).
+A USDC payment goes through the USDC instance in the same four steps, and
+stays USDC throughout: the deposit holds the USDC amount, `release` pays the
+treasury in USDC, and `refund` or `refund_after_timeout` returns USDC to the
+payer. The network fees are always XLM and are never refunded. The deposit's
+Soroban fee is debited from the payer's XLM balance once it has landed, so a
+USDC payer needs about 0.2 XLM available (`ESCROW_FEE_ESTIMATE_XLM`), which the
+quote and the confirm step check. USDT has no escrow instance and keeps the
+direct treasury path.
 
 ## Setup
 
@@ -221,8 +229,8 @@ stellar contract invoke --id CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73
 
 Holds Testnet USDC (`ESCROW_CONTRACT_ID_USDC`). Deployed with
 `ESCROW_ASSET=USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 pnpm escrow:deploy:treasury`.
-`escrowFor("USDC")` in `src/server/stellar/escrow.ts` returns its client; the
-settle job still escrows XLM payments only.
+`escrowFor("USDC")` in `src/server/stellar/escrow.ts` returns its client, and
+the settle job holds every USDC payment in it.
 
 | Field       | Value                                                                                                                                                                   |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -319,6 +327,36 @@ Payments made on the deployed app on 2026-10-02 against the app contract
 - **Forced payout failure.** Run with `PAYMENT_RAIL=mock` and
   `MOCK_FAIL_PHP_AMOUNT=17.51`: the mock payout failed and the settle job
   called `refund`, returning the funds to the payer.
+
+### USDC payments from the settle job
+
+Two USDC payments run on 2026-10-06 through the app's quote, confirm and settle
+code against the USDC instance `CAR76EFU…66EG`, with `ESCROW_ENABLED=true`,
+`PAYMENT_RAIL=mock` and `MOCK_FAIL_PHP_AMOUNT=17.51`. Payer: a new custodial
+wallet `GD7AT6DA3E4X5F4O7AX7YSSXQWA4J56Q2NZJX7HBJMIWCJIEH2VJP5FK`, funded by
+Friendbot; treasury (admin): `GDZ2BQPZ…KLIN37`. Job ids are
+`sha256(payment.id)`, shortened here.
+
+| Call                  | Payment        | Job id      | Amount                   | Signed by | Tx                                                                                                                         |
+| --------------------- | -------------- | ----------- | ------------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `change_trust` (USDC) | —              | —           | —                        | Payer     | [`5078998c…`](https://stellar.expert/explorer/testnet/tx/5078998c73510c2c34268218a62ba7a2f519cd46556217a1a95acee1df1f2560) |
+| path payment          | —              | —           | 5 XLM for 4.7178180 USDC | Payer     | [`d98c0beb…`](https://stellar.expert/explorer/testnet/tx/d98c0bebc1482aa393ad6a91932b147ec53a80d95f6cf173ce6171f14c1744fe) |
+| `deposit`             | `TXN-HXAOWQLQ` | `8c4a5f23…` | 1 USDC                   | Payer     | [`41aec35b…`](https://stellar.expert/explorer/testnet/tx/41aec35bb7475c55235c70cd86a354ddf2ec6e03727cc98bc0d2801dc26b6c1e) |
+| `release`             | `TXN-HXAOWQLQ` | `8c4a5f23…` | 1 USDC                   | Treasury  | [`57ad29a3…`](https://stellar.expert/explorer/testnet/tx/57ad29a3fe787b36c2af3475aa4d1aaee5d2e198309a41aec6663e8d6ce188e7) |
+| `deposit`             | `TXN-SUV7L5HU` | `003cd4a3…` | 0.3018966 USDC           | Payer     | [`f20e2cad…`](https://stellar.expert/explorer/testnet/tx/f20e2cad85b40590b3799bab8c248b83b747ef7fc3210a4ac2b547800583b9f7) |
+| `refund`              | `TXN-SUV7L5HU` | `003cd4a3…` | 0.3018966 USDC           | Treasury  | [`2b0c9a73…`](https://stellar.expert/explorer/testnet/tx/2b0c9a7332c5c93e6c5f66523ffcc4b995ec7ac0ef2ec0cb76322f1aafe9e88e) |
+
+- **Deposit and release.** ₱58.00 at the mock rate of ₱58 per USDC. The payout
+  was paid and the payment ended `SETTLED`; Horizon shows 1 USDC moving from
+  the payer to the contract, then from the contract to the treasury.
+- **Forced payout failure.** ₱17.51: the mock payout failed and the settle job
+  called `refund` on the USDC instance. The payment ended `REFUNDED`, and
+  Horizon shows the same 0.3018966 USDC going back from the contract to the
+  payer.
+- **Fees.** Each deposit charged the payer 0.0652119 XLM, recorded as a
+  0.00001 XLM network fee and a 0.0652019 XLM escrow fee. After both payments
+  the app's cached balances equalled the chain: 9994.8695562 XLM and
+  3.7178180 USDC.
 
 ## License
 
