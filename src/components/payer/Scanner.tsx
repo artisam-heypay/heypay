@@ -158,7 +158,12 @@ export function Scanner() {
   return (
     <div className="flex flex-col gap-stack-md">
       <ScanFrame>
-        <video ref={videoRef} className="h-full w-full object-cover" playsInline muted />
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-cover"
+          playsInline
+          muted
+        />
       </ScanFrame>
       <canvas ref={canvasRef} className="hidden" />
 
