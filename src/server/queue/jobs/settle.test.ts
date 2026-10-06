@@ -34,7 +34,6 @@ const { escrow, escrowFor } = vi.hoisted(() => {
 });
 vi.mock("@/server/stellar/escrow", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/server/stellar/escrow")>()),
-  escrowService: escrow,
   escrowFor: (asset: string) => escrowFor(asset),
 }));
 
@@ -919,6 +918,73 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     expect(credits[0]!.stellarTxHash).toBe("ESCROWREFUND-X");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.cachedXlmBalance.toFixed(7)).toBe("100.0000000");
+  });
+
+  it("refunds a failed USDC payment from the USDC escrow, in USDC", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "USDCDEPOSIT-X" });
+    escrow.refund.mockResolvedValue({ txHash: "USDCREFUND-X" });
+    escrow.getFeeCharged.mockResolvedValue(dec("0.1060597"));
+    mockHappyRail();
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "INVALID_DESTINATION" });
+
+    const { wallet, payment } = await makeAuthorizedUsdc();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("REFUNDED");
+    expect(final.refundTxHash).toBe("USDCREFUND-X");
+    // A contract call on the USDC instance: the treasury sends nothing itself.
+    expect(escrow.refund.mock.calls[0]![0].equals(escrowJobId(payment.id))).toBe(true);
+    expect(escrowFor.mock.calls.every(([asset]) => asset === "USDC")).toBe(true);
+    expect(escrow.release).not.toHaveBeenCalled();
+    expect(sendAsset).not.toHaveBeenCalled();
+
+    const credits = await db.walletTransaction.findMany({
+      where: { walletId: wallet.id, type: "REFUND_CREDIT" },
+    });
+    expect(credits).toHaveLength(1);
+    expect(credits[0]!.asset).toBe("USDC");
+    expect(credits[0]!.amount.toFixed(7)).toBe("1.6039000");
+    expect(credits[0]!.stellarTxHash).toBe("USDCREFUND-X");
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.cached.toFixed(7)).toBe("50.0000000"); // debited, then restored
+    expect(usdc.reserved.toFixed(7)).toBe("0.0000000");
+    // The XLM spent on the deposit's fees is not returned, and no XLM is credited.
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.cachedXlmBalance.toFixed(7)).toBe("9.8939403");
+  });
+
+  it("resumes a USDC refund left unfinished, once the earlier attempt has expired", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "USDCDEPOSIT-S" });
+    // The first refund is cut off without an answer, so its claim stays.
+    escrow.refund.mockRejectedValueOnce(new Error("soroban rpc unavailable"));
+    mockHappyRail();
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "INVALID_DESTINATION" });
+
+    const { wallet, payment } = await makeAuthorizedUsdc();
+    const stuck = await drive(payment.id);
+    expect(stuck.status).toBe("REFUND_PENDING");
+    expect(escrow.refund).toHaveBeenCalledTimes(1); // reruns wait for the claim to expire
+
+    // What the reconcile job does for a stuck refund: run the settle job again.
+    await db.payment.update({
+      where: { id: payment.id },
+      data: { refundSubmittedAt: new Date(Date.now() - 6 * 60_000) },
+    });
+    escrow.refund.mockResolvedValue({ txHash: "USDCREFUND-S" });
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    const final = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(final.status).toBe("REFUNDED");
+    expect(final.refundTxHash).toBe("USDCREFUND-S");
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.cached.toFixed(7)).toBe("50.0000000");
+    expect(
+      await db.walletTransaction.count({ where: { walletId: wallet.id, type: "REFUND_CREDIT" } }),
+    ).toBe(1);
   });
 
   it("treats NotHeld on a refund rerun as done, without crediting twice", async () => {

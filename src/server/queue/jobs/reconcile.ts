@@ -120,6 +120,7 @@ async function reconcilePayments(): Promise<{ checked: number; drift: number }> 
         metadata: {
           reference: p.reference,
           localStatus: p.status,
+          asset: p.asset,
           ...finding,
           ...(p.escrowJobId && { escrowJobId: p.escrowJobId }),
         },

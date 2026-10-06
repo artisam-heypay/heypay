@@ -12,7 +12,6 @@ import {
 import {
   escrowFor,
   escrowJobId,
-  escrowService,
   EscrowContractError,
   EscrowTxFailedError,
   type EscrowService,
@@ -884,7 +883,11 @@ async function stepRefund(p: PaymentWithRels): Promise<void> {
 // crypto to the payer (`refund`, signed by the treasury as the escrow admin). A
 // payment its payer already took back with `refund_after_timeout` arrives here
 // with that refund's hash saved, and is only confirmed and closed.
+//
+// The refund is asked of the instance that holds the payment's asset, and an
+// instance pays out only its own token: a USDC payment comes back as USDC.
 async function stepRefundEscrow(p: PaymentWithRels): Promise<void> {
+  const escrow = escrowFor(p.asset);
   const jobId = escrowJob(p);
   let txHash = p.refundTxHash;
   // Cancelled at the escrow deadline: the crypto is the payer's to take back.
@@ -907,10 +910,10 @@ async function stepRefundEscrow(p: PaymentWithRels): Promise<void> {
     });
     if (claimed.count === 0) return; // another job is refunding it
     try {
-      txHash = (await escrowService.refund(jobId)).txHash;
+      txHash = (await escrow.refund(jobId)).txHash;
     } catch (err) {
       if (err instanceof EscrowContractError && err.code === "NotHeld") {
-        const job = await escrowService.getJob(jobId);
+        const job = await escrow.getJob(jobId);
         // Released means the treasury has the crypto; a person has to refund it.
         if (job?.status !== "Refunded") throw err;
         // An earlier attempt refunded it but never saved the hash.

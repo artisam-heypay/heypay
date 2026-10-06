@@ -32,6 +32,7 @@ async function makeInFlightPayment(opts: {
   payoutRef?: string;
   ageMs?: number; // how far in the past updatedAt sits (default: fresh)
   escrowJobId?: string;
+  asset?: "USDC";
 }) {
   const { user } = await makePayer();
   const { merchant } = await makeMerchant();
@@ -40,6 +41,7 @@ async function makeInFlightPayment(opts: {
       reference: newPaymentReference(),
       payerId: user.id,
       merchantId: merchant.id,
+      asset: opts.asset ?? "XLM",
       amountPhp: "100.00",
       quotedRate: "12.00000000",
       amountAsset: "8.3333334",
@@ -181,6 +183,28 @@ describe("processReconcileJob — payout leg (missed-webhook fallback)", () => {
       where: { action: "reconcile.payment_drift", target: payment.id },
     });
     expect(log.metadata).toMatchObject({ railState: "stuck", escrowJobId: "cd".repeat(32) });
+  });
+
+  it("re-drives a USDC payment stuck mid-refund, naming its asset", async () => {
+    const payment = await makeInFlightPayment({
+      status: "REFUND_PENDING",
+      ageMs: 5 * 60_000,
+      escrowJobId: "ef".repeat(32),
+      asset: "USDC",
+    });
+
+    const res = await processReconcileJob();
+
+    expect(res.paymentDrift).toBe(1);
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
+    const log = await db.auditLog.findFirstOrThrow({
+      where: { action: "reconcile.payment_drift", target: payment.id },
+    });
+    expect(log.metadata).toMatchObject({
+      asset: "USDC",
+      railState: "stuck",
+      escrowJobId: "ef".repeat(32),
+    });
   });
 
   it("re-drives a stale PAYOUT_SUBMITTED payment whose payout failed", async () => {

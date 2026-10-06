@@ -286,11 +286,10 @@ export function createEscrowService(
   };
 }
 
-export const escrowService: EscrowService = createEscrowService();
-
 /**
  * The escrow instance that holds `asset`. Each instance holds one token, so a
- * USDC job lives in a different contract from an XLM one. Throws when the asset
+ * USDC job lives in a different contract from an XLM one, and every call for a
+ * payment goes through here with that payment's asset. Throws when the asset
  * has no escrow; a missing contract ID fails the first call that needs it.
  */
 export function escrowFor(asset: PaymentAsset): EscrowService {
