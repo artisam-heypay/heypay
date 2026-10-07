@@ -62,7 +62,15 @@ enum MerchantStatus {
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
-  passwordHash String                      // argon2id
+  // Lowercase. Null for accounts made before email sign-up and for seeded or
+  // scripted logins, which sign in by username.
+  email           String?   @unique
+  // Every stored email was confirmed first: by the sign-up code or by Google.
+  emailVerifiedAt DateTime?
+  // Google's stable account id (the ID token's `sub`). Set once the account has
+  // signed in with Google.
+  googleSub       String?   @unique
+  passwordHash String?                     // argon2id; null for a Google-only account
   role         Role
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -74,6 +82,25 @@ model User {
   paymentsMade Payment[] @relation("PayerPayments")
   auditLogs    AuditLog[]
   faucetClaim  FaucetClaim?
+}
+
+/// An email sign-up waiting for its one-time code. The User row is only created
+/// once the code is confirmed, so an unconfirmed address never owns an account.
+/// The row belongs to the browser that started it (tokenHash of a cookie): a
+/// code sent for someone else's attempt cannot confirm this one.
+model PendingSignup {
+  id           String   @id @default(cuid())
+  tokenHash    String   @unique
+  email        String
+  passwordHash String                      // argon2id
+  role         Role
+  codeHash     String                      // sha256 over tokenHash + the 6-digit code
+  attempts     Int      @default(0)        // codes tried against the current code
+  expiresAt    DateTime                    // of the current code
+  lastSentAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  @@index([email])
+  @@index([expiresAt])
 }
 
 model Session {

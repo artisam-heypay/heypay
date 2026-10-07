@@ -2,31 +2,36 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { db } from "@/server/db";
-import { hashPassword, verifyPassword, DUMMY_PASSWORD_HASH } from "@/server/auth/password";
+import { AppError } from "@/lib/errors";
+import { verifyPassword, DUMMY_PASSWORD_HASH } from "@/server/auth/password";
+import { findUserByLogin } from "@/server/auth/accounts";
 import { createSession, destroySession, getSessionUser } from "@/server/auth/sessions";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { audit } from "@/server/auth/audit";
+import {
+  resendSignupCode,
+  signupCodeSchema,
+  signupSchema,
+  startSignup,
+  verifySignup,
+} from "@/server/auth/signup";
 import { captureUserEvent } from "@/server/observability/analytics";
-import { walletService } from "@/server/stellar/wallet";
 import { dashboardPath } from "@/lib/auth-redirect";
 
-export type AuthState = { error?: string };
+export type AuthState = { error?: string; notice?: string };
 
+// `username` also takes the account's email (see findUserByLogin).
 const loginSchema = z.object({
-  username: z.string().min(1).max(64),
+  username: z.string().trim().min(1).max(254),
   password: z.string().min(1).max(200),
 });
 
-const signupSchema = z.object({
-  username: z
-    .string()
-    .min(3)
-    .max(32)
-    .regex(/^[a-zA-Z0-9_.]+$/, "Letters, numbers, dot or underscore only"),
-  password: z.string().min(8, "At least 8 characters").max(200),
-  role: z.enum(["PAYER", "MERCHANT"]),
-});
+// The sign-up service refuses with an AppError whose message is written for
+// the person signing up. Anything else is a fault and goes to the error page.
+function refusal(err: unknown): AuthState {
+  if (err instanceof AppError) return { error: err.message };
+  throw err;
+}
 
 async function requestMeta() {
   const h = await headers();
@@ -40,7 +45,7 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
     username: formData.get("username"),
     password: formData.get("password"),
   });
-  if (!parsed.success) return { error: "Enter your username and password." };
+  if (!parsed.success) return { error: "Enter your email or username, and your password." };
 
   const { ip, userAgent } = await requestMeta();
   try {
@@ -49,10 +54,13 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
     return { error: "Too many attempts. Please wait a moment and try again." };
   }
 
-  const user = await db.user.findUnique({ where: { username: parsed.data.username } });
+  const user = await findUserByLogin(parsed.data.username);
   const ok =
-    !!user && user.isActive && (await verifyPassword(user.passwordHash, parsed.data.password));
-  if (!user) await verifyPassword(DUMMY_PASSWORD_HASH, parsed.data.password); // timing equalization
+    !!user?.passwordHash &&
+    user.isActive &&
+    (await verifyPassword(user.passwordHash, parsed.data.password));
+  // Timing equalization: unknown users and Google-only accounts (no password) verify too.
+  if (!user?.passwordHash) await verifyPassword(DUMMY_PASSWORD_HASH, parsed.data.password);
 
   if (!ok) {
     await audit({
@@ -62,7 +70,7 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
       ip,
     });
     if (user) captureUserEvent("user_login_failed", user, { active: user.isActive });
-    return { error: "Invalid username or password." };
+    return { error: "Invalid email, username or password." };
   }
 
   await createSession(user.id, { ip, userAgent });
@@ -71,49 +79,45 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
   redirect(dashboardPath(user.role)); // throws NEXT_REDIRECT — must be outside try/catch
 }
 
+// Step one of email sign-up: emails a 6-digit code, then shows the page that asks for it.
 export async function signupAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const parsed = signupSchema.safeParse({
-    username: formData.get("username"),
+    email: formData.get("email"),
     password: formData.get("password"),
     role: formData.get("role"),
   });
   if (!parsed.success)
     return { error: parsed.error.issues[0]?.message ?? "Check your details and try again." };
 
-  const { ip, userAgent } = await requestMeta();
   try {
-    const signupLimit = Number(process.env.SIGNUP_RATE_LIMIT ?? "5");
-    await rateLimit(`signup:ip:${ip}`, { limit: signupLimit, windowSec: 3600 });
-  } catch {
-    return { error: "Too many sign-up attempts. Please try again later." };
+    await startSignup(parsed.data, await requestMeta());
+  } catch (err) {
+    return refusal(err);
   }
+  redirect("/signup/verify"); // throws NEXT_REDIRECT — must be outside try/catch
+}
 
-  const exists = await db.user.findUnique({ where: { username: parsed.data.username } });
-  if (exists) return { error: "Username is not available." };
+// Step two: the emailed code creates the account and signs it in.
+export async function verifySignupAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const parsed = signupCodeSchema.safeParse({ code: formData.get("code") });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the code." };
 
-  const passwordHash = await hashPassword(parsed.data.password);
-  const user = await db.$transaction(async (tx) => {
-    const created = await tx.user.create({
-      data: { username: parsed.data.username, passwordHash, role: parsed.data.role },
-    });
-    if (parsed.data.role === "PAYER") {
-      const wallet = walletService.generate(); // Phase 3 contract; mocked in CI until built
-      await tx.custodialWallet.create({
-        data: {
-          userId: created.id,
-          stellarPublicKey: wallet.publicKey,
-          encryptedSecret: wallet.encryptedSecret,
-          secretKeyVersion: wallet.secretKeyVersion,
-        },
-      });
-    }
-    return created;
-  });
-
-  await createSession(user.id, { ip, userAgent });
-  await audit({ actorId: user.id, action: "auth.signup", target: user.id, ip });
-  captureUserEvent("user_signed_up", user);
+  let user;
+  try {
+    user = await verifySignup(parsed.data.code, await requestMeta());
+  } catch (err) {
+    return refusal(err);
+  }
   redirect(dashboardPath(user.role));
+}
+
+export async function resendSignupCodeAction(): Promise<AuthState> {
+  try {
+    await resendSignupCode(await requestMeta());
+  } catch (err) {
+    return refusal(err);
+  }
+  return { notice: "We sent a new code. The earlier one no longer works." };
 }
 
 export async function logoutAction(): Promise<void> {
