@@ -24,6 +24,20 @@ describe("HeroBalanceCard", () => {
     expect(screen.getByRole("link", { name: /Send/ })).toHaveAttribute("href", "/payer/scan");
   });
 
+  it("offers Swap only when the wallet lists USDC", () => {
+    const { unmount } = render(<HeroBalanceCard holdings={holdings} live={false} />);
+    expect(screen.getByRole("link", { name: /Swap/ })).toHaveAttribute("href", "/payer/swap");
+    unmount();
+
+    render(
+      <HeroBalanceCard
+        live={false}
+        holdings={{ ...holdings, tokens: holdings.tokens.filter((t) => t.asset === "XLM") }}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: /Swap/ })).not.toBeInTheDocument();
+  });
+
   it("shows a dash and a caveat when a held token has no rate", () => {
     render(
       <HeroBalanceCard

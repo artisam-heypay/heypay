@@ -298,6 +298,76 @@ and removed in
 [`8373f408…`](https://stellar.expert/explorer/testnet/tx/8373f408faec8921ccbdf309fa265eafd917761340c53982c8ca157182311f84);
 no HeyPay offers are open now.
 
+## Swapping XLM and USDC
+
+The **Swap** page (`/payer/swap`, linked from the dashboard once USDC is an
+enabled asset) converts XLM to USDC or USDC to XLM inside the payer's own
+wallet. A swap is one path payment from the wallet to itself, filled on the
+Stellar DEX; nothing passes through the treasury or the escrow. A wallet without
+the USDC trustline is shown the **Turn on USDC** card in place of the form.
+
+The payer types an amount of the asset they are giving up and sees a quote that
+is asked for again every 15 seconds. The two directions use the two kinds of
+path payment:
+
+| Direction   | Operation                     | What is fixed                         | What the quote shows                  |
+| ----------- | ----------------------------- | ------------------------------------- | ------------------------------------- |
+| XLM to USDC | `path_payment_strict_send`    | The XLM spent: exactly what was typed | "You get about", "Minimum received"   |
+| USDC to XLM | `path_payment_strict_receive` | The XLM received: exactly the minimum | "You pay at most", "Minimum received" |
+
+The minimum is the DEX's current answer for the amount (`findStrictSendPaths`)
+less 1%, rounded down. Confirming sends the two numbers the payer saw, the most
+to spend and the least to receive, and `executeSwap`
+(`src/server/payer/swap.ts`) looks for a route that still honours them. If the
+DEX no longer offers that, the swap is refused with "The price changed" and a
+new quote, and no transaction is sent. A strict receive delivers exactly the
+minimum and spends only the USDC that takes, so a little of what was typed can
+stay in the wallet.
+
+Balances are a ledger, so a swap is written into it the way a payment is:
+
+- The amount and the 0.00001 XLM fee are held before the transaction is sent.
+- XLM the network keeps locked (the account's minimum balance, 1.5 XLM with a
+  USDC trustline, plus anything its open offers are selling) cannot be swapped.
+  The network would refuse it only after charging the fee, so it is refused
+  first, with the most that can be swapped.
+- What moved is read back from Horizon, since a strict send can deliver more
+  than its minimum and a strict receive can spend less than its maximum. Three
+  `SWAP` entries record it: what was spent, what was received, and the fee. The
+  transaction hash is unique on `WalletTransaction`, so the first entry carries
+  it and the other two name it in their memo.
+- A swap the network took and failed (the price moved in the seconds between
+  the check and the ledger) converted nothing but was charged the fee. One
+  `SWAP` entry debits that fee, so the wallet's XLM still matches the chain.
+- A swap that never reached a ledger frees its holds and records nothing. If
+  Horizon cannot say whether it went through, the holds stay and the error is
+  reported, so the wallet cannot spend what the swap may have spent.
+
+**Recent swaps** on the page lists each swap with both amounts and a link to its
+transaction on Stellar Expert; `GET /api/wallet/transactions` returns the same
+entries.
+
+Both directions on Testnet, swapped on the page at phone width on 2026-10-07
+from wallet `GA6TYZN5ZKWWCHD3G2VTPFRBO7B7HQBJYHWYXR45YM553TIXQ6BPVI53`:
+
+| Direction   | Spent          | Received       | Transaction                                                                                                                                 |
+| ----------- | -------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| XLM to USDC | 10.0000000 XLM | 9.4243887 USDC | [`3d8f0cd5…`](https://stellar.expert/explorer/testnet/tx/3d8f0cd56c3168712d2fef7c2b17dfdd2ab93c5e9dc0c47c1008369a9f4e1b23) (strict send)    |
+| USDC to XLM | 0.9900000 USDC | 6.0284982 XLM  | [`bd9e350d…`](https://stellar.expert/explorer/testnet/tx/bd9e350d8b5ac134470c7b950b01987eb9832b46d76849f2cba7c43291e05cc1) (strict receive) |
+
+The wallet's `change_trust` for USDC is
+[`7452b4ce…`](https://stellar.expert/explorer/testnet/tx/7452b4ce765d2ce4ab0b01bd02a8ac0168c701551b837dc62bd68f4439755e40).
+The two prices differ for the reason given under
+[DEX depth](#testnet-usdc-issuer-escrow-and-dex-depth): Testnet liquidity is
+whatever was last posted.
+
+The same pair was run through `executeSwap` from a script, from wallet
+`GAOWUQ2DS63B6UJUIXRUURS5GPWJ57O3SBC7N5N2B77R2RRW4MAKC3G5`
+([`62a8306f…`](https://stellar.expert/explorer/testnet/tx/62a8306fadce116d7c813f9bd8d972516bbfa7a42754a39e1691936b0654e61d),
+[`5bf3a735…`](https://stellar.expert/explorer/testnet/tx/5bf3a735367b9c5f56e7fe2a0f1ced3425e64d2e56627a3753617135127d8848)),
+to compare the ledger with the chain afterwards. They agreed to the stroop:
+9996.0284682 XLM and 8.4343933 USDC.
+
 ## Trustlines are automatic
 
 Stellar cannot be talked out of requiring a trustline: the network rejects an
@@ -369,6 +439,10 @@ is XLM. `Payment.networkFeeXlm` remains XLM by definition.
 - `src/server/payments/confirm.test.ts` — the same refusals at confirm.
 - `src/components/payer/ConfirmPayment.test.tsx` — the message and the next step
   the confirm screen shows for each.
+- `src/server/payer/swap.test.ts` — swap quotes, both directions, the refusals,
+  and the ledger after a swap that worked, failed or could not be confirmed.
+- `src/components/payer/SwapPanel.test.tsx` — the Turn on USDC card, the live
+  quote in each direction and the link to the transaction.
 - `src/server/queue/jobs/settle.test.ts` — USDT settlement, split debits, refunds;
   USDC held, released and refunded by the USDC escrow.
 - `tests/server/rails/pdax-insti.test.ts` — deposit-address lookup, tag-as-memo,

@@ -43,6 +43,7 @@ enum WalletTxType {
   PAYMENT_DEBIT
   REFUND_CREDIT
   ADJUSTMENT
+  SWAP // one asset converted into another inside the wallet (a path payment to itself)
 }
 
 enum FaucetClaimStatus {
