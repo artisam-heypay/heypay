@@ -32,6 +32,17 @@ describe("parseSender", () => {
     });
   });
 
+  it("reads a value that still has its quotes around it", () => {
+    expect(parseSender('"HeyPay <hello@heypay.test>"')).toEqual({
+      name: "HeyPay",
+      email: "hello@heypay.test",
+    });
+    expect(parseSender("'hello@heypay.test'")).toEqual({
+      name: "HeyPay",
+      email: "hello@heypay.test",
+    });
+  });
+
   it("refuses text with no address in it", () => {
     expect(parseSender("")).toBeNull();
     expect(parseSender("HeyPay")).toBeNull();

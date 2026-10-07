@@ -27,7 +27,10 @@ export const emailNotSent = (): AppError =>
   new AppError("EMAIL_NOT_SENT", "We could not send the email. Please try again.", 502);
 
 /** `HeyPay <hello@example.com>` or a bare address, as Brevo's sender object. */
-export function parseSender(from: string): { name: string; email: string } | null {
+export function parseSender(raw: string): { name: string; email: string } | null {
+  // A value pasted into a hosting dashboard with its quotes still on is taken
+  // literally there: "HeyPay <hello@example.com>" arrives with the quotes.
+  const from = raw.trim().replace(/^(["'])(.*)\1$/, "$2");
   const named = from.match(/^\s*"?([^"<]*?)"?\s*<\s*([^<>\s]+@[^<>\s]+)\s*>\s*$/);
   if (named) return { name: named[1]?.trim() || DEFAULT_SENDER_NAME, email: named[2]! };
   const bare = from.trim();
