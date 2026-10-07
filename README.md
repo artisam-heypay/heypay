@@ -36,7 +36,7 @@ Everything below is implemented and running:
 
 **Auth & accounts**
 
-- Sign-up by email and password, confirmed with a 6-digit code emailed through Brevo before the account is created, or with Google (`src/server/auth/signup.ts`, `src/server/auth/google.ts`, `src/server/email/send.ts`). Accounts made before this, the seeded admin and scripted logins (`pnpm user:create`) sign in by username.
+- Sign-up by email, a username of the person's own choosing and a password, confirmed with a 6-digit code emailed through Brevo before the account is created, or with Google (`src/server/auth/signup.ts`, `src/server/auth/google.ts`, `src/server/email/send.ts`). Accounts made before this, the seeded admin and scripted logins (`pnpm user:create`) sign in by username.
 - Login by email or username with argon2id hashing, timing-safe dummy-hash comparison, IP + account rate limiting and lockout, and server-side sessions (`src/app/api/auth/*`, `src/server/auth/*`).
 - CSRF protection via same-origin checks on all mutating routes (`src/server/auth/csrf.ts`) and role-based route access enforced in `src/proxy.ts` (Next.js middleware).
 - Audit logging of security-relevant actions (`src/server/auth/audit.ts`).

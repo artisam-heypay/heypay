@@ -62,6 +62,20 @@ export function SignupForm({ googleEnabled, emailEnabled, notice }: Props) {
               autoComplete="email"
               required
             />
+            <div className="flex flex-col gap-stack-sm">
+              <FloatingInput
+                id="username"
+                name="username"
+                label="Username"
+                autoComplete="username"
+                maxLength={32}
+                pattern="[a-zA-Z0-9_.]{3,32}"
+                required
+              />
+              <p className="text-body-sm text-on-surface-variant">
+                3 to 32 letters, numbers, dots or underscores. This is the name HeyPay shows.
+              </p>
+            </div>
             <FloatingInput
               id="password"
               name="password"

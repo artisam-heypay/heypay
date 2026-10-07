@@ -35,9 +35,20 @@ const STALE_AFTER_MS = 60 * 60 * 1000;
 
 const SIGNUP_EXPIRED = "Your sign-up has expired. Please start again.";
 const EMAIL_TAKEN = "An account with this email already exists. Sign in instead.";
+const USERNAME_TAKEN = "That username is taken. Choose another one.";
+const USERNAME_TAKEN_SINCE =
+  "That username has just been taken. Start again and choose another one.";
 
 export const signupSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email address").max(254),
+  // No "@", so a username can never be mistaken for an email at sign-in.
+  username: z
+    .string()
+    .trim()
+    .regex(
+      /^[a-zA-Z0-9_.]{3,32}$/,
+      "Choose a username of 3 to 32 letters, numbers, dots or underscores",
+    ),
   password: z.string().min(8, "At least 8 characters").max(200),
   role: z.enum(["PAYER", "MERCHANT"]),
 });
@@ -120,6 +131,11 @@ export async function startSignup(input: SignupInput, meta: RequestMeta): Promis
 
   const taken = await db.user.findUnique({ where: { email: input.email }, select: { id: true } });
   if (taken) throw conflict(EMAIL_TAKEN);
+  const nameTaken = await db.user.findUnique({
+    where: { username: input.username },
+    select: { id: true },
+  });
+  if (nameTaken) throw conflict(USERNAME_TAKEN);
 
   // Also caps how many emails a stranger can have sent to one address.
   await rateLimit(`signup:code:${input.email}`, {
@@ -150,6 +166,7 @@ export async function startSignup(input: SignupInput, meta: RequestMeta): Promis
     data: {
       tokenHash,
       email: input.email,
+      username: input.username,
       passwordHash,
       role: input.role,
       codeHash: hashCode(tokenHash, code),
@@ -234,9 +251,16 @@ export async function verifySignup(code: string, meta: RequestMeta): Promise<Use
       select: { id: true },
     });
     if (taken) throw conflict(EMAIL_TAKEN);
+    // So may the username: nothing holds it while the code is on its way.
+    const nameTaken = await tx.user.findUnique({
+      where: { username: pending.username },
+      select: { id: true },
+    });
+    if (nameTaken) throw conflict(USERNAME_TAKEN_SINCE);
 
     return createVerifiedAccount(tx, {
       email: pending.email,
+      username: pending.username,
       role: pending.role as SignupRole,
       passwordHash: pending.passwordHash,
     });

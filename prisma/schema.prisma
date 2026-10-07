@@ -92,6 +92,9 @@ model PendingSignup {
   id           String   @id @default(cuid())
   tokenHash    String   @unique
   email        String
+  // What the person asked to be called. Not held for them: it is checked
+  // again when the code is confirmed.
+  username     String
   passwordHash String                      // argon2id
   role         Role
   codeHash     String                      // sha256 over tokenHash + the 6-digit code

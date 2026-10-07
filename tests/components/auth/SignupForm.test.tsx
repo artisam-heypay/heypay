@@ -16,6 +16,14 @@ describe("SignupForm", () => {
     expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
   });
 
+  it("asks for a username of its own, next to the email", () => {
+    render(<SignupForm googleEnabled emailEnabled notice={null} />);
+    const username = screen.getByLabelText(/^Username/);
+    expect(username).toBeRequired();
+    expect(username).toHaveAttribute("name", "username");
+    expect(username).not.toBe(screen.getByLabelText("Email"));
+  });
+
   it("sends Google the role the person picked", async () => {
     render(<SignupForm googleEnabled emailEnabled notice={null} />);
     expect(google()).toHaveAttribute("href", "/api/auth/google/start?role=PAYER");
@@ -27,6 +35,7 @@ describe("SignupForm", () => {
     render(<SignupForm googleEnabled emailEnabled={false} notice={null} />);
     expect(google()).toBeInTheDocument();
     expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Username/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Password/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create account" })).not.toBeInTheDocument();
     expect(screen.queryByText(/or use your email/i)).not.toBeInTheDocument();

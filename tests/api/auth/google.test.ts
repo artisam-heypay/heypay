@@ -122,6 +122,15 @@ describe("Google sign-in", () => {
       expect(body.get("code_verifier")).toBe(FLOW.verifier);
     });
 
+    it("names the account after its email, with a suffix when that name is taken", async () => {
+      await db.user.create({ data: { username: "ana", passwordHash: "x", role: "MERCHANT" } });
+      startedFlow("MERCHANT");
+      googleAnswers();
+      await callback();
+      const user = await db.user.findUniqueOrThrow({ where: { email: "ana@example.com" } });
+      expect(user.username).toMatch(/^ana_[0-9a-f]{4}$/);
+    });
+
     it("signs a returning Google account in without making a second one", async () => {
       startedFlow("PAYER");
       googleAnswers();

@@ -54,7 +54,12 @@ function lastCode(): string {
 /** A 6-digit code that is not `code`. */
 const wrong = (code: string) => (code === "000000" ? "000001" : "000000");
 
-const PAYER = { email: "Ana@Example.com", password: "supersecret1", role: "PAYER" };
+const PAYER = {
+  email: "Ana@Example.com",
+  username: "Ana_Reyes",
+  password: "supersecret1",
+  role: "PAYER",
+};
 
 describe("email sign-up", () => {
   beforeEach(async () => {
@@ -80,7 +85,8 @@ describe("email sign-up", () => {
     await start(PAYER);
     const res = await verify(lastCode());
     expect(res.status).toBe(201);
-    expect((await res.json()).user).toMatchObject({ username: "ana", role: "PAYER" });
+    // The username is the one typed, not one made from the email.
+    expect((await res.json()).user).toMatchObject({ username: "Ana_Reyes", role: "PAYER" });
 
     const user = await db.user.findUniqueOrThrow({ where: { email: "ana@example.com" } });
     expect(user.emailVerifiedAt).toBeInstanceOf(Date);
@@ -97,15 +103,22 @@ describe("email sign-up", () => {
     expect(await db.custodialWallet.count()).toBe(0);
   });
 
-  it("gives a second account with the same name before the @ its own username", async () => {
-    // Merchants, because the mocked wallet service hands every payer the same address.
-    await start({ ...PAYER, role: "MERCHANT" });
-    await verify(lastCode());
-    cookieJar.clear();
-    await start({ ...PAYER, role: "MERCHANT", email: "ana@other.example" });
+  it("refuses a username that already has an account, before any email is sent", async () => {
+    await db.user.create({ data: { username: "Ana_Reyes", passwordHash: "x", role: "MERCHANT" } });
+    const res = await start(PAYER);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.message).toMatch(/username is taken/);
+    expect(sent).not.toHaveBeenCalled();
+    expect(await db.pendingSignup.count()).toBe(0);
+  });
+
+  it("refuses the code when the username was taken while it was on its way", async () => {
+    await start(PAYER);
+    await db.user.create({ data: { username: "Ana_Reyes", passwordHash: "x", role: "MERCHANT" } });
     const res = await verify(lastCode());
-    const { user } = await res.json();
-    expect(user.username).toMatch(/^ana_[0-9a-f]{4}$/);
+    expect(res.status).toBe(409);
+    expect(await db.user.count({ where: { email: "ana@example.com" } })).toBe(0);
+    expect(cookieJar.get(SESSION_COOKIE)).toBeUndefined();
   });
 
   it("refuses a wrong code and creates nothing", async () => {
@@ -200,6 +213,16 @@ describe("email sign-up", () => {
     expect((await start({ ...PAYER, role: "ADMIN" })).status).toBe(400);
     expect((await start({ ...PAYER, password: "123" })).status).toBe(400);
     expect((await start({ ...PAYER, email: "not-an-email" })).status).toBe(400);
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing, short or oddly spelled username with 400", async () => {
+    const { username: _none, ...noUsername } = PAYER;
+    expect((await start(noUsername)).status).toBe(400);
+    expect((await start({ ...PAYER, username: "an" })).status).toBe(400);
+    expect((await start({ ...PAYER, username: "ana reyes" })).status).toBe(400);
+    // An email is not a username: the two are kept apart.
+    expect((await start({ ...PAYER, username: "ana@example.com" })).status).toBe(400);
     expect(sent).not.toHaveBeenCalled();
   });
 });

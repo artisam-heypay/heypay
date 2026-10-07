@@ -83,6 +83,7 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
 export async function signupAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const parsed = signupSchema.safeParse({
     email: formData.get("email"),
+    username: formData.get("username"),
     password: formData.get("password"),
     role: formData.get("role"),
   });

@@ -25,9 +25,9 @@ export async function findUserByLogin(identifier: string): Promise<User | null> 
 }
 
 /**
- * Email and Google accounts never choose a username, but every account has one
- * (it is what the app shows). This takes the part before the "@" and adds a
- * short suffix when that name is taken.
+ * A Google sign-up never asks for a username, but every account has one (it is
+ * what the app shows). This takes the part before the "@" and adds a short
+ * suffix when that name is taken.
  */
 async function usernameFor(tx: Prisma.TransactionClient, email: string): Promise<string> {
   const base = (email.split("@")[0] ?? "")
@@ -52,11 +52,18 @@ async function usernameFor(tx: Prisma.TransactionClient, email: string): Promise
  */
 export async function createVerifiedAccount(
   tx: Prisma.TransactionClient,
-  input: { email: string; role: SignupRole; passwordHash?: string; googleSub?: string },
+  input: {
+    email: string;
+    role: SignupRole;
+    /** The one chosen on the sign-up form. Left out, one is made from the email. */
+    username?: string;
+    passwordHash?: string;
+    googleSub?: string;
+  },
 ): Promise<User> {
   const user = await tx.user.create({
     data: {
-      username: await usernameFor(tx, input.email),
+      username: input.username ?? (await usernameFor(tx, input.email)),
       email: input.email,
       emailVerifiedAt: new Date(),
       passwordHash: input.passwordHash ?? null,
