@@ -18,7 +18,7 @@ vi.mock("ioredis", () => ({
   default: vi.fn().mockImplementation(() => ({ quit: vi.fn(async () => {}) })),
 }));
 
-import { QUEUE_NAMES, enqueueSettle } from "./queues";
+import { QUEUE_NAMES, enqueueSettle, enqueueWalletActivation } from "./queues";
 
 describe("queues", () => {
   beforeEach(async () => {
@@ -49,7 +49,13 @@ describe("queues", () => {
       settle: "settle",
       depositPoll: "deposit-poll",
       reconcile: "reconcile",
+      walletActivate: "wallet-activate",
     });
+  });
+
+  it("enqueueWalletActivation queues one job per payer", async () => {
+    await enqueueWalletActivation("user_1");
+    expect(add).toHaveBeenCalledWith("activate", { userId: "user_1" }, { jobId: "user_1" });
   });
 
   it("enqueueSettle uses jobId `${paymentId}-${status}` for idempotency", async () => {

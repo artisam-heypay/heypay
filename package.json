@@ -29,6 +29,7 @@
     "escrow:deploy:treasury": "scripts/escrow-deploy-treasury.sh",
     "docs:guide": "tsx scripts/render-testing-guide.ts",
     "faucet": "node --conditions=react-server --import tsx scripts/faucet.ts",
+    "wallet:sponsor": "node --conditions=react-server --import tsx scripts/wallet-sponsor.ts",
     "user:create": "node --conditions=react-server --import tsx scripts/create-user.ts"
   },
   "dependencies": {

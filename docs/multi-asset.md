@@ -386,6 +386,28 @@ Stellar Expert. That hash is kept in `WalletBalance.trustlineTxHash` for both
 the manual and the automatic path; a trustline that already existed on-chain
 before HeyPay saw it has no hash and shows no link.
 
+### On from sign-up, on a sponsored reserve
+
+With `WALLET_SPONSOR_SECRET_ENC` set, a new payer does not wait to be funded.
+Sign-up queues a `wallet-activate` job, and the worker sends one transaction
+from the sponsor account that creates the wallet's account and adds the
+trustline of every enabled issued asset inside a sponsorship
+(`begin_sponsoring_future_reserves` … `end_sponsoring_future_reserves`), signed
+by the sponsor and the wallet.
+
+The reserve the network asks for, 1 XLM for the account and 0.5 XLM for each
+trustline, stays locked in the sponsor's balance. The wallet is created with
+0 XLM, so the reserve is not in the payer's balance, on-chain or in HeyPay, and
+the payer cannot spend it. What the payer deposits later is all theirs to
+spend: none of it is held back as a minimum balance. The sponsor also pays the
+fee.
+
+The job runs one at a time (one sponsor account, one sequence number), is
+retried by the queue, and does nothing for an account that already holds its
+trustlines. If it never succeeds, the wallet falls back to the path above.
+Wallets created before the variable was set are not touched. `pnpm
+wallet:sponsor status` shows how much of the sponsor's XLM is still free.
+
 ## Deploying it
 
 Same variables. The two that need real answers before enabling USDT on mainnet:

@@ -16,6 +16,7 @@ import { badRequest, conflict, tooManyRequests } from "@/lib/errors";
 import type { User } from "@/generated/prisma/client";
 import { sendEmail, type Email } from "@/server/email/send";
 import { captureUserEvent } from "@/server/observability/analytics";
+import { requestWalletActivation } from "@/server/wallet/activation";
 import { createVerifiedAccount, type SignupRole } from "./accounts";
 import { audit } from "./audit";
 import { hashPassword } from "./password";
@@ -240,6 +241,7 @@ export async function verifySignup(code: string, meta: RequestMeta): Promise<Use
       passwordHash: pending.passwordHash,
     });
   });
+  await requestWalletActivation(user);
 
   // Attempts for the same address from other browsers are now dead ends.
   await db.pendingSignup.deleteMany({ where: { email: pending.email } });

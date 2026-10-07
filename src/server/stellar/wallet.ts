@@ -28,6 +28,15 @@ export type AssetBalance = { asset: PaymentAsset; balance: Decimal; trustline: b
 
 export type TrustlineResult = { txHash: string | null; alreadyEstablished: boolean };
 
+export type SponsoredActivation = {
+  /** Null when the account already held every trustline and nothing was sent. */
+  txHash: string | null;
+  /** Whether the transaction created the account. */
+  created: boolean;
+  /** The assets whose trustline the transaction added. */
+  trustlines: PaymentAsset[];
+};
+
 /** The two ways a path payment fixes its amounts. */
 export type SwapLeg =
   /** Spend exactly `sendAmount`; receive at least `destMin`. */
@@ -149,6 +158,18 @@ export interface WalletService {
     asset: PaymentAsset;
     limit?: string;
   }): Promise<TrustlineResult>;
+  /**
+   * Adds the trustlines the wallet lacks for `assets`, creating its account
+   * first when the network has none, all paid for by the sponsor: the reserves
+   * stay locked in the sponsor's balance (sponsored reserves) and the sponsor
+   * pays the fee. The wallet receives no XLM, so nothing is added to what its
+   * owner holds or can spend. A no-op when no trustline is missing.
+   */
+  activateSponsored(input: {
+    sponsorEncryptedSecret: string;
+    encryptedSecret: string;
+    assets: readonly PaymentAsset[];
+  }): Promise<SponsoredActivation>;
   confirmTx(txHash: string): Promise<boolean>;
   listIncomingPayments(
     publicKey: string,
@@ -583,6 +604,53 @@ export function createWalletService(
       return { txHash, alreadyEstablished: false };
     },
 
+    async activateSponsored({ sponsorEncryptedSecret, encryptedSecret, assets }) {
+      const sponsor = Keypair.fromSecret(decryptSecret(sponsorEncryptedSecret));
+      const wallet = Keypair.fromSecret(decryptSecret(encryptedSecret));
+      const walletKey = wallet.publicKey();
+
+      let created = false;
+      let held: HorizonBalance[] = [];
+      try {
+        held = (await srv().loadAccount(walletKey)).balances as HorizonBalance[];
+      } catch (e) {
+        if (!isNotFound(e)) throw e;
+        created = true;
+      }
+      const trustlines = assets.filter((a) => isIssuedAsset(a) && !findBalance(held, a));
+      if (trustlines.length === 0) return { txHash: null, created: false, trustlines };
+
+      // Everything between begin and end is the sponsor's to pay reserve for.
+      // The sponsor is the transaction's source, so it pays the fee as well.
+      const account = await srv().loadAccount(sponsor.publicKey());
+      const baseFee = await srv().fetchBaseFee();
+      const builder = new TransactionBuilder(account, {
+        fee: String(baseFee),
+        networkPassphrase: net(),
+      }).addOperation(Operation.beginSponsoringFutureReserves({ sponsoredId: walletKey }));
+      if (created) {
+        // A sponsored account needs no starting balance: it is created empty.
+        builder.addOperation(
+          Operation.createAccount({ destination: walletKey, startingBalance: "0" }),
+        );
+      }
+      for (const asset of trustlines) {
+        builder.addOperation(
+          Operation.changeTrust({ asset: resolveStellarAsset(asset), source: walletKey }),
+        );
+      }
+      // Closing the sponsorship is the wallet's consent to it, so it signs too.
+      builder.addOperation(Operation.endSponsoringFutureReserves({ source: walletKey }));
+      const tx = builder.setTimeout(TX_TIMEOUT_SECONDS).build();
+      tx.sign(sponsor, wallet);
+      try {
+        const res = await srv().submitTransaction(tx);
+        return { txHash: res.hash, created, trustlines };
+      } catch (e) {
+        rethrowStellarError(e);
+      }
+    },
+
     async confirmTx(txHash) {
       for (let attempt = 0; attempt < CONFIRM_MAX_ATTEMPTS; attempt++) {
         try {
@@ -616,10 +684,13 @@ export function createWalletService(
         // Stellar records as create_account (not payment) — must be treated as incoming too.
         if (rec.type === "create_account") {
           if (rec.account !== publicKey) continue;
+          const startingBalance = dec(rec.starting_balance!);
+          // A sponsored account is created empty: nothing was deposited.
+          if (startingBalance.isZero()) continue;
           items.push({
             id: rec.id,
             asset: "XLM",
-            amount: dec(rec.starting_balance!),
+            amount: startingBalance,
             from: rec.funder!,
             txHash: rec.transaction_hash,
             createdAt: new Date(rec.created_at),

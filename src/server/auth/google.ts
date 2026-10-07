@@ -14,6 +14,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { db } from "@/server/db";
 import type { User } from "@/generated/prisma/client";
+import { requestWalletActivation } from "@/server/wallet/activation";
 import { createVerifiedAccount, normalizeEmail, type SignupRole } from "./accounts";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -194,5 +195,6 @@ export async function resolveGoogleAccount(
   const user = await db.$transaction((tx) =>
     createVerifiedAccount(tx, { email: profile.email, role, googleSub: profile.sub }),
   );
+  await requestWalletActivation(user);
   return { kind: "signed_in", user, created: true };
 }
