@@ -179,6 +179,13 @@ the escrow instance named in `escrowId`, or straight to the treasury when the
 escrow does not apply, and it stays that asset end to end. The escrow that will
 hold the payment is recorded on the `QUOTED` payment event.
 
+The order of these checks and the meaning of each refusal are in the MIT
+package [`@heypay/settlement-route`](../packages/settlement-route/README.md),
+which has no dependencies and can be reused outside HeyPay.
+`src/server/payments/settlement-route.ts` gives it HeyPay's answers: the payout
+rail's deposit address, Horizon through the wallet service, the escrow
+instances and the DEX path finder.
+
 The resolver also reports a `path` route (convert to XLM on the DEX with
 `findStrictSendPaths`) when the destination takes only XLM and the asset is not
 escrowed. The settle job does not run converting payments, so `createQuote`

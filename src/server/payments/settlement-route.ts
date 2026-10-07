@@ -2,14 +2,17 @@
 //
 // Whether a payment in a given asset can settle, decided at quote time.
 //
-// Everything checked here is something the network would otherwise refuse only
-// after the payer has confirmed, or would get wrong: an escrow that is not
-// deployed for the asset or holds a different one, a payer account that could
-// not take the asset back in a refund, a destination that cannot hold the
-// asset, or a DEX with no route when the asset would have to be converted on
-// the way.
+// The order of the checks and what each refusal means live in the MIT package
+// `@heypay/settlement-route` (packages/settlement-route). This file gives it
+// HeyPay's answers: the payout rail's deposit address, Horizon through the
+// wallet service, the escrow instances and the DEX path finder.
 import "server-only";
 import type { Asset } from "@stellar/stellar-sdk";
+import {
+  createSettlementRouteResolver,
+  type SettlementPath as Path,
+  type SettlementRoute as Route,
+} from "@heypay/settlement-route";
 import type { Decimal } from "@/lib/money";
 import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { rail } from "@/server/rails";
@@ -18,118 +21,26 @@ import { escrowHoldsAsset } from "@/server/stellar/escrow";
 import { escrowAppliesTo, escrowContractId } from "@/server/stellar/escrow-config";
 import { findStrictSendPaths } from "@/server/stellar/paths";
 
-/** The asset every destination can receive: any existing account accepts XLM. */
-const FALLBACK_ASSET: PaymentAsset = "XLM";
-
-export type RouteRefusal =
-  /** The escrow is on for this asset but no instance is deployed for it. */
-  | "no_escrow"
-  /** The escrow instance set for this asset holds a different one. */
-  | "escrow_holds_other_asset"
-  /** The payer's account holds no trustline for the asset. */
-  | "payer_no_trustline"
-  /** No trustline for the asset, but the payer holds its code from another issuer. */
-  | "payer_other_issuer"
-  /** The destination cannot hold the asset, and converting it is not possible. */
-  | "destination_no_trustline"
-  /** The asset would have to be converted, and the DEX has no route for the amount. */
-  | "no_dex_path";
-
-export type SettlementPath =
-  | {
-      /** The destination receives the payer's own asset. */
-      mode: "direct";
-      settlementAsset: PaymentAsset;
-      destination: string;
-      memo: string | null;
-    }
-  | {
-      /** The asset is converted on the DEX in the transaction that delivers it. */
-      mode: "path";
-      settlementAsset: PaymentAsset;
-      destination: string;
-      memo: string | null;
-      /** How much of `settlementAsset` the amount buys along `path` right now. */
-      destAmount: Decimal;
-      path: Asset[];
-    };
-
-export type SettlementRoute =
-  | { ok: true; reason: null; escrowId: string | null; route: SettlementPath }
-  | { ok: false; reason: RouteRefusal; escrowId: string | null; route: null };
+export type { RouteRefusal } from "@heypay/settlement-route";
+export type SettlementPath = Path<PaymentAsset, Decimal, Asset>;
+export type SettlementRoute = Route<PaymentAsset, Decimal, Asset>;
 
 /**
  * How `amount` of `asset` from `payerPublicKey` would settle, or why it cannot.
  * `escrowId` is the contract that holds the crypto until the payout is known,
  * or null when the payment goes straight to the destination.
  */
-export async function resolveSettlementRoute(input: {
-  asset: PaymentAsset;
-  /** How much of `asset` the payer sends. */
-  amount: Decimal;
-  payerPublicKey: string;
-}): Promise<SettlementRoute> {
-  const { asset, amount, payerPublicKey } = input;
-  let escrowId: string | null = null;
-  const refuse = (reason: RouteRefusal): SettlementRoute => ({
-    ok: false,
-    reason,
-    escrowId,
-    route: null,
-  });
-
-  if (escrowAppliesTo(asset)) {
-    escrowId = escrowContractId(asset);
-    if (!escrowId) return refuse("no_escrow");
-    // The payment must be held, released and refunded in the asset it was paid in.
-    if (!(await escrowHoldsAsset(asset))) return refuse("escrow_holds_other_asset");
-  }
-
-  const deposit = await rail.getDepositAddress(asset);
-  const [payerHolds, destinationHolds] = await Promise.all([
-    // A refund returns the same asset, so the payer must still be able to hold it.
-    isIssuedAsset(asset) ? walletService.canReceive(payerPublicKey, asset) : true,
-    walletService.canReceive(deposit.address, asset),
-  ]);
-  if (!payerHolds) {
-    // "USDC" from another issuer is a different asset. Turning on HeyPay's USDC
-    // would not make it spendable, so the payer is not sent to do that.
-    const lookalike = await walletService.holdsOtherIssuer(payerPublicKey, asset);
-    return refuse(lookalike ? "payer_other_issuer" : "payer_no_trustline");
-  }
-  if (destinationHolds) {
-    return {
-      ok: true,
-      reason: null,
-      escrowId,
-      route: {
-        mode: "direct",
-        settlementAsset: asset,
-        destination: deposit.address,
-        memo: deposit.memo,
-      },
-    };
-  }
-
-  // The escrow releases its own token to the destination, so an escrowed asset
-  // cannot be converted on the way: the destination has to hold it.
-  if (escrowId || asset === FALLBACK_ASSET) return refuse("destination_no_trustline");
-  if (!(await walletService.canReceive(deposit.address, FALLBACK_ASSET))) {
-    return refuse("destination_no_trustline");
-  }
-  const [best] = await findStrictSendPaths(asset, FALLBACK_ASSET, amount);
-  if (!best) return refuse("no_dex_path");
-  return {
-    ok: true,
-    reason: null,
-    escrowId,
-    route: {
-      mode: "path",
-      settlementAsset: FALLBACK_ASSET,
-      destination: deposit.address,
-      memo: deposit.memo,
-      destAmount: best.destAmount,
-      path: best.path,
-    },
-  };
-}
+export const resolveSettlementRoute = createSettlementRouteResolver<PaymentAsset, Decimal, Asset>({
+  // Any existing account accepts XLM.
+  fallbackAsset: "XLM",
+  isIssuedAsset,
+  getDepositAddress: (asset) => rail.getDepositAddress(asset),
+  canReceive: (account, asset) => walletService.canReceive(account, asset),
+  holdsOtherIssuer: (account, asset) => walletService.holdsOtherIssuer(account, asset),
+  findStrictSendPaths: (from, to, amount) => findStrictSendPaths(from, to, amount),
+  escrow: {
+    appliesTo: escrowAppliesTo,
+    contractId: escrowContractId,
+    holdsAsset: (asset) => escrowHoldsAsset(asset),
+  },
+});
