@@ -54,7 +54,37 @@ async function askUnseen(question: string): Promise<string> {
   const answer = await new Promise<string>((resolve) => rl.once("line", resolve));
   rl.close();
   process.stderr.write("\n");
-  return answer.trim().replace(/^(["'])(.*)\1$/, "$2");
+  return answer;
+}
+
+/**
+ * The key out of whatever was pasted: a whole `ENCRYPTION_MASTER_KEY="…"` line
+ * copied from a dashboard's raw editor is as likely as the bare value.
+ */
+function keyFromPaste(pasted: string): string {
+  return pasted
+    .trim()
+    .replace(/^(export\s+)?ENCRYPTION_MASTER_KEY\s*=\s*/, "")
+    .replace(/\s+#.*$/, "")
+    .replace(/^(["'])(.*)\1$/, "$2")
+    .replace(/\s+/g, "");
+}
+
+/** Why a pasted value is not a key, said without repeating any of it. */
+function whyNotAKey(key: string): string {
+  if (!key) return "Nothing was pasted.";
+  if (/^\$\{\{.*\}\}$/.test(key)) {
+    return "That is a reference to another variable (${{ … }}), not the key. Open the variable it points to and copy that value.";
+  }
+  if (/^[•*●·.]+$/.test(key)) {
+    return "That is a hidden value (dots or stars). Reveal the variable first, then copy it.";
+  }
+  const body = key.replace(/^base64:/, "");
+  const bytes = Buffer.from(body, "base64").length;
+  return (
+    `What was pasted is ${key.length} characters${key.startsWith("base64:") ? ', starting "base64:",' : ""} and holds ${bytes} bytes. ` +
+    'A key holds exactly 32 bytes: 44 characters ending in "=", usually after "base64:".'
+  );
 }
 
 async function create(): Promise<void> {
@@ -62,9 +92,23 @@ async function create(): Promise<void> {
     throw new Error("create funds the account with friendbot, which is testnet-only");
   }
   if (process.argv.includes("--ask-key")) {
-    process.env.ENCRYPTION_MASTER_KEY = await askUnseen(
-      "Paste the ENCRYPTION_MASTER_KEY of the environment this is for, then press Enter (it will not show): ",
+    const local = keyFromPaste(process.env.ENCRYPTION_MASTER_KEY ?? "");
+    const key = keyFromPaste(
+      await askUnseen(
+        "Paste the ENCRYPTION_MASTER_KEY of the environment this is for, then press Enter (it will not show): ",
+      ),
     );
+    if (Buffer.from(key.replace(/^base64:/, ""), "base64").length !== 32) {
+      throw new Error(`${whyNotAKey(key)} No account was created.`);
+    }
+    if (key.replace(/^base64:/, "") === local.replace(/^base64:/, "")) {
+      throw new Error(
+        "That is the same key as this machine's, so the WALLET_SPONSOR_SECRET_ENC already in .env opens there too. " +
+          "No new one is needed, and no account was created. If sign-ups are still not sponsored, check that the " +
+          "variable is set on both the web and the worker service and that the change was deployed.",
+      );
+    }
+    process.env.ENCRYPTION_MASTER_KEY = key;
   }
   // Fail on a missing or malformed key now, not after an account has been made
   // whose secret could then never be handed over.
