@@ -25,11 +25,14 @@ export function SwapPanel({
   balances,
   usdcOn,
   trustlineTxUrl = null,
+  testnet = false,
 }: {
   /** What the wallet can spend of each asset, 7dp strings. */
   balances: Record<SwapAsset, string>;
   usdcOn: boolean;
   trustlineTxUrl?: string | null;
+  /** On Testnet the DEX is not a market, and the payer is told so. */
+  testnet?: boolean;
 }) {
   const router = useRouter();
   const [on, setOn] = useState(usdcOn);
@@ -50,14 +53,16 @@ export function SwapPanel({
       </Card>
     );
   }
-  return <SwapForm balances={balances} onSwapped={() => router.refresh()} />;
+  return <SwapForm balances={balances} testnet={testnet} onSwapped={() => router.refresh()} />;
 }
 
 function SwapForm({
   balances,
+  testnet,
   onSwapped,
 }: {
   balances: Record<SwapAsset, string>;
+  testnet: boolean;
   onSwapped: () => void;
 }) {
   const [from, setFrom] = useState<SwapAsset>("XLM");
@@ -207,6 +212,16 @@ function SwapForm({
           )
         )}
       </div>
+
+      {testnet && (
+        <p className="flex items-start gap-stack-sm text-body-sm text-on-surface-variant">
+          <Icon name="info" />
+          <span>
+            Testnet prices are not market prices. Each direction is filled from whatever test offers
+            exist, so the two rates may not match each other or the real price.
+          </span>
+        </p>
+      )}
 
       <Button
         type="button"

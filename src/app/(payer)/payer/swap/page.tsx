@@ -44,6 +44,8 @@ export default async function PayerSwapPage() {
   const available = (asset: "XLM" | "USDC") =>
     wallet.balances.find((b) => b.asset === asset)?.available.toFixed(7) ?? "0.0000000";
   const swaps = await getRecentSwaps(user.id);
+  const network = process.env.STELLAR_NETWORK;
+  const testnet = network !== "mainnet" && network !== "public";
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-stack-lg">
@@ -51,6 +53,7 @@ export default async function PayerSwapPage() {
       <SwapPanel
         balances={{ XLM: available("XLM"), USDC: available("USDC") }}
         usdcOn={usdcOn}
+        testnet={testnet}
         trustlineTxUrl={usdc?.trustlineTxHash ? stellarTxUrl(usdc.trustlineTxHash) : null}
       />
 

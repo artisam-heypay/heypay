@@ -25,6 +25,15 @@ describe("SwapPanel", () => {
     expect(screen.queryByLabelText(/Amount in/)).not.toBeInTheDocument();
   });
 
+  it("says on Testnet that the prices are not market prices, and nowhere else", () => {
+    const { unmount } = render(<SwapPanel balances={BALANCES} usdcOn testnet />);
+    expect(screen.getByText(/Testnet prices are not market prices/)).toBeInTheDocument();
+    unmount();
+
+    render(<SwapPanel balances={BALANCES} usdcOn />);
+    expect(screen.queryByText(/Testnet prices are not market prices/)).not.toBeInTheDocument();
+  });
+
   it("quotes XLM to USDC as the payer types, then swaps and links to the transaction", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
       if (String(url).startsWith("/api/wallet/swap/quote")) {
