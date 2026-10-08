@@ -14,9 +14,10 @@
 // conversion failed) is recorded afterwards.
 import "server-only";
 import type { Asset } from "@stellar/stellar-sdk";
-import { Decimal, dec } from "@/lib/money";
+import { Decimal, dec, displayAsset } from "@/lib/money";
 import { isAssetEnabled, type PaymentAsset } from "@/lib/assets";
 import { AppError, badRequest, conflict, notFound } from "@/lib/errors";
+import { stellarTxUrl } from "@/lib/stellar-explorer";
 import { db } from "@/server/db";
 import { captureException } from "@/server/observability/error-tracking";
 import { STELLAR_BASE_FEE_XLM } from "@/server/payments/quote";
@@ -82,6 +83,8 @@ export type SwapOutcome = {
 };
 
 export type SwapRecord = {
+  /** The ledger entry that carries the hash. */
+  id: string;
   txHash: string;
   from: PaymentAsset;
   sent: Decimal;
@@ -348,8 +351,11 @@ export async function executeSwap(input: {
   return { txHash, from, to, sent: result.sent, received: result.received };
 }
 
-/** The payer's latest swaps, newest first, each with the hash to look it up by. */
-export async function getRecentSwaps(userId: string, limit = 10): Promise<SwapRecord[]> {
+/** The payer's swaps, newest first, starting after the entry `cursor` names. */
+async function findSwaps(
+  userId: string,
+  opts: { cursor?: string; take: number },
+): Promise<SwapRecord[]> {
   const wallet = await db.custodialWallet.findUnique({ where: { userId } });
   if (!wallet) return [];
   const sent = await db.walletTransaction.findMany({
@@ -360,7 +366,8 @@ export async function getRecentSwaps(userId: string, limit = 10): Promise<SwapRe
       memo: { startsWith: SWAP_SENT_MEMO },
     },
     orderBy: { createdAt: "desc" },
-    take: limit,
+    take: opts.take,
+    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
   const received = await db.walletTransaction.findMany({
     where: {
@@ -373,6 +380,7 @@ export async function getRecentSwaps(userId: string, limit = 10): Promise<SwapRe
   return sent.map((s) => {
     const r = byMemo.get(receivedMemo(s.stellarTxHash!));
     return {
+      id: s.id,
       txHash: s.stellarTxHash!,
       from: s.asset,
       sent: dec(s.amount.toString()).abs(),
@@ -381,4 +389,37 @@ export async function getRecentSwaps(userId: string, limit = 10): Promise<SwapRe
       createdAt: s.createdAt,
     };
   });
+}
+
+/** The payer's latest swaps, newest first, each with the hash to look it up by. */
+export async function getRecentSwaps(userId: string, limit = 10): Promise<SwapRecord[]> {
+  return findSwaps(userId, { take: limit });
+}
+
+/** A swap as the history list shows it. */
+export type PayerSwapListItem = {
+  id: string;
+  txUrl: string;
+  sent: string;
+  /** Null when the entry for the received side is missing. */
+  received: string | null;
+  createdAt: string;
+};
+
+/** One page of the payer's swaps for the history list, newest first. */
+export async function getPayerSwaps(
+  userId: string,
+  opts: { cursor?: string; limit: number },
+): Promise<{ items: PayerSwapListItem[]; nextCursor?: string }> {
+  const rows = await findSwaps(userId, { cursor: opts.cursor, take: opts.limit + 1 });
+  const hasMore = rows.length > opts.limit;
+  const page = hasMore ? rows.slice(0, opts.limit) : rows;
+  const items = page.map((s) => ({
+    id: s.id,
+    txUrl: stellarTxUrl(s.txHash),
+    sent: displayAsset(s.sent, s.from),
+    received: s.received && s.to ? displayAsset(s.received, s.to) : null,
+    createdAt: s.createdAt.toISOString(),
+  }));
+  return { items, nextCursor: hasMore ? page[page.length - 1]!.id : undefined };
 }

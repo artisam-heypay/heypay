@@ -28,7 +28,7 @@ vi.mock("@/server/stellar/wallet", async (importOriginal) => ({
 }));
 
 import { SwapOutcomeUnknownError } from "@/server/stellar/wallet";
-import { executeSwap, getRecentSwaps, quoteSwap } from "./swap";
+import { executeSwap, getPayerSwaps, getRecentSwaps, quoteSwap } from "./swap";
 
 const HASH = "a".repeat(64);
 const FEE = "0.0000100";
@@ -415,5 +415,78 @@ describe("getRecentSwaps", () => {
     expect(swaps[0]).toMatchObject({ txHash: HASH, from: "XLM", to: "USDC" });
     expect(swaps[0]!.sent.toFixed(7)).toBe("10.0000000");
     expect(swaps[0]!.received?.toFixed(7)).toBe("9.4458598");
+  });
+});
+
+describe("getPayerSwaps", () => {
+  it("pages through the swaps newest first, ready for the history list", async () => {
+    const { user } = await makePayer({ cachedXlm: "100.0000000" });
+    for (const [char, sent] of [
+      ["a", "10"],
+      ["b", "11"],
+      ["c", "12"],
+    ] as const) {
+      swap.mockResolvedValue({
+        txHash: char.repeat(64),
+        ok: true,
+        sent: dec(sent),
+        received: dec("9.4458598"),
+        feeXlm: dec(FEE),
+        failure: null,
+      });
+      await executeSwap({
+        userId: user.id,
+        from: "XLM",
+        amount: dec(sent),
+        minReceived: dec("9.3514012"),
+      });
+    }
+
+    const first = await getPayerSwaps(user.id, { limit: 2 });
+    expect(first.items.map((s) => s.sent)).toEqual(["12.0000000 XLM", "11.0000000 XLM"]);
+    expect(first.items[0]).toMatchObject({
+      received: "9.4458598 USDC",
+      txUrl: `https://stellar.expert/explorer/testnet/tx/${"c".repeat(64)}`,
+    });
+    expect(first.nextCursor).toBe(first.items[1]!.id);
+
+    const second = await getPayerSwaps(user.id, { cursor: first.nextCursor, limit: 2 });
+    expect(second.items.map((s) => s.sent)).toEqual(["10.0000000 XLM"]);
+    expect(second.nextCursor).toBeUndefined();
+  });
+
+  it("leaves out a swap that failed and another payer's swaps", async () => {
+    const { user } = await makePayer({ cachedXlm: "100.0000000" });
+    const { user: stranger } = await makePayer({ cachedXlm: "100.0000000" });
+    swap.mockResolvedValue({
+      txHash: HASH,
+      ok: false,
+      sent: dec("0"),
+      received: dec("0"),
+      feeXlm: dec(FEE),
+      failure: "op_under_dest_min",
+    });
+    await refusal(
+      executeSwap({ userId: user.id, from: "XLM", amount: dec("10"), minReceived: dec("9") }),
+    );
+    swap.mockResolvedValue({
+      txHash: "b".repeat(64),
+      ok: true,
+      sent: dec("10"),
+      received: dec("9.4458598"),
+      feeXlm: dec(FEE),
+      failure: null,
+    });
+    await executeSwap({
+      userId: stranger.id,
+      from: "XLM",
+      amount: dec("10"),
+      minReceived: dec("9.3514012"),
+    });
+
+    expect(await getPayerSwaps(user.id, { limit: 20 })).toEqual({
+      items: [],
+      nextCursor: undefined,
+    });
   });
 });
