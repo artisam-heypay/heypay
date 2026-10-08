@@ -215,11 +215,21 @@ model Payment {
   // external references
   stellarTxHash     String?       @unique
   payoutRef         String?       @unique         // Xendit payout id (disb-...)
+  // Set just *before* the payout request is sent. From then on the rail may hold a
+  // payout for this payment, so a refund is only allowed once the rail confirms
+  // it will not be paid. The refund's own claim (`refundSubmittedAt`) and this one
+  // are taken on the same row, so the two can never both win.
+  payoutRequestedAt DateTime?
   // Refund of the payer's crypto from the HeyPay treasury. `refundSubmittedAt` is
   // set *before* the send, so a crash between sending and saving the hash leaves
   // a marker instead of a silent retry that would refund twice.
   refundTxHash      String?       @unique
   refundSubmittedAt DateTime?
+  // Soroban escrow (ESCROW_ENABLED). `escrowJobId` is the contract's job id,
+  // sha256(payment.id) as hex; set before the deposit, it marks the payment as
+  // escrowed, so release/refund go through the contract instead of the treasury.
+  escrowJobId         String?     @unique
+  escrowReleaseTxHash String?     @unique
 
   quoteExpiresAt    DateTime?
   createdAt         DateTime      @default(now())

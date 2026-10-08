@@ -193,6 +193,23 @@ export function createXenditProvider(
       );
       return toPayoutStatus(payout);
     },
+
+    async cancelPayout(payoutRef) {
+      const path = `/v2/payouts/${encodeURIComponent(payoutRef)}`;
+      try {
+        await withRetry(async () => call(`${path}/cancel`, { method: "POST" }), {
+          label: "xendit.cancelPayout",
+          retries,
+          isRetryable,
+        });
+      } catch (err) {
+        // Xendit only cancels a payout it has not processed yet; anything else
+        // gets a 400 (CANCELLATION_NOT_ALLOWED). The payout's own status below
+        // says where it stands either way.
+        if (!(err instanceof XenditRequestError)) throw err;
+      }
+      return this.getPayoutStatus(payoutRef);
+    },
   };
 }
 

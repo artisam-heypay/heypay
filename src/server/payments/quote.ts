@@ -4,6 +4,7 @@ import { dec, phpToAsset, Decimal } from "@/lib/money";
 import { db } from "@/server/db";
 import { rail } from "@/server/rails";
 import { walletService } from "@/server/stellar/wallet";
+import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-config";
 import { withRetry } from "@/lib/retry";
 import { AppError, badRequest, conflict, notFound } from "@/lib/errors";
 import { assertAssetEnabled, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
@@ -130,7 +131,11 @@ async function assertFundsAvailable(
 ): Promise<void> {
   if (!isIssuedAsset(asset)) {
     const { available } = await getAssetBalance(db, walletId, asset);
-    const required = amountAsset.plus(networkFeeXlm);
+    // An escrowed payment also pays the deposit's Soroban resource fee, which is
+    // only known once it lands; reserve the estimate so the deposit cannot fail
+    // for want of it.
+    const escrowFee = escrowAppliesTo(asset) ? escrowFeeEstimateXlm() : dec("0");
+    const required = amountAsset.plus(networkFeeXlm).plus(escrowFee);
     if (available.lessThan(required)) {
       throw conflict("insufficient available XLM balance", {
         asset,

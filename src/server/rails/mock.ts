@@ -25,7 +25,7 @@ const failPhpAmount = process.env.MOCK_FAIL_PHP_AMOUNT
 const isFailAmount = (phpAmount: Decimal): boolean =>
   failPhpAmount !== null && phpAmount.equals(failPhpAmount);
 
-type PayoutRecord = { ref: string; phpAmount: Decimal; polls: number };
+type PayoutRecord = { ref: string; phpAmount: Decimal; polls: number; cancelled?: boolean };
 
 /** Deterministic per-asset PHP rates so dev/CI can exercise every enabled asset. */
 function defaultRates(): Record<PaymentAsset, Decimal> {
@@ -92,12 +92,28 @@ export function createMockProvider(
       await sleep(delayMs);
       const rec = payouts.get(payoutRef);
       if (!rec) return { state: "FAILED", failureCode: "NOT_FOUND" };
+      if (rec.cancelled) return { state: "FAILED", failureCode: "CANCELLED" };
       if (isForcedFailure(rec.ref) || isFailAmount(rec.phpAmount)) {
         return { state: "FAILED", failureCode: "MOCK_FAILURE" };
       }
       rec.polls += 1;
       if (rec.polls < 2) return { state: "PENDING" };
       return { state: "SETTLED", netPhp: rec.phpAmount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP) };
+    },
+
+    // A payout not yet reported paid can be cancelled, like one Xendit has not sent.
+    async cancelPayout(payoutRef): Promise<PayoutStatus> {
+      await sleep(delayMs);
+      const rec = payouts.get(payoutRef);
+      if (!rec) return { state: "FAILED", failureCode: "NOT_FOUND" };
+      if (rec.polls >= 2) {
+        return {
+          state: "SETTLED",
+          netPhp: rec.phpAmount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP),
+        };
+      }
+      rec.cancelled = true;
+      return { state: "FAILED", failureCode: "CANCELLED" };
     },
   };
 }

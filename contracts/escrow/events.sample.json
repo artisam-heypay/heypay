@@ -1,0 +1,330 @@
+{
+  "description": "Real contract events from the 2026-09-29 Testnet CLI run (contracts/escrow/README.md, Testnet evidence). Fetched with `stellar tx fetch events --hash <hash> --network testnet --output json`; contract_events is the parsed XDR, including the native XLM SAC transfer each call makes. refund_timeout has no sample yet: its tx comes from the Friday manual run.",
+  "network": "testnet",
+  "escrow_contract_id": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E",
+  "token_contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+  "payer": "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W",
+  "admin": "GAY7UUSQVUCNO32YEO6EQP74DYVT7VT7WOLYDDJTELOW6X4KCAS7S5RD",
+  "calls": [
+    {
+      "function": "deposit",
+      "job_label": "d1-cli-release-1",
+      "job_id": "41ad2c6195dbf48faa2b28a871b9c796249be02a4e334a0bb38950e148cca1a6",
+      "tx_hash": "c6eaef6692c6c215721469d2a13537a1b9f41f40617d4cc78e66b6d9b9f015b5",
+      "ledger": 4923949,
+      "stellar_expert": "https://stellar.expert/explorer/testnet/tx/c6eaef6692c6c215721469d2a13537a1b9f41f40617d4cc78e66b6d9b9f015b5",
+      "contract_events": [
+        {
+          "ext": "v0",
+          "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "transfer"
+                },
+                {
+                  "address": "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W"
+                },
+                {
+                  "address": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E"
+                },
+                {
+                  "string": "native"
+                }
+              ],
+              "data": {
+                "i128": "100000000"
+              }
+            }
+          }
+        },
+        {
+          "ext": "v0",
+          "contract_id": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "escrow"
+                },
+                {
+                  "symbol": "deposit"
+                },
+                {
+                  "bytes": "41ad2c6195dbf48faa2b28a871b9c796249be02a4e334a0bb38950e148cca1a6"
+                }
+              ],
+              "data": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "amount"
+                    },
+                    "val": {
+                      "i128": "100000000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "deadline_ledger"
+                    },
+                    "val": {
+                      "u32": 4941229
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "from"
+                    },
+                    "val": {
+                      "address": "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "function": "release",
+      "job_label": "d1-cli-release-1",
+      "job_id": "41ad2c6195dbf48faa2b28a871b9c796249be02a4e334a0bb38950e148cca1a6",
+      "tx_hash": "eebbc0d815c89218ece50c330db8f9fca4d6b7768ac50ff6e53033ba6fb8282e",
+      "ledger": 4923951,
+      "stellar_expert": "https://stellar.expert/explorer/testnet/tx/eebbc0d815c89218ece50c330db8f9fca4d6b7768ac50ff6e53033ba6fb8282e",
+      "contract_events": [
+        {
+          "ext": "v0",
+          "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "transfer"
+                },
+                {
+                  "address": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E"
+                },
+                {
+                  "address": "GAY7UUSQVUCNO32YEO6EQP74DYVT7VT7WOLYDDJTELOW6X4KCAS7S5RD"
+                },
+                {
+                  "string": "native"
+                }
+              ],
+              "data": {
+                "i128": "100000000"
+              }
+            }
+          }
+        },
+        {
+          "ext": "v0",
+          "contract_id": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "escrow"
+                },
+                {
+                  "symbol": "release"
+                },
+                {
+                  "bytes": "41ad2c6195dbf48faa2b28a871b9c796249be02a4e334a0bb38950e148cca1a6"
+                }
+              ],
+              "data": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "amount"
+                    },
+                    "val": {
+                      "i128": "100000000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "to"
+                    },
+                    "val": {
+                      "address": "GAY7UUSQVUCNO32YEO6EQP74DYVT7VT7WOLYDDJTELOW6X4KCAS7S5RD"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "function": "deposit",
+      "job_label": "d1-cli-refund-1",
+      "job_id": "3db82dac09eb6b38c665b254402381d0e0ddfcc52250f11c6f0db6970b6f8003",
+      "tx_hash": "83706e017492ec92930a4bc8d47135e631fa32e42bc17657f0c358a7825f6282",
+      "ledger": 4923952,
+      "stellar_expert": "https://stellar.expert/explorer/testnet/tx/83706e017492ec92930a4bc8d47135e631fa32e42bc17657f0c358a7825f6282",
+      "contract_events": [
+        {
+          "ext": "v0",
+          "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "transfer"
+                },
+                {
+                  "address": "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W"
+                },
+                {
+                  "address": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E"
+                },
+                {
+                  "string": "native"
+                }
+              ],
+              "data": {
+                "i128": "50000000"
+              }
+            }
+          }
+        },
+        {
+          "ext": "v0",
+          "contract_id": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "escrow"
+                },
+                {
+                  "symbol": "deposit"
+                },
+                {
+                  "bytes": "3db82dac09eb6b38c665b254402381d0e0ddfcc52250f11c6f0db6970b6f8003"
+                }
+              ],
+              "data": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "amount"
+                    },
+                    "val": {
+                      "i128": "50000000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "deadline_ledger"
+                    },
+                    "val": {
+                      "u32": 4941232
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "from"
+                    },
+                    "val": {
+                      "address": "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "function": "refund",
+      "job_label": "d1-cli-refund-1",
+      "job_id": "3db82dac09eb6b38c665b254402381d0e0ddfcc52250f11c6f0db6970b6f8003",
+      "tx_hash": "a476d1ffd2c361a0e19e16fe5d1acb8a4c6f2f75f39b5117476382bc2789a6a9",
+      "ledger": 4923953,
+      "stellar_expert": "https://stellar.expert/explorer/testnet/tx/a476d1ffd2c361a0e19e16fe5d1acb8a4c6f2f75f39b5117476382bc2789a6a9",
+      "contract_events": [
+        {
+          "ext": "v0",
+          "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "transfer"
+                },
+                {
+                  "address": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E"
+                },
+                {
+                  "address": "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W"
+                },
+                {
+                  "string": "native"
+                }
+              ],
+              "data": {
+                "i128": "50000000"
+              }
+            }
+          }
+        },
+        {
+          "ext": "v0",
+          "contract_id": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "escrow"
+                },
+                {
+                  "symbol": "refund"
+                },
+                {
+                  "bytes": "3db82dac09eb6b38c665b254402381d0e0ddfcc52250f11c6f0db6970b6f8003"
+                }
+              ],
+              "data": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "amount"
+                    },
+                    "val": {
+                      "i128": "50000000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "to"
+                    },
+                    "val": {
+                      "address": "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
