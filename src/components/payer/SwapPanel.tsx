@@ -217,8 +217,9 @@ function SwapForm({
         <p className="flex items-start gap-stack-sm text-body-sm text-on-surface-variant">
           <Icon name="info" />
           <span>
-            Testnet prices are not market prices. Each direction is filled from whatever test offers
-            exist, so the two rates may not match each other or the real price.
+            Testnet prices do not reflect market prices. Each direction is filled from the test
+            offers available at the time, so the two rates may differ from each other and from the
+            actual market price.
           </span>
         </p>
       )}

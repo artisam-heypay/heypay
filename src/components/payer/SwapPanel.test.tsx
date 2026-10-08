@@ -27,11 +27,13 @@ describe("SwapPanel", () => {
 
   it("says on Testnet that the prices are not market prices, and nowhere else", () => {
     const { unmount } = render(<SwapPanel balances={BALANCES} usdcOn testnet />);
-    expect(screen.getByText(/Testnet prices are not market prices/)).toBeInTheDocument();
+    expect(screen.getByText(/Testnet prices do not reflect market prices/)).toBeInTheDocument();
     unmount();
 
     render(<SwapPanel balances={BALANCES} usdcOn />);
-    expect(screen.queryByText(/Testnet prices are not market prices/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Testnet prices do not reflect market prices/),
+    ).not.toBeInTheDocument();
   });
 
   it("quotes XLM to USDC as the payer types, then swaps and links to the transaction", async () => {
