@@ -198,9 +198,14 @@ async function assertFundsAvailable(
       required: amountAsset,
     });
   }
-  if (xlmBalance.available.lessThan(xlmFees)) {
+  // The network keeps a minimum XLM balance in every account and takes no fee
+  // out of it, so only the XLM above it can pay one. If the chain cannot be
+  // read, nothing counts as locked and the network has the last word.
+  const lockedXlm = await walletService.lockedXlm(wallet.stellarPublicKey).catch(() => dec("0"));
+  const spendableXlm = Decimal.max(xlmBalance.available.minus(lockedXlm), 0);
+  if (spendableXlm.lessThan(xlmFees)) {
     throw paymentRefused("insufficient_fee", asset, {
-      availableXlm: xlmBalance.available,
+      availableXlm: spendableXlm,
       requiredXlm: xlmFees,
     });
   }

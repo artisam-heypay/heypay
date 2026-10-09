@@ -12,6 +12,7 @@ const {
   getDepositAddress,
   canReceive,
   holdsOtherIssuer,
+  lockedXlm,
   getQuote,
   findStrictSendPaths,
   escrowHoldsAsset,
@@ -19,6 +20,7 @@ const {
   getDepositAddress: vi.fn(async (_asset: string) => ({ address: "GTREASURY", memo: null })),
   canReceive: vi.fn(async (_pk: string, _asset: string) => true),
   holdsOtherIssuer: vi.fn(async (_pk: string, _asset: string) => false),
+  lockedXlm: vi.fn(),
   getQuote: vi.fn(),
   findStrictSendPaths: vi.fn(),
   escrowHoldsAsset: vi.fn(async (_asset: string) => true),
@@ -32,6 +34,7 @@ vi.mock("@/server/stellar/wallet", () => ({
   walletService: {
     canReceive: (pk: string, a: string) => canReceive(pk, a),
     holdsOtherIssuer: (pk: string, a: string) => holdsOtherIssuer(pk, a),
+    lockedXlm: (pk: string) => lockedXlm(pk),
   },
 }));
 
@@ -69,6 +72,7 @@ beforeEach(async () => {
   findStrictSendPaths.mockResolvedValue([]);
   escrowHoldsAsset.mockResolvedValue(true);
   holdsOtherIssuer.mockResolvedValue(false);
+  lockedXlm.mockResolvedValue(dec("0"));
   await resetDb();
 });
 afterEach(() => {
@@ -591,6 +595,61 @@ describe("createQuote (USDC edge cases)", () => {
       details: { reason: "insufficient_fee", asset: "USDC", requiredXlm: "0.2000100" },
     });
     await expectNothingMoved(wallet.id, "50.0000000", "0.1000000");
+  });
+
+  it("insufficient balance: XLM the network keeps locked does not pay the fee", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    process.env.ESCROW_CONTRACT_ID_USDC = USDC_ESCROW;
+    // Swapped down to the account's minimum balance: 1.5 XLM, none of it spendable.
+    const { user, wallet } = await makePayer({
+      cachedXlm: "1.5000000",
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    const { merchant } = await makeMerchant();
+    lockedXlm.mockResolvedValue(dec("1.5"));
+
+    await expect(usdcQuote(user.id, merchant.id)).rejects.toMatchObject({
+      status: 409,
+      message: "Not enough XLM for the network fee — add about 0.21 XLM.",
+      details: {
+        reason: "insufficient_fee",
+        asset: "USDC",
+        availableXlm: "0.0000000",
+        requiredXlm: "0.2000100",
+      },
+    });
+    expect(lockedXlm).toHaveBeenCalledWith(wallet.stellarPublicKey);
+    await expectNothingMoved(wallet.id, "50.0000000", "1.5000000");
+  });
+
+  it("quotes when the XLM above the locked minimum covers the fee", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    process.env.ESCROW_CONTRACT_ID_USDC = USDC_ESCROW;
+    const { user } = await makePayer({
+      cachedXlm: "1.8000000",
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    const { merchant } = await makeMerchant();
+    lockedXlm.mockResolvedValue(dec("1.5"));
+
+    const res = await usdcQuote(user.id, merchant.id);
+
+    expect(res.asset).toBe("USDC");
+  });
+
+  it("checks the fee against the whole XLM balance when the chain cannot say what is locked", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    process.env.ESCROW_CONTRACT_ID_USDC = USDC_ESCROW;
+    const { user } = await makePayer({
+      cachedXlm: "1.5000000",
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    const { merchant } = await makeMerchant();
+    lockedXlm.mockRejectedValue(new Error("horizon down"));
+
+    const res = await usdcQuote(user.id, merchant.id);
+
+    expect(res.asset).toBe("USDC");
   });
 
   it("an XLM payment short of XLM is not told to pay with XLM", async () => {

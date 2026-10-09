@@ -2,12 +2,17 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { resetDb, makePayer, makeMerchant } from "../../../tests/helpers/db";
 import { db } from "@/server/db";
+import { dec, type Decimal } from "@/lib/money";
 import { newPaymentReference } from "./reference";
 
 const enqueueSettle = vi.fn(async (_id: string) => {});
+const lockedXlm = vi.fn(async (_pk: string): Promise<Decimal> => dec("0"));
 vi.mock("@/server/queue/queues", () => ({
   QUEUE_NAMES: { settle: "settle", depositPoll: "deposit-poll", reconcile: "reconcile" },
   enqueueSettle: (id: string) => enqueueSettle(id),
+}));
+vi.mock("@/server/stellar/wallet", () => ({
+  walletService: { lockedXlm: (pk: string) => lockedXlm(pk) },
 }));
 
 import { confirmPayment } from "./confirm";
@@ -59,6 +64,8 @@ describe("confirmPayment", () => {
   beforeEach(async () => {
     await resetDb();
     enqueueSettle.mockClear();
+    lockedXlm.mockClear();
+    lockedXlm.mockResolvedValue(dec("0"));
   });
   afterEach(() => {
     delete process.env.ESCROW_ENABLED;
@@ -217,6 +224,84 @@ describe("confirmPayment", () => {
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
     expect(enqueueSettle).not.toHaveBeenCalled();
   });
+
+  it("does not count the XLM the network keeps locked towards the fee, leaving no holds", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    // 1.6 XLM in the wallet, 1.5 of it the account's minimum balance: 0.1 to spend.
+    const { user, wallet, payment } = await makeQuotedUsdc({
+      cachedXlm: "1.6000000",
+      cachedUsdc: "50.0000000",
+    });
+    lockedXlm.mockResolvedValue(dec("1.5"));
+
+    await expect(
+      confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: randomUUID() }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: "Not enough XLM for the network fee — add about 0.21 XLM.",
+      details: {
+        reason: "insufficient_fee",
+        asset: "USDC",
+        availableXlm: "0.1000000",
+        requiredXlm: "0.2000100",
+      },
+    });
+
+    expect(lockedXlm).toHaveBeenCalledWith(wallet.stellarPublicKey);
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.reserved.toFixed(7)).toBe("0.0000000");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+    expect((await db.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe(
+      "QUOTED",
+    );
+    expect(enqueueSettle).not.toHaveBeenCalled();
+  });
+
+  it("confirms when the XLM above the locked minimum covers the fee", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    const { user, payment } = await makeQuotedUsdc({
+      cachedXlm: "1.8000000",
+      cachedUsdc: "50.0000000",
+    });
+    lockedXlm.mockResolvedValue(dec("1.5"));
+
+    const res = await confirmPayment({
+      paymentId: payment.id,
+      payerId: user.id,
+      idemKey: randomUUID(),
+    });
+
+    expect(res.status).toBe("AUTHORIZED");
+  });
+
+  it("checks the fee against the whole XLM balance when the chain cannot say what is locked", async () => {
+    process.env.ESCROW_ENABLED = "true";
+    const { user, payment } = await makeQuotedUsdc({
+      cachedXlm: "1.6000000",
+      cachedUsdc: "50.0000000",
+    });
+    lockedXlm.mockRejectedValue(new Error("horizon down"));
+
+    const res = await confirmPayment({
+      paymentId: payment.id,
+      payerId: user.id,
+      idemKey: randomUUID(),
+    });
+
+    expect(res.status).toBe("AUTHORIZED");
+  });
+
+  it("does not ask the chain what is locked for an XLM payment", async () => {
+    const { user, payment } = await makeQuoted();
+
+    await confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: randomUUID() });
+
+    expect(lockedXlm).not.toHaveBeenCalled();
+  });
+
   it("insufficient balance: refuses a USDC payment with a reason and a next step", async () => {
     const { user, wallet, payment } = await makeQuotedUsdc({
       cachedXlm: "10.0000000",
