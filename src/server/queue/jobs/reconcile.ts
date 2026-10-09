@@ -11,6 +11,7 @@ import { dec } from "@/lib/money";
 import { enabledAssets } from "@/lib/assets";
 import { isAssetConfigured } from "@/server/stellar/assets";
 import { getAssetBalances } from "@/server/wallet/balances";
+import { resolveUnconfirmedSwaps } from "@/server/payer/swap";
 
 // A settle job advances an in-flight payment within seconds; a payment sitting in
 // a mid-settlement state longer than this means its worker job was lost, or the
@@ -38,9 +39,13 @@ export type ReconcileResult = {
   drift: number; // wallets whose cached balance differed from Horizon
   paymentsChecked: number; // stale in-flight payments inspected (PHP payout leg)
   paymentDrift: number; // payments the rail had moved past, or that were stuck
+  swapsChecked: number; // swaps whose outcome was unknown when they were sent
+  swapsResolved: number; // of those, the ones recorded or freed in this run
 };
 
 export async function processReconcileJob(): Promise<ReconcileResult> {
+  // First, so a swap settled here is not then reported as wallet drift.
+  const swap = await reconcileSwaps();
   const wallet = await reconcileWallets();
   const payment = await reconcilePayments();
   return {
@@ -48,7 +53,21 @@ export async function processReconcileJob(): Promise<ReconcileResult> {
     drift: wallet.drift,
     paymentsChecked: payment.checked,
     paymentDrift: payment.drift,
+    swapsChecked: swap.checked,
+    swapsResolved: swap.resolved,
   };
+}
+
+// Swap leg: a swap Horizon could not confirm when it was sent keeps its amount
+// on hold. Ask again, and record it or free the hold. A failure here must not
+// stop the wallet and payout legs.
+async function reconcileSwaps(): Promise<{ checked: number; resolved: number }> {
+  try {
+    return await resolveUnconfirmedSwaps();
+  } catch (err) {
+    captureException(err, { source: "reconcile.swaps" });
+    return { checked: 0, resolved: 0 };
+  }
 }
 
 // Crypto leg: diff each custodial wallet's cached balances against Horizon, for

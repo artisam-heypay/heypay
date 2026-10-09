@@ -18,6 +18,7 @@ import { Decimal, dec, displayAsset } from "@/lib/money";
 import { isAssetEnabled, type PaymentAsset } from "@/lib/assets";
 import { AppError, badRequest, conflict, notFound } from "@/lib/errors";
 import { stellarTxUrl } from "@/lib/stellar-explorer";
+import { audit } from "@/server/auth/audit";
 import { db } from "@/server/db";
 import { captureException } from "@/server/observability/error-tracking";
 import { STELLAR_BASE_FEE_XLM } from "@/server/payments/quote";
@@ -191,6 +192,75 @@ async function spendHold(
   return after;
 }
 
+/** What a swap put on hold in the wallet before it was sent. */
+type SwapHolds = {
+  walletId: string;
+  from: PaymentAsset;
+  to: PaymentAsset;
+  amount: Decimal;
+  fee: Decimal;
+};
+
+/**
+ * Writes a swap a ledger took into the wallet: its holds are spent or freed,
+ * and `SWAP` entries record what the chain says moved.
+ */
+async function recordSwap(tx: TxClient, held: SwapHolds, result: SwapResult): Promise<void> {
+  const { walletId, from, to, amount, fee } = held;
+  const { txHash } = result;
+  if (!result.ok) {
+    // In a ledger, but the conversion failed: only the fee left the wallet.
+    await releaseAsset(tx, walletId, from, amount);
+    const xlmAfter = await spendHold(tx, walletId, "XLM", fee, result.feeXlm);
+    await tx.walletTransaction.create({
+      data: {
+        walletId,
+        type: "SWAP",
+        asset: "XLM",
+        amount: result.feeXlm.negated().toFixed(7),
+        balanceAfter: xlmAfter.toFixed(7),
+        stellarTxHash: txHash,
+        memo: "failed swap network fee",
+      },
+    });
+    return;
+  }
+  const fromAfter = await spendHold(tx, walletId, from, amount, result.sent);
+  await tx.walletTransaction.create({
+    data: {
+      walletId,
+      type: "SWAP",
+      asset: from,
+      amount: result.sent.negated().toFixed(7),
+      balanceAfter: fromAfter.toFixed(7),
+      stellarTxHash: txHash,
+      memo: `${SWAP_SENT_MEMO}${to}`,
+    },
+  });
+  const toAfter = await creditAsset(tx, walletId, to, result.received);
+  await tx.walletTransaction.create({
+    data: {
+      walletId,
+      type: "SWAP",
+      asset: to,
+      amount: result.received.toFixed(7),
+      balanceAfter: toAfter.toFixed(7),
+      memo: receivedMemo(txHash),
+    },
+  });
+  const xlmAfter = await spendHold(tx, walletId, "XLM", fee, result.feeXlm);
+  await tx.walletTransaction.create({
+    data: {
+      walletId,
+      type: "SWAP",
+      asset: "XLM",
+      amount: result.feeXlm.negated().toFixed(7),
+      balanceAfter: xlmAfter.toFixed(7),
+      memo: `swap ${txHash} network fee`,
+    },
+  });
+}
+
 /**
  * Swaps up to `amount` of `from` for at least `minReceived` of the other asset,
  * the two numbers the payer confirmed. Throws a 409 with a `reason` when the
@@ -271,6 +341,25 @@ export async function executeSwap(input: {
   } catch (err) {
     if (err instanceof SwapOutcomeUnknownError) {
       // The holds stay: the wallet must not spend what the swap may have spent.
+      // The row is what lets resolveUnconfirmedSwaps settle them later.
+      await db.unconfirmedSwap
+        .create({
+          data: {
+            walletId: wallet.id,
+            txHash: err.txHash,
+            fromAsset: from,
+            toAsset: to,
+            heldAmount: amount.toFixed(7),
+            heldFeeXlm: fee.toFixed(7),
+          },
+        })
+        .catch((e: unknown) =>
+          captureException(e, {
+            source: "swap.unconfirmed",
+            walletId: wallet.id,
+            txHash: err.txHash,
+          }),
+        );
       captureException(err, { source: "swap", walletId: wallet.id, txHash: err.txHash });
       throw refused(
         "unconfirmed",
@@ -288,59 +377,9 @@ export async function executeSwap(input: {
   }
 
   const { txHash } = result;
-  await db.$transaction(async (tx) => {
-    if (!result.ok) {
-      // In a ledger, but the conversion failed: only the fee left the wallet.
-      await releaseAsset(tx, wallet.id, from, amount);
-      const xlmAfter = await spendHold(tx, wallet.id, "XLM", fee, result.feeXlm);
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: "SWAP",
-          asset: "XLM",
-          amount: result.feeXlm.negated().toFixed(7),
-          balanceAfter: xlmAfter.toFixed(7),
-          stellarTxHash: txHash,
-          memo: "failed swap network fee",
-        },
-      });
-      return;
-    }
-    const fromAfter = await spendHold(tx, wallet.id, from, amount, result.sent);
-    await tx.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        type: "SWAP",
-        asset: from,
-        amount: result.sent.negated().toFixed(7),
-        balanceAfter: fromAfter.toFixed(7),
-        stellarTxHash: txHash,
-        memo: `${SWAP_SENT_MEMO}${to}`,
-      },
-    });
-    const toAfter = await creditAsset(tx, wallet.id, to, result.received);
-    await tx.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        type: "SWAP",
-        asset: to,
-        amount: result.received.toFixed(7),
-        balanceAfter: toAfter.toFixed(7),
-        memo: receivedMemo(txHash),
-      },
-    });
-    const xlmAfter = await spendHold(tx, wallet.id, "XLM", fee, result.feeXlm);
-    await tx.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        type: "SWAP",
-        asset: "XLM",
-        amount: result.feeXlm.negated().toFixed(7),
-        balanceAfter: xlmAfter.toFixed(7),
-        memo: `swap ${txHash} network fee`,
-      },
-    });
-  });
+  await db.$transaction((tx) =>
+    recordSwap(tx, { walletId: wallet.id, from, to, amount, fee }, result),
+  );
 
   if (!result.ok) {
     throw refused("failed", failureMessage(result.failure, from), {
@@ -349,6 +388,68 @@ export async function executeSwap(input: {
     });
   }
   return { txHash, from, to, sent: result.sent, received: result.received };
+}
+
+// Cap Horizon lookups per run. What is left over is picked up by the next one.
+const MAX_UNCONFIRMED_PER_RUN = 50;
+
+/**
+ * Settles the swaps whose outcome could not be read when they were sent. Each
+ * is looked up by its hash again. One a ledger took is recorded the way
+ * executeSwap would have recorded it; one no ledger can take any more has its
+ * holds freed; one Horizon still cannot answer for waits for the next run.
+ */
+export async function resolveUnconfirmedSwaps(): Promise<{ checked: number; resolved: number }> {
+  const open = await db.unconfirmedSwap.findMany({
+    where: { resolvedAt: null },
+    orderBy: { createdAt: "asc" },
+    take: MAX_UNCONFIRMED_PER_RUN,
+  });
+  let resolved = 0;
+  for (const swap of open) {
+    try {
+      const lookup = await walletService.swapOutcome(swap.txHash, swap.createdAt);
+      if (lookup.state === "pending") continue;
+      const outcome =
+        lookup.state === "expired" ? "expired" : lookup.result.ok ? "swapped" : "failed";
+      const held: SwapHolds = {
+        walletId: swap.walletId,
+        from: swap.fromAsset,
+        to: swap.toAsset,
+        amount: dec(swap.heldAmount.toString()),
+        fee: dec(swap.heldFeeXlm.toString()),
+      };
+      const settled = await db.$transaction(async (tx) => {
+        // Claimed first, so two runs cannot both settle the same holds.
+        const claim = await tx.unconfirmedSwap.updateMany({
+          where: { id: swap.id, resolvedAt: null },
+          data: { resolvedAt: new Date(), outcome },
+        });
+        if (claim.count === 0) return false;
+        if (lookup.state === "expired") {
+          await releaseAsset(tx, held.walletId, held.from, held.amount);
+          await releaseAsset(tx, held.walletId, "XLM", held.fee);
+        } else {
+          await recordSwap(tx, held, lookup.result);
+        }
+        return true;
+      });
+      if (!settled) continue;
+      resolved++;
+      await audit({
+        action: "swap.unconfirmed.resolved",
+        target: swap.walletId,
+        metadata: { txHash: swap.txHash, outcome },
+      });
+    } catch (err) {
+      captureException(err, {
+        source: "swap.unconfirmed.resolve",
+        walletId: swap.walletId,
+        txHash: swap.txHash,
+      });
+    }
+  }
+  return { checked: open.length, resolved };
 }
 
 /** The payer's swaps, newest first, starting after the entry `cursor` names. */

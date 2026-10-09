@@ -25,6 +25,11 @@ vi.mock("@/server/queue/queues", () => ({
   enqueueSettle: (id: string) => enqueueSettle(id),
 }));
 
+const { resolveUnconfirmedSwaps } = vi.hoisted(() => ({ resolveUnconfirmedSwaps: vi.fn() }));
+vi.mock("@/server/payer/swap", () => ({
+  resolveUnconfirmedSwaps: () => resolveUnconfirmedSwaps(),
+}));
+
 import { processReconcileJob } from "./reconcile";
 
 async function makeInFlightPayment(opts: {
@@ -54,9 +59,31 @@ async function makeInFlightPayment(opts: {
   });
 }
 
+describe("processReconcileJob — swap leg", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetDb();
+  });
+
+  it("settles unconfirmed swaps and reports how many", async () => {
+    resolveUnconfirmedSwaps.mockResolvedValue({ checked: 2, resolved: 1 });
+    const res = await processReconcileJob();
+    expect(res).toMatchObject({ swapsChecked: 2, swapsResolved: 1 });
+  });
+
+  it("still checks wallets when the swap leg throws", async () => {
+    resolveUnconfirmedSwaps.mockRejectedValue(new Error("no such table"));
+    await makePayer({ cachedXlm: "10.0000000" });
+    getBalances.mockResolvedValue(horizonXlm("10"));
+    const res = await processReconcileJob();
+    expect(res).toMatchObject({ checked: 1, drift: 0, swapsChecked: 0, swapsResolved: 0 });
+  });
+});
+
 describe("processReconcileJob — wallet (XLM) leg", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    resolveUnconfirmedSwaps.mockResolvedValue({ checked: 0, resolved: 0 });
     await resetDb();
   });
 
@@ -120,6 +147,7 @@ describe("processReconcileJob — wallet (XLM) leg", () => {
 describe("processReconcileJob — payout leg (missed-webhook fallback)", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    resolveUnconfirmedSwaps.mockResolvedValue({ checked: 0, resolved: 0 });
     await resetDb();
     getBalances.mockResolvedValue(horizonXlm("1000")); // makePayer default cache → no wallet drift
   });

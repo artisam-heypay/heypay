@@ -455,3 +455,82 @@ describe("WalletService.holdsOtherIssuer", () => {
     expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(false);
   });
 });
+
+describe("WalletService.swapOutcome", () => {
+  const HASH = "b".repeat(64);
+  const SENT_BY = new Date("2026-10-09T00:00:00Z");
+  // A swap can be taken for 30 seconds, and 60 more are allowed for clocks.
+  const BEFORE_LAST_CHANCE = "2026-10-09T00:01:29Z";
+  const AFTER_LAST_CHANCE = "2026-10-09T00:01:31Z";
+  const notFound = { name: "NotFoundError", response: { status: 404 } };
+
+  /** Horizon with its latest ledger closed at `latestClose`, answering for the swap as given. */
+  function horizon(opts: { latestClose: string; tx?: unknown; txError?: unknown; op?: unknown }) {
+    const ledgers = {
+      order: () => ledgers,
+      limit: () => ledgers,
+      call: vi.fn().mockResolvedValue({ records: [{ closed_at: opts.latestClose }] }),
+    };
+    const txCall = opts.tx
+      ? vi.fn().mockResolvedValue(opts.tx)
+      : vi.fn().mockRejectedValue(opts.txError ?? notFound);
+    const opCall = vi.fn().mockResolvedValue({ records: opts.op ? [opts.op] : [] });
+    return createWalletService(
+      fakeServer({
+        ledgers: vi.fn().mockReturnValue(ledgers),
+        transactions: vi.fn().mockReturnValue({ transaction: () => ({ call: txCall }) }),
+        operations: vi.fn().mockReturnValue({ forTransaction: () => ({ call: opCall }) }),
+      }),
+      PASSPHRASE,
+    );
+  }
+
+  it("reports what a swap in a ledger moved and was charged", async () => {
+    const svc = horizon({
+      latestClose: AFTER_LAST_CHANCE,
+      tx: { successful: true, fee_charged: "100" },
+      op: { source_amount: "10.0000000", amount: "9.4458598" },
+    });
+    const lookup = await svc.swapOutcome(HASH, SENT_BY);
+    expect(lookup).toMatchObject({ state: "landed", result: { txHash: HASH, ok: true } });
+    if (lookup.state !== "landed") throw new Error("expected a landed swap");
+    expect(lookup.result.sent.toFixed(7)).toBe("10.0000000");
+    expect(lookup.result.received.toFixed(7)).toBe("9.4458598");
+    expect(lookup.result.feeXlm.toFixed(7)).toBe("0.0000100");
+  });
+
+  it("reports a swap a ledger took and failed, with only its fee", async () => {
+    const svc = horizon({
+      latestClose: AFTER_LAST_CHANCE,
+      tx: { successful: false, fee_charged: "100" },
+    });
+    const lookup = await svc.swapOutcome(HASH, SENT_BY);
+    expect(lookup).toMatchObject({ state: "landed", result: { ok: false, failure: null } });
+    if (lookup.state !== "landed") throw new Error("expected a landed swap");
+    expect(lookup.result.sent.isZero()).toBe(true);
+    expect(lookup.result.feeXlm.toFixed(7)).toBe("0.0000100");
+  });
+
+  it("is expired when no ledger has it and one closed after its last chance", async () => {
+    const svc = horizon({ latestClose: AFTER_LAST_CHANCE });
+    expect(await svc.swapOutcome(HASH, SENT_BY)).toEqual({ state: "expired" });
+  });
+
+  it("is pending while Horizon has no ledger from after its last chance", async () => {
+    const svc = horizon({ latestClose: BEFORE_LAST_CHANCE });
+    expect(await svc.swapOutcome(HASH, SENT_BY)).toEqual({ state: "pending" });
+  });
+
+  it("throws when a swap went through and what it moved cannot be read", async () => {
+    const svc = horizon({
+      latestClose: AFTER_LAST_CHANCE,
+      tx: { successful: true, fee_charged: "100" },
+    });
+    await expect(svc.swapOutcome(HASH, SENT_BY)).rejects.toThrow(/cannot be read/);
+  });
+
+  it("throws when Horizon cannot answer for the transaction", async () => {
+    const svc = horizon({ latestClose: AFTER_LAST_CHANCE, txError: new Error("timeout") });
+    await expect(svc.swapOutcome(HASH, SENT_BY)).rejects.toThrow("timeout");
+  });
+});

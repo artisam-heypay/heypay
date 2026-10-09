@@ -134,6 +134,7 @@ model CustodialWallet {
   createdAt          DateTime @default(now())
   walletTxs          WalletTransaction[]
   balances           WalletBalance[]
+  unconfirmedSwaps   UnconfirmedSwap[]
 }
 
 /// Per-asset balance for *issued* Stellar assets (USDC/USDT). Native XLM stays on
@@ -172,6 +173,27 @@ model WalletTransaction {
   createdAt     DateTime     @default(now())
   @@index([walletId, createdAt])
   @@index([walletId, asset, createdAt])
+}
+
+/// A swap that was sent and that Horizon could not then confirm or rule out.
+/// Its amount and fee stay on hold in the wallet; the reconcile job looks the
+/// hash up again and either records the swap or frees the holds.
+model UnconfirmedSwap {
+  id         String          @id @default(cuid())
+  walletId   String
+  wallet     CustodialWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  txHash     String          @unique
+  fromAsset  PaymentAsset
+  toAsset    PaymentAsset
+  heldAmount Decimal         @db.Decimal(20, 7) // of `fromAsset`
+  heldFeeXlm Decimal         @db.Decimal(20, 7)
+  createdAt  DateTime        @default(now())
+  // Set once the holds are settled. `outcome` then says how: "swapped",
+  // "failed" (in a ledger, nothing converted) or "expired" (in no ledger).
+  resolvedAt DateTime?
+  outcome    String?
+
+  @@index([resolvedAt])
 }
 
 model Merchant {

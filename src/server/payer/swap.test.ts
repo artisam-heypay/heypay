@@ -4,15 +4,15 @@ import { db } from "@/server/db";
 import { dec } from "@/lib/money";
 import { AppError } from "@/lib/errors";
 
-const { findStrictSendPaths, findConversionRoute, canReceive, lockedXlm, swap } = vi.hoisted(
-  () => ({
+const { findStrictSendPaths, findConversionRoute, canReceive, lockedXlm, swap, swapOutcome } =
+  vi.hoisted(() => ({
     findStrictSendPaths: vi.fn(),
     findConversionRoute: vi.fn(),
     canReceive: vi.fn(),
     lockedXlm: vi.fn(),
     swap: vi.fn(),
-  }),
-);
+    swapOutcome: vi.fn(),
+  }));
 
 vi.mock("@/server/stellar/paths", () => ({
   findStrictSendPaths: (...args: unknown[]) => findStrictSendPaths(...args),
@@ -24,11 +24,18 @@ vi.mock("@/server/stellar/wallet", async (importOriginal) => ({
     canReceive: (pk: string, asset: string) => canReceive(pk, asset),
     lockedXlm: (pk: string) => lockedXlm(pk),
     swap: (input: unknown) => swap(input),
+    swapOutcome: (txHash: string, sentBy: Date) => swapOutcome(txHash, sentBy),
   },
 }));
 
 import { SwapOutcomeUnknownError } from "@/server/stellar/wallet";
-import { executeSwap, getPayerSwaps, getRecentSwaps, quoteSwap } from "./swap";
+import {
+  executeSwap,
+  getPayerSwaps,
+  getRecentSwaps,
+  quoteSwap,
+  resolveUnconfirmedSwaps,
+} from "./swap";
 
 const HASH = "a".repeat(64);
 const FEE = "0.0000100";
@@ -389,6 +396,148 @@ describe("executeSwap", () => {
       xlm: "100.0000000",
       xlmHeld: "10.0000100",
     });
+    // What is on hold is written down, for the reconcile job to settle.
+    const [row] = await db.unconfirmedSwap.findMany({ where: { walletId: wallet.id } });
+    expect(row).toMatchObject({
+      txHash: HASH,
+      fromAsset: "XLM",
+      toAsset: "USDC",
+      resolvedAt: null,
+      outcome: null,
+    });
+    expect(row!.heldAmount.toFixed(7)).toBe("10.0000000");
+    expect(row!.heldFeeXlm.toFixed(7)).toBe(FEE);
+  });
+});
+
+describe("resolveUnconfirmedSwaps", () => {
+  /** A payer whose 10 XLM swap could not be confirmed, with its holds in place. */
+  async function unconfirmedSwap() {
+    const made = await makePayer({
+      cachedXlm: "100.0000000",
+      assets: { USDC: { cached: "2.0000000" } },
+    });
+    swap.mockRejectedValue(new SwapOutcomeUnknownError(HASH, new Error("timeout")));
+    await refusal(
+      executeSwap({ userId: made.user.id, from: "XLM", amount: dec("10"), minReceived: dec("9") }),
+    );
+    return made;
+  }
+
+  const row = () => db.unconfirmedSwap.findUniqueOrThrow({ where: { txHash: HASH } });
+
+  it("records a swap a ledger took, the way it would have been recorded when sent", async () => {
+    const { user, wallet } = await unconfirmedSwap();
+    swapOutcome.mockResolvedValue({
+      state: "landed",
+      result: {
+        txHash: HASH,
+        ok: true,
+        sent: dec("10"),
+        received: dec("9.4458598"),
+        feeXlm: dec(FEE),
+        failure: null,
+      },
+    });
+
+    expect(await resolveUnconfirmedSwaps()).toEqual({ checked: 1, resolved: 1 });
+
+    const saved = await row();
+    expect(swapOutcome).toHaveBeenCalledWith(HASH, saved.createdAt);
+    expect(saved.outcome).toBe("swapped");
+    expect(saved.resolvedAt).toBeInstanceOf(Date);
+    expect(await balancesOf(wallet.id)).toEqual({
+      xlm: "89.9999900",
+      xlmHeld: "0.0000000",
+      usdc: "11.4458598",
+      usdcHeld: "0.0000000",
+    });
+    expect((await ledger(wallet.id)).map((e) => [e.asset, e.amount, e.hash, e.memo])).toEqual([
+      ["XLM", "-10.0000000", HASH, "swap to USDC"],
+      ["USDC", "9.4458598", null, `swap ${HASH}`],
+      ["XLM", `-${FEE}`, null, `swap ${HASH} network fee`],
+    ]);
+    expect(await getRecentSwaps(user.id)).toHaveLength(1);
+    const logged = await db.auditLog.findFirst({ where: { action: "swap.unconfirmed.resolved" } });
+    expect(logged).toMatchObject({
+      target: wallet.id,
+      metadata: { txHash: HASH, outcome: "swapped" },
+    });
+  });
+
+  it("debits only the fee for a swap a ledger took and failed", async () => {
+    const { wallet } = await unconfirmedSwap();
+    swapOutcome.mockResolvedValue({
+      state: "landed",
+      result: {
+        txHash: HASH,
+        ok: false,
+        sent: dec(0),
+        received: dec(0),
+        feeXlm: dec(FEE),
+        failure: null,
+      },
+    });
+
+    expect(await resolveUnconfirmedSwaps()).toEqual({ checked: 1, resolved: 1 });
+
+    expect((await row()).outcome).toBe("failed");
+    expect(await balancesOf(wallet.id)).toMatchObject({
+      xlm: "99.9999900",
+      xlmHeld: "0.0000000",
+      usdc: "2.0000000",
+    });
+    expect((await ledger(wallet.id)).map((e) => [e.amount, e.hash, e.memo])).toEqual([
+      [`-${FEE}`, HASH, "failed swap network fee"],
+    ]);
+  });
+
+  it("frees the holds of a swap no ledger can take any more", async () => {
+    const { wallet } = await unconfirmedSwap();
+    swapOutcome.mockResolvedValue({ state: "expired" });
+
+    expect(await resolveUnconfirmedSwaps()).toEqual({ checked: 1, resolved: 1 });
+
+    expect((await row()).outcome).toBe("expired");
+    expect(await balancesOf(wallet.id)).toMatchObject({ xlm: "100.0000000", xlmHeld: "0.0000000" });
+    expect(await ledger(wallet.id)).toEqual([]);
+  });
+
+  it("leaves the holds while a ledger could still take the swap", async () => {
+    const { wallet } = await unconfirmedSwap();
+    swapOutcome.mockResolvedValue({ state: "pending" });
+
+    expect(await resolveUnconfirmedSwaps()).toEqual({ checked: 1, resolved: 0 });
+
+    expect((await row()).resolvedAt).toBeNull();
+    expect(await balancesOf(wallet.id)).toMatchObject({
+      xlm: "100.0000000",
+      xlmHeld: "10.0000100",
+    });
+  });
+
+  it("leaves the holds when Horizon still cannot be read, and tries again next time", async () => {
+    const { wallet } = await unconfirmedSwap();
+    swapOutcome.mockRejectedValueOnce(new Error("Horizon is down"));
+
+    expect(await resolveUnconfirmedSwaps()).toEqual({ checked: 1, resolved: 0 });
+    expect((await row()).resolvedAt).toBeNull();
+    expect(await balancesOf(wallet.id)).toMatchObject({ xlmHeld: "10.0000100" });
+
+    swapOutcome.mockResolvedValue({ state: "expired" });
+    expect(await resolveUnconfirmedSwaps()).toEqual({ checked: 1, resolved: 1 });
+    expect(await balancesOf(wallet.id)).toMatchObject({ xlm: "100.0000000", xlmHeld: "0.0000000" });
+  });
+
+  it("settles a swap once: a second run finds nothing left to do", async () => {
+    const { wallet } = await unconfirmedSwap();
+    swapOutcome.mockResolvedValue({ state: "expired" });
+
+    await resolveUnconfirmedSwaps();
+    expect(await resolveUnconfirmedSwaps()).toEqual({ checked: 0, resolved: 0 });
+
+    expect(swapOutcome).toHaveBeenCalledTimes(1);
+    expect(await balancesOf(wallet.id)).toMatchObject({ xlm: "100.0000000", xlmHeld: "0.0000000" });
   });
 });
 

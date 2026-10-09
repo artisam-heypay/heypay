@@ -342,6 +342,15 @@ Balances are a ledger, so a swap is written into it the way a payment is:
 - A swap that never reached a ledger frees its holds and records nothing. If
   Horizon cannot say whether it went through, the holds stay and the error is
   reported, so the wallet cannot spend what the swap may have spent.
+- Such a swap is written to `UnconfirmedSwap` with its hash and what is on hold
+  for it. The reconcile job (every 5 minutes) asks Horizon for the hash again
+  (`resolveUnconfirmedSwaps`): a swap a ledger took is recorded exactly as
+  above, a failed one is charged its fee, and one in no ledger has its holds
+  freed. A swap is valid for 30 seconds, so it counts as in no ledger only once
+  Horizon holds a ledger that closed more than 90 seconds after the swap was
+  sent. While Horizon cannot answer, the holds stay and the next run asks
+  again. Each settled swap is written to the audit log as
+  `swap.unconfirmed.resolved` with its outcome.
 
 **Recent swaps** on the page lists each swap with both amounts and a link to its
 transaction on Stellar Expert; `GET /api/wallet/transactions` returns the same

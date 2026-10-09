@@ -61,6 +61,15 @@ export type SwapResult = {
   failure: string | null;
 };
 
+/** What Horizon knows of a swap that was sent, when it is asked again later. */
+export type SwapLookup =
+  /** A ledger took it. `result` is what `swap` would have returned. */
+  | { state: "landed"; result: SwapResult }
+  /** No ledger took it and none can any more: nothing moved, no fee was charged. */
+  | { state: "expired" }
+  /** No ledger has it yet, and one still might. */
+  | { state: "pending" };
+
 /**
  * A swap was sent and Horizon could not say whether a ledger took it. Whatever
  * it would have spent must stay on hold until someone looks the hash up.
@@ -129,6 +138,13 @@ export interface WalletService {
       feeXlm: Decimal;
     } & SwapLeg,
   ): Promise<SwapResult>;
+  /**
+   * Asks again about a swap that was sent no later than `sentBy`, by its hash.
+   * It is `expired` only once Horizon holds a ledger that closed after the last
+   * moment the swap could be taken. Throws when Horizon cannot be read, or
+   * cannot say what a swap that went through moved.
+   */
+  swapOutcome(txHash: string, sentBy: Date): Promise<SwapLookup>;
   /**
    * The XLM the network keeps locked in the account: its minimum balance plus
    * what its open offers are selling. Zero for an account that does not exist.
@@ -207,6 +223,9 @@ const TX_TIMEOUT_SECONDS = 180;
 // A swap is quoted seconds before it is sent, so it is not left valid for long.
 // Shorter than the confirm window below: a swap not found by then never will be.
 const SWAP_TIMEOUT_SECONDS = 30;
+// Allowed between this server's clock and the network's before a swap that is
+// in no ledger is called expired.
+const SWAP_CLOCK_SLACK_SECONDS = 60;
 /** One base reserve: an account keeps two, plus one for each subentry. */
 const BASE_RESERVE_XLM = dec("0.5");
 const STROOPS_PER_XLM = 10_000_000;
@@ -537,6 +556,40 @@ export function createWalletService(
         received: moved?.received ?? (leg.mode === "strict_send" ? leg.destMin : leg.destAmount),
         feeXlm: charged,
         failure: null,
+      };
+    },
+
+    async swapOutcome(txHash, sentBy) {
+      // The latest ledger is read before the transaction is looked for. Horizon
+      // takes ledgers in order, so if it already held one that closed after the
+      // swap's time limit, a swap it then does not have is in no ledger.
+      const latest = await srv().ledgers().order("desc").limit(1).call();
+      const latestClose = Date.parse(latest.records[0]?.closed_at ?? "");
+      const landed = await findTx(txHash, 1);
+      if (!landed) {
+        const lastChance =
+          sentBy.getTime() + (SWAP_TIMEOUT_SECONDS + SWAP_CLOCK_SLACK_SECONDS) * 1000;
+        return { state: latestClose > lastChance ? "expired" : "pending" };
+      }
+      if (!landed.successful) {
+        return {
+          state: "landed",
+          result: {
+            txHash,
+            ok: false,
+            sent: dec(0),
+            received: dec(0),
+            feeXlm: landed.feeCharged,
+            failure: null,
+          },
+        };
+      }
+      // Asked for later, there are no bounds to fall back on: wait for Horizon.
+      const moved = await readPathPayment(txHash);
+      if (!moved) throw new Error(`swap ${txHash} went through but what it moved cannot be read`);
+      return {
+        state: "landed",
+        result: { txHash, ok: true, ...moved, feeXlm: landed.feeCharged, failure: null },
       };
     },
 
