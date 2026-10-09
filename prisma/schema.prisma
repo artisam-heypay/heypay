@@ -43,6 +43,7 @@ enum WalletTxType {
   PAYMENT_DEBIT
   REFUND_CREDIT
   ADJUSTMENT
+  SWAP // one asset converted into another inside the wallet (a path payment to itself)
 }
 
 enum FaucetClaimStatus {
@@ -61,7 +62,15 @@ enum MerchantStatus {
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
-  passwordHash String                      // argon2id
+  // Lowercase. Null for accounts made before email sign-up and for seeded or
+  // scripted logins, which sign in by username.
+  email           String?   @unique
+  // Every stored email was confirmed first: by the sign-up code or by Google.
+  emailVerifiedAt DateTime?
+  // Google's stable account id (the ID token's `sub`). Set once the account has
+  // signed in with Google.
+  googleSub       String?   @unique
+  passwordHash String?                     // argon2id; null for a Google-only account
   role         Role
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -73,6 +82,28 @@ model User {
   paymentsMade Payment[] @relation("PayerPayments")
   auditLogs    AuditLog[]
   faucetClaim  FaucetClaim?
+}
+
+/// An email sign-up waiting for its one-time code. The User row is only created
+/// once the code is confirmed, so an unconfirmed address never owns an account.
+/// The row belongs to the browser that started it (tokenHash of a cookie): a
+/// code sent for someone else's attempt cannot confirm this one.
+model PendingSignup {
+  id           String   @id @default(cuid())
+  tokenHash    String   @unique
+  email        String
+  // What the person asked to be called. Not held for them: it is checked
+  // again when the code is confirmed.
+  username     String
+  passwordHash String                      // argon2id
+  role         Role
+  codeHash     String                      // sha256 over tokenHash + the 6-digit code
+  attempts     Int      @default(0)        // codes tried against the current code
+  expiresAt    DateTime                    // of the current code
+  lastSentAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  @@index([email])
+  @@index([expiresAt])
 }
 
 model Session {
@@ -103,6 +134,7 @@ model CustodialWallet {
   createdAt          DateTime @default(now())
   walletTxs          WalletTransaction[]
   balances           WalletBalance[]
+  unconfirmedSwaps   UnconfirmedSwap[]
 }
 
 /// Per-asset balance for *issued* Stellar assets (USDC/USDT). Native XLM stays on
@@ -118,6 +150,9 @@ model WalletBalance {
   // Set once the account holds a changeTrust line to the asset's issuer; until
   // then the wallet cannot receive this asset at all.
   trustlineEstablishedAt DateTime?
+  // The changeTrust transaction HeyPay submitted to create that line. Null for
+  // a line that already existed on-chain.
+  trustlineTxHash        String?
   updatedAt              DateTime        @updatedAt
   @@unique([walletId, asset])
 }
@@ -138,6 +173,27 @@ model WalletTransaction {
   createdAt     DateTime     @default(now())
   @@index([walletId, createdAt])
   @@index([walletId, asset, createdAt])
+}
+
+/// A swap that was sent and that Horizon could not then confirm or rule out.
+/// Its amount and fee stay on hold in the wallet; the reconcile job looks the
+/// hash up again and either records the swap or frees the holds.
+model UnconfirmedSwap {
+  id         String          @id @default(cuid())
+  walletId   String
+  wallet     CustodialWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  txHash     String          @unique
+  fromAsset  PaymentAsset
+  toAsset    PaymentAsset
+  heldAmount Decimal         @db.Decimal(20, 7) // of `fromAsset`
+  heldFeeXlm Decimal         @db.Decimal(20, 7)
+  createdAt  DateTime        @default(now())
+  // Set once the holds are settled. `outcome` then says how: "swapped",
+  // "failed" (in a ledger, nothing converted) or "expired" (in no ledger).
+  resolvedAt DateTime?
+  outcome    String?
+
+  @@index([resolvedAt])
 }
 
 model Merchant {

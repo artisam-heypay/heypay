@@ -79,20 +79,33 @@ describe("PrefundView", () => {
     await user.click(screen.getByRole("radio", { name: /USDT/ }));
 
     expect(screen.queryByText("GABC123")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Enable USDT/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Turn on USDT/ })).toBeInTheDocument();
   });
 
   it("reveals the address once the trustline is established", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ asset: "USDT", canReceive: true }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          asset: "USDT",
+          canReceive: true,
+          txUrl: "https://stellar.expert/explorer/testnet/tx/abc123",
+        }),
+        { status: 200 },
+      ),
     );
     view();
     await user.click(screen.getByRole("radio", { name: /USDT/ }));
-    await user.click(screen.getByRole("button", { name: /Enable USDT/ }));
+    await user.click(screen.getByRole("button", { name: /Turn on USDT/ }));
 
     expect(await screen.findByText("GABC123")).toBeInTheDocument();
     expect(screen.getByText(/Send only USDT on the Stellar network/)).toBeInTheDocument();
+    // The change_trust that turned it on stays one click away.
+    expect(screen.getByText(/USDT is on/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View transaction" })).toHaveAttribute(
+      "href",
+      "https://stellar.expert/explorer/testnet/tx/abc123",
+    );
   });
 
   it("surfaces why the trustline was refused", async () => {
@@ -107,7 +120,7 @@ describe("PrefundView", () => {
     );
     view();
     await user.click(screen.getByRole("radio", { name: /USDT/ }));
-    await user.click(screen.getByRole("button", { name: /Enable USDT/ }));
+    await user.click(screen.getByRole("button", { name: /Turn on USDT/ }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/at least 1.0 XLM/);
     expect(screen.queryByText("GABC123")).not.toBeInTheDocument();

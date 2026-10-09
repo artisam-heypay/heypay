@@ -12,17 +12,22 @@ vi.mock("@/server/stellar/wallet", () => ({
   walletService: { sendAsset: vi.fn(), confirmTx: (h: string) => confirmTx(h) },
 }));
 
-const escrow = vi.hoisted(() => ({
-  release: vi.fn(),
-  refund: vi.fn(),
-  refundAfterTimeout: vi.fn(),
-  getJob: vi.fn(),
-  getLatestLedger: vi.fn(),
-  getFeeCharged: vi.fn(),
-}));
+// One mock stands in for every escrow instance; `escrowFor` records which
+// asset's instance was asked for.
+const { escrow, escrowFor } = vi.hoisted(() => {
+  const escrow = {
+    release: vi.fn(),
+    refund: vi.fn(),
+    refundAfterTimeout: vi.fn(),
+    getJob: vi.fn(),
+    getLatestLedger: vi.fn(),
+    getFeeCharged: vi.fn(),
+  };
+  return { escrow, escrowFor: vi.fn((_asset: string) => escrow) };
+});
 vi.mock("@/server/stellar/escrow", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/server/stellar/escrow")>()),
-  escrowService: escrow,
+  escrowFor: (asset: string) => escrowFor(asset),
 }));
 
 const { getPayoutStatus, cancelPayout } = vi.hoisted(() => ({
@@ -146,6 +151,58 @@ describe("selfRefundEscrow", () => {
     const audits = await db.auditLog.findMany({ where: { action: "payment.escrow_self_refund" } });
     expect(audits).toHaveLength(1);
     expect(audits[0]!.actorId).toBe(user.id);
+  });
+
+  it("takes a USDC payment back from the USDC escrow, as USDC, paying the fee in XLM", async () => {
+    // Held in the escrow and already debited: 50 - 1.6039 USDC.
+    const { user, wallet } = await makePayer({
+      cachedXlm: "9.9999900",
+      assets: { USDC: { cached: "48.3961000" } },
+    });
+    const { merchant } = await makeMerchant({ accountNumber: "9988776655" });
+    const created = await db.payment.create({
+      data: {
+        reference: newPaymentReference(),
+        payerId: user.id,
+        merchantId: merchant.id,
+        asset: "USDC",
+        amountPhp: "100.00",
+        quotedRate: "62.34000000",
+        amountAsset: "1.6039000",
+        networkFeeXlm: "0.0000100",
+        status: "STELLAR_CONFIRMED",
+        stellarTxHash: `DEPOSIT-${user.id}`,
+      },
+    });
+    const payment = await db.payment.update({
+      where: { id: created.id },
+      data: { escrowJobId: escrowJobId(created.id).toString("hex") },
+    });
+    escrow.getJob.mockResolvedValue({
+      from: wallet.stellarPublicKey,
+      amount: dec("1.6039000"),
+      deadlineLedger: DEADLINE,
+      status: "Held",
+    });
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    escrow.refundAfterTimeout.mockResolvedValue({ txHash: "USDCSELFREFUND1" });
+    escrow.getFeeCharged.mockResolvedValue(dec("0.0025226"));
+
+    await selfRefundEscrow({ id: payment.id, payerId: user.id });
+
+    expect(escrowFor).toHaveBeenCalled();
+    expect(escrowFor.mock.calls.every(([asset]) => asset === "USDC")).toBe(true);
+    const credit = await db.walletTransaction.findFirstOrThrow({
+      where: { paymentId: payment.id, type: "REFUND_CREDIT" },
+    });
+    expect(credit.asset).toBe("USDC");
+    expect(credit.amount.toFixed(7)).toBe("1.6039000");
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.cached.toFixed(7)).toBe("50.0000000");
+    // 9.99999 - 0.0025226: the refund's own fee is XLM.
+    expect(await balanceOf(wallet.id)).toBe("9.9974674");
   });
 
   it("refunds a payment whose payout was never requested, without asking the rail", async () => {

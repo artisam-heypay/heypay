@@ -8,6 +8,7 @@ export const QUEUE_NAMES = {
   settle: "settle",
   depositPoll: "deposit-poll",
   reconcile: "reconcile",
+  walletActivate: "wallet-activate",
 } as const;
 
 // BullMQ requires maxRetriesPerRequest: null on the shared connection.
@@ -31,6 +32,10 @@ export const depositPollQueue = new Queue(QUEUE_NAMES.depositPoll, {
   defaultJobOptions: defaultJobOpts,
 });
 export const reconcileQueue = new Queue(QUEUE_NAMES.reconcile, {
+  connection: bullConnection,
+  defaultJobOptions: defaultJobOpts,
+});
+export const walletActivateQueue = new Queue(QUEUE_NAMES.walletActivate, {
   connection: bullConnection,
   defaultJobOptions: defaultJobOpts,
 });
@@ -69,4 +74,14 @@ export async function enqueueSettle(
     await existing.remove();
   }
   await settleQueue.add("settle", { paymentId }, { jobId: stepId });
+}
+
+/**
+ * Queue the sponsored activation of a payer's new custodial wallet (see
+ * jobs/wallet-activate.ts). Sign-up goes through requestWalletActivation in
+ * @/server/wallet/activation, which decides whether there is anything to queue.
+ */
+export async function enqueueWalletActivation(userId: string): Promise<void> {
+  // jobId drops a second request for the same payer.
+  await walletActivateQueue.add("activate", { userId }, { jobId: userId });
 }

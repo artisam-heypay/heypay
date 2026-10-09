@@ -63,6 +63,7 @@ describe("POST /api/wallet/trustline", () => {
     expect(await res.json()).toMatchObject({
       asset: "USDT",
       txHash: "TRUSTHASH",
+      txUrl: "https://stellar.expert/explorer/testnet/tx/TRUSTHASH",
       canReceive: true,
     });
     expect(establishTrustline.mock.calls[0]![0]).toMatchObject({ asset: "USDT" });
@@ -71,6 +72,27 @@ describe("POST /api/wallet/trustline", () => {
       where: { walletId_asset: { walletId: wallet.id, asset: "USDT" } },
     });
     expect(row.trustlineEstablishedAt).not.toBeNull();
+    expect(row.trustlineTxHash).toBe("TRUSTHASH");
+  });
+
+  it("turns on USDC and keeps the change_trust hash for a later visit", async () => {
+    process.env.PAYMENT_ASSETS = "XLM,USDC";
+    const { wallet } = await signIn({ cachedXlm: "5.0000000" });
+    const first = await postTrustline(req({ asset: "USDC" }), noParams);
+    expect(await first.json()).toMatchObject({ asset: "USDC", txHash: "TRUSTHASH" });
+
+    // A second click finds the line already on-chain; the saved hash still comes back.
+    establishTrustline.mockResolvedValue({ txHash: null, alreadyEstablished: true });
+    const again = await postTrustline(req({ asset: "USDC" }), noParams);
+    expect(await again.json()).toMatchObject({
+      alreadyEstablished: true,
+      txHash: "TRUSTHASH",
+      txUrl: "https://stellar.expert/explorer/testnet/tx/TRUSTHASH",
+    });
+    const row = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(row.trustlineTxHash).toBe("TRUSTHASH");
   });
 
   it("is idempotent when the trustline already exists on-chain", async () => {
@@ -78,7 +100,11 @@ describe("POST /api/wallet/trustline", () => {
     await signIn({ cachedXlm: "5.0000000" });
     const res = await postTrustline(req({ asset: "USDT" }), noParams);
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ alreadyEstablished: true, txHash: null });
+    expect(await res.json()).toMatchObject({
+      alreadyEstablished: true,
+      txHash: null,
+      txUrl: null,
+    });
   });
 
   it("refuses when the wallet cannot cover the extra base reserve", async () => {

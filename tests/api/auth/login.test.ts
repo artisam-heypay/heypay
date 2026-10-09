@@ -57,6 +57,26 @@ describe("POST /api/auth/login", () => {
     expect((await wrong.json()).error.message).toBe((await unknown.json()).error.message);
   });
 
+  it("logs in with the account's email, however it is capitalised", async () => {
+    await db.user.update({
+      where: { username: "alice" },
+      data: { email: "alice@example.com", emailVerifiedAt: new Date() },
+    });
+    const res = await POST(mk({ username: "Alice@Example.com", password: "supersecret1" }), ctx);
+    expect(res.status).toBe(200);
+    expect((await res.json()).user).toMatchObject({ username: "alice" });
+  });
+
+  it("gives a Google-only account, which has no password, the same generic 401", async () => {
+    await db.user.create({
+      data: { username: "gina", email: "gina@example.com", googleSub: "sub-1", role: "PAYER" },
+    });
+    const res = await POST(mk({ username: "gina@example.com", password: "anything1" }), ctx);
+    const unknown = await POST(mk({ username: "ghost", password: "whatever1" }), ctx);
+    expect(res.status).toBe(401);
+    expect((await res.json()).error.message).toBe((await unknown.json()).error.message);
+  });
+
   it("locks the account after repeated failures (429 on the 6th attempt)", async () => {
     for (let i = 0; i < 5; i++) {
       const r = await POST(mk({ username: "alice", password: "wrongpw" }), ctx);

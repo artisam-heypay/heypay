@@ -27,7 +27,12 @@ import {
 import { enqueueSettle } from "@/server/queue/queues";
 import { rail } from "@/server/rails";
 import { applyTransition } from "@/server/payments/state-machine";
-import { escrowService, EscrowContractError, EscrowTxFailedError } from "@/server/stellar/escrow";
+import {
+  escrowFor,
+  EscrowContractError,
+  EscrowTxFailedError,
+  type EscrowService,
+} from "@/server/stellar/escrow";
 
 /** About how long a Stellar ledger takes to close. */
 const SECONDS_PER_LEDGER = 5;
@@ -60,10 +65,13 @@ function holdsEscrow(p: Pick<Payment, "status" | "escrowJobId" | "refundTxHash">
 }
 
 /** Seconds until the held job can be self-refunded, or null when it is not held. */
-async function secondsUntilRefundable(jobId: Buffer): Promise<number | null> {
-  const job = await escrowService.getJob(jobId);
+async function secondsUntilRefundable(
+  escrow: EscrowService,
+  jobId: Buffer,
+): Promise<number | null> {
+  const job = await escrow.getJob(jobId);
   if (job?.status !== "Held") return null;
-  const ledgersLeft = job.deadlineLedger - (await escrowService.getLatestLedger());
+  const ledgersLeft = job.deadlineLedger - (await escrow.getLatestLedger());
   return Math.max(0, ledgersLeft) * SECONDS_PER_LEDGER;
 }
 
@@ -76,12 +84,15 @@ async function secondsUntilRefundable(jobId: Buffer): Promise<number | null> {
 export async function escrowSelfRefundState(
   p: Pick<
     Payment,
-    "id" | "status" | "escrowJobId" | "refundTxHash" | "payoutRef" | "payoutRequestedAt"
+    "id" | "asset" | "status" | "escrowJobId" | "refundTxHash" | "payoutRef" | "payoutRequestedAt"
   >,
 ): Promise<EscrowSelfRefundState | null> {
   if (!holdsEscrow(p)) return null;
   try {
-    const seconds = await secondsUntilRefundable(Buffer.from(p.escrowJobId!, "hex"));
+    const seconds = await secondsUntilRefundable(
+      escrowFor(p.asset),
+      Buffer.from(p.escrowJobId!, "hex"),
+    );
     if (seconds === null) return null;
     // A refund HeyPay is already sending needs no countdown to the payer's own.
     if (seconds > 0 && p.status === PaymentStatus.REFUND_PENDING) return null;
@@ -121,9 +132,11 @@ export async function selfRefundEscrow(input: {
     throw conflict("This payment has nothing held in escrow to refund.");
   }
   const wallet = p.payer.wallet;
+  // The instance that holds the payment's asset; it returns that same asset.
+  const escrow = escrowFor(p.asset);
   const jobId = Buffer.from(p.escrowJobId!, "hex");
 
-  const seconds = await secondsUntilRefundable(jobId);
+  const seconds = await secondsUntilRefundable(escrow, jobId);
   if (seconds === null) throw conflict("The escrow no longer holds this payment.");
   if (seconds > 0) {
     throw conflict(`The escrow refund opens in about ${seconds} seconds.`, {
@@ -179,7 +192,7 @@ export async function selfRefundEscrow(input: {
 
   let txHash: string;
   try {
-    ({ txHash } = await escrowService.refundAfterTimeout({
+    ({ txHash } = await escrow.refundAfterTimeout({
       jobId,
       encryptedSecret: wallet.encryptedSecret,
     }));
@@ -207,7 +220,7 @@ export async function selfRefundEscrow(input: {
   await db.payment.update({ where: { id: p.id }, data: { refundTxHash: txHash } });
 
   // The payer's wallet paid the Soroban fee for the call; keep the balance in step.
-  const fee = await refundFeeCharged(txHash, p);
+  const fee = await refundFeeCharged(escrow, txHash, p);
   await db.$transaction(async (tx) => {
     const credited = await creditRefundEntry(tx, p, txHash);
     if (credited && fee?.greaterThan(0)) await debitRefundFee(tx, p, fee);
@@ -260,11 +273,12 @@ export async function selfRefundEscrow(input: {
 
 /** The fee the refund charged, or null when it cannot be read. Never throws. */
 async function refundFeeCharged(
+  escrow: EscrowService,
   txHash: string,
   p: { id: string; reference: string },
 ): Promise<Decimal | null> {
   try {
-    return await escrowService.getFeeCharged(txHash);
+    return await escrow.getFeeCharged(txHash);
   } catch (err) {
     captureException(err, {
       source: "escrow.self_refund",

@@ -17,6 +17,8 @@ export function HeroBalanceCard({
   holdings: HoldingsSnapshot;
   live?: boolean;
 }) {
+  // Swaps are between XLM and USDC, so they are offered once USDC is in the wallet's list.
+  const canSwap = holdings.tokens.some((t) => t.asset === "USDC");
   return (
     <TonalCard className="relative overflow-hidden">
       <div
@@ -33,6 +35,12 @@ export function HeroBalanceCard({
           Send
           <Icon name="send" />
         </Link>
+        {canSwap && (
+          <Link href="/payer/swap" className={outlinePill}>
+            Swap
+            <Icon name="swap_horiz" />
+          </Link>
+        )}
       </div>
     </TonalCard>
   );

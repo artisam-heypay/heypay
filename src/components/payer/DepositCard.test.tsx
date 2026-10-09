@@ -23,7 +23,7 @@ describe("DepositCard", () => {
       />,
     );
     expect(screen.queryByText("GABC123")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Enable USDC/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Turn on USDC/ })).toBeInTheDocument();
   });
 
   it("shows the accepted issuer even while the trustline gate is up", () => {

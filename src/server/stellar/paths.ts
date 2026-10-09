@@ -14,15 +14,35 @@ import { getHorizon } from "./horizon";
 export type ConversionRoute = {
   /** How much of the source asset is needed to deliver `destAmount`. */
   sourceAmount: Decimal;
-  /** Intermediate hops, excluding source and destination. Often empty. */
+  /** Intermediate hops, excluding source and destination. Empty for a direct trade. */
   path: Asset[];
 };
 
+export type SendRoute = {
+  /** How much of the destination asset `sourceAmount` buys along this route. */
+  destAmount: Decimal;
+  /** Intermediate hops, excluding source and destination. Empty for a direct trade. */
+  path: Asset[];
+};
+
+type HorizonPathRecord = { source_amount: string; path: HorizonPathAsset[] };
+type HorizonSendRecord = { destination_amount: string; path: HorizonPathAsset[] };
 type HorizonPathAsset = { asset_type: string; asset_code?: string; asset_issuer?: string };
 
 function toAsset(a: HorizonPathAsset): Asset {
   return a.asset_type === "native" ? Asset.native() : new Asset(a.asset_code!, a.asset_issuer!);
 }
+
+/**
+ * Refuse routes that hop through intermediate assets, trading only the direct
+ * `from`/`to` order book.
+ *
+ * Off by default. A hop is not a risk — intermediate assets are never held, the
+ * whole chain is atomic, and `destMin`/`sendAmount` bracket the result — and
+ * forbidding hops only removes cheaper fills. Exists for operators who want the
+ * simplest possible on-chain footprint.
+ */
+const DIRECT_ONLY = process.env.SETTLEMENT_DIRECT_ONLY === "true";
 
 /**
  * Cheapest route that converts `from` into exactly `destAmount` of `to`.
@@ -41,18 +61,52 @@ export async function findConversionRoute(
   const source = resolveStellarAsset(from);
   const destination = resolveStellarAsset(to);
 
-  let records: { source_amount: string; path: HorizonPathAsset[] }[];
+  let records: HorizonPathRecord[];
   try {
     const page = await srv.strictReceivePaths([source], destination, destAmount.toFixed(7)).call();
-    records = page.records as unknown as typeof records;
+    records = page.records as unknown as HorizonPathRecord[];
   } catch {
     return null; // Horizon reports no path as an error on some versions
   }
-  if (records.length === 0) return null;
 
-  // Cheapest source amount wins; the payer pays the difference either way.
-  const best = records.reduce((a, b) =>
+  const candidates = DIRECT_ONLY ? records.filter((r) => r.path.length === 0) : records;
+  if (candidates.length === 0) return null;
+
+  // Cheapest source amount wins: the payer spends less and the rail still
+  // receives exactly `destAmount` either way.
+  const best = candidates.reduce((a, b) =>
     dec(a.source_amount).lessThanOrEqualTo(dec(b.source_amount)) ? a : b,
   );
   return { sourceAmount: dec(best.source_amount), path: best.path.map(toAsset) };
+}
+
+/**
+ * Every route that spends exactly `sourceAmount` of `from` and delivers `to`,
+ * the one that delivers the most first.
+ *
+ * Empty when the DEX has no route with enough depth, and when Horizon cannot
+ * answer: either way there is nothing safe to submit.
+ */
+export async function findStrictSendPaths(
+  from: PaymentAsset,
+  to: PaymentAsset,
+  sourceAmount: Decimal,
+  server?: Horizon.Server,
+): Promise<SendRoute[]> {
+  const srv = server ?? getHorizon();
+  const source = resolveStellarAsset(from);
+  const destination = resolveStellarAsset(to);
+
+  let records: HorizonSendRecord[];
+  try {
+    const page = await srv.strictSendPaths(source, sourceAmount.toFixed(7), [destination]).call();
+    records = page.records as unknown as HorizonSendRecord[];
+  } catch {
+    return [];
+  }
+
+  const candidates = DIRECT_ONLY ? records.filter((r) => r.path.length === 0) : records;
+  return candidates
+    .map((r) => ({ destAmount: dec(r.destination_amount), path: r.path.map(toAsset) }))
+    .sort((a, b) => b.destAmount.comparedTo(a.destAmount));
 }

@@ -78,7 +78,7 @@ describe("session / logout / password", () => {
     );
     expect(res.status).toBe(204);
     const updated = await db.user.findUniqueOrThrow({ where: { id: user.id } });
-    expect(await verifyPassword(updated.passwordHash, "brandnew12")).toBe(true);
+    expect(await verifyPassword(updated.passwordHash ?? "", "brandnew12")).toBe(true);
     expect(await db.session.count({ where: { userId: user.id } })).toBe(1); // old revoked, one fresh
   });
 

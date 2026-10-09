@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 
 export function ScanFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative aspect-square overflow-hidden rounded-xl border-2 border-primary/30 bg-surface-container">
+    // On desktop the square is capped to the viewport so the buttons under it
+    // stay on screen; 18rem covers the page padding, heading and button row.
+    <div className="relative aspect-square overflow-hidden rounded-xl border-2 border-primary/30 bg-surface-container lg:max-h-[calc(100dvh-18rem)] lg:min-h-64">
       {children}
       {/* corner brackets */}
       <span

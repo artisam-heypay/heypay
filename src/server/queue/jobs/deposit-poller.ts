@@ -47,7 +47,7 @@ async function autoEstablishTrustlines(
         encryptedSecret: wallet.encryptedSecret,
         asset,
       });
-      await markTrustlineEstablished(wallet.id, asset);
+      await markTrustlineEstablished(wallet.id, asset, result.txHash);
       if (!result.alreadyEstablished) {
         // Custodial wallets belong to payers only.
         captureUserEvent(
