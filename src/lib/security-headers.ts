@@ -4,6 +4,9 @@
 // needs 'unsafe-eval' (react-refresh/HMR) and a ws: connect-src for the HMR socket.
 // img-src allows data:/blob: for generated QR codes and https: for signed object URLs.
 // worker-src blob: lets PostHog session replay run its compression worker.
+// connect-src adds the Soroban RPC server only while payers can use their own
+// wallet (NONCUSTODIAL_ENABLED): their browser builds the escrow deposit itself
+// and asks that server to simulate it.
 // NOTE: 'unsafe-inline' for scripts is a known trade-off; a nonce/'strict-dynamic'
 // CSP (nonce generated in proxy.ts per request) is the stricter hardening follow-up.
 export function buildCsp(): string {
@@ -11,7 +14,9 @@ export function buildCsp(): string {
   const scriptSrc = ["'self'", "'unsafe-inline'", dev ? "'unsafe-eval'" : ""]
     .filter(Boolean)
     .join(" ");
-  const connectSrc = ["'self'", dev ? "ws: http://localhost:*" : ""].filter(Boolean).join(" ");
+  const connectSrc = ["'self'", dev ? "ws: http://localhost:*" : "", sorobanRpcOrigin()]
+    .filter(Boolean)
+    .join(" ");
   return [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
@@ -25,6 +30,16 @@ export function buildCsp(): string {
     "form-action 'self'",
     "object-src 'none'",
   ].join("; ");
+}
+
+/** The Soroban RPC server's origin while the browser needs it, or "" otherwise. */
+function sorobanRpcOrigin(): string {
+  if (process.env.NONCUSTODIAL_ENABLED !== "true") return "";
+  try {
+    return new URL(process.env.SOROBAN_RPC_URL ?? "").origin;
+  } catch {
+    return ""; // unset or not a URL: nothing is allowed rather than something wrong
+  }
 }
 
 export function applySecurityHeaders(res: { headers: Headers }): void {
