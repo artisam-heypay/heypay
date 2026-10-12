@@ -3,9 +3,12 @@ import { Role } from "@/generated/prisma/client";
 import { stellarTxUrl } from "@/lib/stellar-explorer";
 import { getWalletSummary } from "@/server/payer/data";
 import { walletService } from "@/server/stellar/wallet";
+import { getNetworkPassphrase, isMainnet } from "@/server/stellar/horizon";
+import { getOwnWallet, nonCustodialEnabled } from "@/server/wallet/external";
 import { Card, Icon } from "@/components/ui";
 import { ProfileCard } from "@/components/payer/ProfileCard";
 import { TurnOnAsset } from "@/components/payer/TurnOnAsset";
+import { OwnWalletCard } from "@/components/wallet/OwnWalletCard";
 import { ChangePasswordForm } from "@/components/payer/ChangePasswordForm";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 
@@ -25,10 +28,21 @@ export default async function PayerSettingsPage() {
     }
   }
 
+  // Offered only while NONCUSTODIAL_ENABLED is on; otherwise nothing of it shows.
+  const ownWallet = nonCustodialEnabled() ? await getOwnWallet(user.id) : null;
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-stack-lg">
       <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Settings</h1>
       <ProfileCard username={user.username} role={user.role} />
+      {ownWallet && (
+        <OwnWalletCard
+          walletMode={ownWallet.walletMode}
+          externalPublicKey={ownWallet.externalPublicKey}
+          networkPassphrase={getNetworkPassphrase()}
+          networkName={isMainnet() ? "Mainnet" : "Testnet"}
+        />
+      )}
       {usdc && (
         <Card className="flex flex-col gap-stack-md">
           <h2 className="font-display text-headline-md">USDC</h2>

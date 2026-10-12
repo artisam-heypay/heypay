@@ -52,6 +52,11 @@ enum FaucetClaimStatus {
   FAILED
 }
 
+enum WalletMode {
+  CUSTODIAL
+  EXTERNAL
+}
+
 enum MerchantStatus {
   DRAFT
   PENDING_REVIEW
@@ -73,6 +78,14 @@ model User {
   passwordHash String?                     // argon2id; null for a Google-only account
   role         Role
   isActive     Boolean  @default(true)
+  // Who signs this payer's escrow deposits. An EXTERNAL payer signs in their own
+  // wallet (Freighter) and HeyPay never holds that key; everyone else keeps the
+  // custodial wallet. Only offered while NONCUSTODIAL_ENABLED is on.
+  walletMode        WalletMode @default(CUSTODIAL)
+  // The payer's own account (G...), as their wallet reported it on connecting.
+  // No signature proves it: a key its payer cannot sign for only ever yields
+  // transactions that payer cannot send.
+  externalPublicKey String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

@@ -17,3 +17,8 @@ overrides:
   smol-toml@<1.7.1: ">=1.7.1"
   axios@<1.20.0: ">=1.20.0"
   source-map-js@<1.2.2: ">=1.2.2"
+  # The wallets kit ships a module for every wallet it knows, and HeyPay loads
+  # only Freighter's. The HOT wallet SDK it would otherwise pull in brings Solana
+  # and NEAR packages with open advisories (pnpm audit --prod), one of them with
+  # no fixed version, so that dependency is left out.
+  "@creit.tech/stellar-wallets-kit>@hot-wallet/sdk": "-"
