@@ -78,6 +78,17 @@ export const PAYMENT_CANCELLED_REASON =
  */
 export const AWAITS_PAYER_REFUND_DETAIL = "awaitsPayerRefund";
 
+/**
+ * How long after its quote ended a payer-signed deposit is still looked for. The
+ * deposit is valid until the quote ends at the latest, and the ledger that takes
+ * it in closes a few seconds after it was sent.
+ */
+const PAYER_DEPOSIT_GRACE_MS = 30_000;
+/** How soon to look again for a payer-signed deposit that has not landed yet. */
+const PAYER_DEPOSIT_RECHECK_MS = 5_000;
+/** Why a payment failed when its deposit never reached the chain. */
+const DEPOSIT_NOT_CONFIRMED = "stellar tx failed to confirm";
+
 /** The payment's escrow job id as the contract's `BytesN<32>`. */
 function escrowJob(p: { escrowJobId: string | null }): Buffer {
   return Buffer.from(p.escrowJobId!, "hex");
@@ -108,6 +119,15 @@ function legs(p: {
     return { asset: p.asset, assetAmount: amountAsset, xlmFee: networkFeeXlm };
   }
   return { asset: p.asset, assetAmount: amountAsset.plus(networkFeeXlm), xlmFee: null };
+}
+
+/**
+ * What the escrow holds for a payment, and so what a refund returns. A deposit
+ * the payer signed with their own wallet is the quoted amount alone: their
+ * wallet paid the network's fees itself.
+ */
+function heldAmount(p: Parameters<typeof legs>[0] & { externalPublicKey: string | null }): Decimal {
+  return p.externalPublicKey ? dec(p.amountAsset.toString()) : legs(p).assetAmount;
 }
 
 export async function processSettleJob(job: { data: { paymentId: string } }): Promise<void> {
@@ -157,6 +177,9 @@ async function dispatch(p: PaymentWithRels): Promise<void> {
 
 // AUTHORIZED → STELLAR_SUBMITTED (payer's crypto → HeyPay treasury)
 async function stepSubmitStellar(p: PaymentWithRels): Promise<void> {
+  // The payer signed the deposit with their own wallet. HeyPay holds no key to
+  // that account, so there is nothing for it to sign or send here.
+  if (p.externalPublicKey) return stepPayerDeposited(p);
   // ESCROW_ENABLED only decides for new payments. Later steps follow `escrowJobId`,
   // so turning it off never strands a payment already in the escrow.
   if (p.escrowJobId || escrowAppliesTo(p.asset)) return stepDepositEscrow(p);
@@ -270,13 +293,27 @@ async function stepDepositEscrow(p: PaymentWithRels): Promise<void> {
   });
 }
 
+// AUTHORIZED → STELLAR_SUBMITTED for a deposit the payer signed themselves. It
+// was recorded and handed to the network when it was accepted
+// (payments/signed.ts), so this only moves the payment on.
+async function stepPayerDeposited(p: PaymentWithRels): Promise<void> {
+  if (!p.stellarTxHash || !p.escrowJobId) {
+    throw new Error(`Payer-signed payment ${p.reference} has no deposit recorded`);
+  }
+  await applyTransition(db, p, PaymentStatus.STELLAR_SUBMITTED, {
+    stellarTxHash: p.stellarTxHash,
+    escrowJobId: p.escrowJobId,
+    externalPublicKey: p.externalPublicKey,
+  });
+}
+
 /**
  * Keeps the contract's payer self-refund window at ESCROW_TIMEOUT_LEDGERS. The
  * contract reads the window when a deposit happens, so it is checked before
  * each one, on the instance about to take it; jobs already held keep the
  * deadline they were given.
  */
-async function syncEscrowTimeout(escrow: EscrowService): Promise<void> {
+export async function syncEscrowTimeout(escrow: EscrowService): Promise<void> {
   const wanted = escrowTimeoutLedgers();
   if (wanted === null || (await escrow.getTimeout()) === wanted) return;
   try {
@@ -290,6 +327,7 @@ async function syncEscrowTimeout(escrow: EscrowService): Promise<void> {
 
 // STELLAR_SUBMITTED → STELLAR_CONFIRMED (debit + release reservation) | FAILED (tx never landed)
 async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
+  if (p.externalPublicKey) return stepConfirmPayerDeposit(p);
   const wallet = p.payer.wallet!;
   const { asset, assetAmount, xlmFee } = legs(p);
   // A Soroban deposit is confirmed by its hash like any payment. Only an escrow
@@ -383,6 +421,70 @@ async function stepConfirmStellar(p: PaymentWithRels): Promise<void> {
       debitedEscrowFeeXlm: escrowFee?.toFixed(7),
     });
   });
+}
+
+// STELLAR_SUBMITTED → STELLAR_CONFIRMED | FAILED for a deposit the payer signed
+// with their own wallet. No HeyPay balance paid it, so none is debited, and no
+// hold was taken that a failure would have to release: what the payer holds is
+// the chain's to say.
+//
+// The proof is the contract itself: it holds the payment's job, from the
+// payer's account, for the payment's amount, or it does not. The deposit's hash
+// alone is not asked, because a payer could put a smaller deposit under the same
+// job id themselves; the signed one would then fail, and only the amount held
+// tells the two apart. The payer has the signed transaction and can send it for
+// as long as it is valid, so the payment is not failed while it still could land.
+async function stepConfirmPayerDeposit(p: PaymentWithRels): Promise<void> {
+  const held = await payerDepositHeld(p);
+  if (held === null) {
+    // The contract cannot be read; not knowing never fails a payment.
+    await enqueueSettle(p.id, { delayMs: PAYOUT_RECHECK_MS });
+    return;
+  }
+  if (held) {
+    await applyTransition(db, p, PaymentStatus.STELLAR_CONFIRMED, {
+      asset: p.asset,
+      externalPublicKey: p.externalPublicKey,
+      depositedAsset: heldAmount(p).toFixed(7),
+    });
+    return;
+  }
+
+  const mayStillLand = Date.now() < (p.quoteExpiresAt?.getTime() ?? 0) + PAYER_DEPOSIT_GRACE_MS;
+  if (mayStillLand) {
+    await enqueueSettle(p.id, { delayMs: PAYER_DEPOSIT_RECHECK_MS });
+    return;
+  }
+  // The deposit never landed and no longer can: the payment's crypto never left
+  // the payer's wallet, so there is nothing to refund.
+  await db.$transaction(async (tx) => {
+    await applyTransition(tx, p, PaymentStatus.FAILED, { failureReason: DEPOSIT_NOT_CONFIRMED });
+    await tx.payment.update({
+      where: { id: p.id },
+      data: { failureReason: DEPOSIT_NOT_CONFIRMED },
+    });
+  });
+}
+
+/**
+ * Whether the escrow has this payment's deposit: its job, from the payer's own
+ * account, for the payment's amount. A job stays readable after it is released
+ * or refunded, so a deposit that landed is still found. Null when the contract
+ * cannot be read.
+ */
+async function payerDepositHeld(p: PaymentWithRels): Promise<boolean | null> {
+  try {
+    const job = await escrowFor(p.asset).getJob(escrowJob(p));
+    return job !== null && job.from === p.externalPublicKey && job.amount.equals(heldAmount(p));
+  } catch (err) {
+    captureException(err, {
+      source: "settle",
+      paymentId: p.id,
+      reference: p.reference,
+      step: "payer_deposit",
+    });
+    return null;
+  }
 }
 
 // STELLAR_CONFIRMED → PAYOUT_SUBMITTED (decrypt bank acct in-memory)
@@ -950,16 +1052,22 @@ async function stepRefundEscrow(p: PaymentWithRels): Promise<void> {
 /**
  * Credits the refunded crypto back to the payer's balance once, marks the payment
  * REFUNDED and audits it. `txHash` is null only for an escrow refund whose hash
- * was lost; the contract's job status proved it landed.
+ * was lost; the contract's job status proved it landed. A payment paid from the
+ * payer's own wallet has no HeyPay balance to credit and is only closed.
  */
 async function creditRefund(p: PaymentWithRels, txHash: string | null): Promise<void> {
-  const { asset, assetAmount } = legs(p);
+  const asset = p.asset;
+  const assetAmount = heldAmount(p);
   await db.$transaction(async (tx) => {
-    await creditRefundEntry(tx, p, txHash);
+    // The contract pays a refund to the account the deposit came from. For a
+    // payer who paid from their own wallet that is their own account, and
+    // HeyPay keeps no balance for it to credit.
+    if (!p.externalPublicKey) await creditRefundEntry(tx, p, txHash);
     await applyTransition(tx, p, PaymentStatus.REFUNDED, {
       asset,
       refundedAsset: assetAmount.toFixed(7),
       refundTxHash: txHash,
+      ...(p.externalPublicKey && { refundedTo: p.externalPublicKey }),
     });
   });
   await audit({
@@ -1067,7 +1175,7 @@ function capturePayoutEvent(
     asset: p.asset,
     ...assetContract(p.asset),
     amount_php: Number(p.amountPhp),
-    payer_wallet_address: p.payer.wallet?.stellarPublicKey,
+    payer_wallet_address: p.externalPublicKey ?? p.payer.wallet?.stellarPublicKey,
     stellar_tx_hash: p.stellarTxHash,
     bank_code: p.merchant.settlementBankCode,
     bank_name: p.merchant.settlementBankName,
@@ -1138,9 +1246,11 @@ async function handleFailure(p: PaymentWithRels, err: unknown): Promise<void> {
 
   // Pre-move failure → FAILED; release any reservation still held.
   await db.$transaction(async (tx) => {
+    // Nothing was held for a payer who signs with their own wallet.
     if (
-      current.status === PaymentStatus.AUTHORIZED ||
-      current.status === PaymentStatus.STELLAR_SUBMITTED
+      !p.externalPublicKey &&
+      (current.status === PaymentStatus.AUTHORIZED ||
+        current.status === PaymentStatus.STELLAR_SUBMITTED)
     ) {
       await releaseReservations(tx, p.payer.wallet!.id, p);
     }

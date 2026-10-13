@@ -299,6 +299,12 @@ model Payment {
   // escrowed, so release/refund go through the contract instead of the treasury.
   escrowJobId         String?     @unique
   escrowReleaseTxHash String?     @unique
+  // Set when the payer signed the escrow deposit with their own wallet: the
+  // account it was paid from. HeyPay holds no key to that account and keeps no
+  // balance for it, so nothing is reserved, debited or credited for the
+  // payment, and a refund from the escrow lands in this account. Null when the
+  // custodial wallet paid.
+  externalPublicKey   String?
 
   quoteExpiresAt    DateTime?
   createdAt         DateTime      @default(now())

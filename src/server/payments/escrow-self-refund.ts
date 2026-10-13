@@ -60,8 +60,21 @@ export type EscrowSelfRefundState = {
   waitingOnPayout: boolean;
 };
 
-function holdsEscrow(p: Pick<Payment, "status" | "escrowJobId" | "refundTxHash">): boolean {
-  return Boolean(p.escrowJobId) && !p.refundTxHash && SELF_REFUNDABLE.has(p.status);
+/**
+ * Whether the payer's HeyPay wallet has something in the escrow to take back.
+ * A deposit the payer signed with their own wallet is not that: only the
+ * account it came from can call `refund_after_timeout` for it, and HeyPay holds
+ * no key to that account and no balance to credit.
+ */
+function holdsEscrow(
+  p: Pick<Payment, "status" | "escrowJobId" | "refundTxHash" | "externalPublicKey">,
+): boolean {
+  return (
+    Boolean(p.escrowJobId) &&
+    !p.externalPublicKey &&
+    !p.refundTxHash &&
+    SELF_REFUNDABLE.has(p.status)
+  );
 }
 
 /** Seconds until the held job can be self-refunded, or null when it is not held. */
@@ -84,7 +97,14 @@ async function secondsUntilRefundable(
 export async function escrowSelfRefundState(
   p: Pick<
     Payment,
-    "id" | "asset" | "status" | "escrowJobId" | "refundTxHash" | "payoutRef" | "payoutRequestedAt"
+    | "id"
+    | "asset"
+    | "status"
+    | "escrowJobId"
+    | "refundTxHash"
+    | "payoutRef"
+    | "payoutRequestedAt"
+    | "externalPublicKey"
   >,
 ): Promise<EscrowSelfRefundState | null> {
   if (!holdsEscrow(p)) return null;

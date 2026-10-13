@@ -94,7 +94,8 @@ export async function applyTransition(
       asset: updated.asset,
       ...assetContract(updated.asset),
       amount_php: Number(updated.amountPhp),
-      payer_wallet_address: wallet?.stellarPublicKey,
+      // The payer's own account when they signed the deposit themselves.
+      payer_wallet_address: updated.externalPublicKey ?? wallet?.stellarPublicKey,
       stellar_tx_hash: updated.stellarTxHash,
       payout_ref: updated.payoutRef,
       refund_tx_hash: updated.refundTxHash,

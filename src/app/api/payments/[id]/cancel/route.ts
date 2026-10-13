@@ -23,6 +23,10 @@ export const POST = route(async (req, ctx) => {
   if (payment.payerId !== user.id) throw forbidden("not your payment");
   if (!CANCELLABLE.has(payment.status))
     throw conflict(`cannot cancel payment in status ${payment.status}`);
+  // A deposit the payer signed with their own wallet was handed to the network
+  // as it was accepted: from then on the crypto may already be in the escrow.
+  if (payment.externalPublicKey)
+    throw conflict("This payment's deposit has already been sent, so it can't be cancelled.");
 
   const updated = await db.$transaction(async (tx) => {
     if (payment.status === "AUTHORIZED" && payment.payer.wallet) {
