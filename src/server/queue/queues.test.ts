@@ -8,14 +8,17 @@ const { add, getJob } = vi.hoisted(() => ({
   add: vi.fn(async (_name?: string, _data?: unknown, _opts?: AddOpts) => {}),
   getJob: vi.fn(async (_id: string): Promise<unknown> => undefined),
 }));
+// Both are called with `new`, so the stand-ins have to be functions, not arrows.
 vi.mock("bullmq", () => ({
-  Queue: vi
-    .fn()
-    .mockImplementation((name: string) => ({ name, add, getJob, close: vi.fn(async () => {}) })),
+  Queue: vi.fn().mockImplementation(function (name: string) {
+    return { name, add, getJob, close: vi.fn(async () => {}) };
+  }),
   Worker: vi.fn(),
 }));
 vi.mock("ioredis", () => ({
-  default: vi.fn().mockImplementation(() => ({ quit: vi.fn(async () => {}) })),
+  default: vi.fn().mockImplementation(function () {
+    return { quit: vi.fn(async () => {}) };
+  }),
 }));
 
 import { QUEUE_NAMES, enqueueSettle, enqueueWalletActivation } from "./queues";
