@@ -8,6 +8,7 @@ import { conflict, forbidden, notFound } from "@/lib/errors";
 import { getAssetBalance, reserveAsset } from "@/server/wallet/balances";
 import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-config";
 import { walletService } from "@/server/stellar/wallet";
+import { ownWalletAccount } from "@/server/wallet/external";
 import { withIdempotencyKey } from "./idempotency";
 import { paymentRefused } from "./refusal";
 import { applyTransition } from "./state-machine";
@@ -29,6 +30,11 @@ export async function confirmPayment(input: ConfirmPaymentInput): Promise<Confir
     if (payment.status === "AUTHORIZED") return { paymentId: payment.id, status: payment.status };
     if (payment.status !== "QUOTED")
       throw conflict(`cannot confirm payment in status ${payment.status}`);
+    // A payer who chose their own wallet signs the escrow deposit themselves
+    // (payments/signed.ts). The custodial wallet does not pay in their place.
+    if (ownWalletAccount(payment.payer)) {
+      throw conflict("You pay from your own wallet. Sign this payment in Freighter.");
+    }
     if (!payment.quoteExpiresAt || payment.quoteExpiresAt.getTime() < Date.now()) {
       throw conflict("quote expired; please re-quote");
     }

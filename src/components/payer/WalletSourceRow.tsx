@@ -8,7 +8,10 @@ export function WalletSourceRow({
   approxPhp,
   requiredAsset,
   asset = "XLM",
+  own = false,
 }: {
+  /** The payer's own wallet pays, not the HeyPay one: nothing here can top it up. */
+  own?: boolean;
   publicKey: string;
   availableAsset: Decimal;
   approxPhp: Decimal;
@@ -22,13 +25,18 @@ export function WalletSourceRow({
         <div className="flex min-w-0 items-center gap-stack-sm">
           <Icon name="account_balance_wallet" className="text-primary" />
           <div className="min-w-0">
-            <p className="text-body-md">HeyPay Wallet</p>
+            <p className="text-body-md">{own ? "Your wallet (Freighter)" : "HeyPay Wallet"}</p>
             <p className="truncate font-mono text-mono-data text-on-surface-variant">{publicKey}</p>
           </div>
         </div>
         <MoneyAmount xlm={availableAsset} asset={asset} php={approxPhp} size="row" />
       </div>
-      {insufficient && (
+      {insufficient && own && (
+        <p className="mt-stack-sm text-body-sm text-error">
+          Not enough {asset} in your wallet for this payment and its network fees.
+        </p>
+      )}
+      {insufficient && !own && (
         <p className="mt-stack-sm text-body-sm text-error">
           Not enough {asset} —{" "}
           <Link href="/payer/prefund" className="underline">

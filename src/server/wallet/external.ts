@@ -18,6 +18,16 @@ export function nonCustodialEnabled(): boolean {
   return process.env.NONCUSTODIAL_ENABLED === "true";
 }
 
+/**
+ * The account a payer's payments come from when they chose their own wallet,
+ * or null when the custodial wallet pays: the payer never opted in, or the
+ * feature is off.
+ */
+export function ownWalletAccount(payer: OwnWallet): string | null {
+  if (!nonCustodialEnabled() || payer.walletMode !== "EXTERNAL") return null;
+  return payer.externalPublicKey;
+}
+
 const select = { walletMode: true, externalPublicKey: true } as const;
 
 /** The payer's wallet choice and the account they connected, if any. */

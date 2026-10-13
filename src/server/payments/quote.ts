@@ -10,6 +10,8 @@ import { AppError, badRequest, conflict, notFound } from "@/lib/errors";
 import type { AssetMismatchCause } from "@/lib/payment-refusal";
 import { assertAssetEnabled, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { getAssetBalance } from "@/server/wallet/balances";
+import { getOwnWallet, nonCustodialEnabled, ownWalletAccount } from "@/server/wallet/external";
+import { assertOwnWalletFunds, ownWalletRouteRefused } from "./own-wallet";
 import { newPaymentReference } from "./reference";
 import { paymentRefused } from "./refusal";
 import { resolveSettlementRoute, type RouteRefusal } from "./settlement-route";
@@ -48,6 +50,9 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
 
   const wallet = await db.custodialWallet.findUnique({ where: { userId: input.payerId } });
   if (!wallet) throw conflict("payer wallet not found");
+  // A payer who chose their own wallet pays from that account: it is the one
+  // the route and the funds are checked for, and no HeyPay balance comes into it.
+  const own = nonCustodialEnabled() ? ownWalletAccount(await getOwnWallet(input.payerId)) : null;
 
   // A price source refusing to quote (AppError) is final; only transient
   // failures are worth retrying.
@@ -64,15 +69,21 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   const preflight = await resolveSettlementRoute({
     asset,
     amount: amountAsset,
-    payerPublicKey: wallet.stellarPublicKey,
+    payerPublicKey: own ?? wallet.stellarPublicKey,
   });
-  if (!preflight.ok) throw routeRefused(asset, preflight.reason);
+  if (!preflight.ok) {
+    throw (
+      (own && ownWalletRouteRefused(asset, preflight.reason)) ??
+      routeRefused(asset, preflight.reason)
+    );
+  }
   // The settle job delivers the payer's own asset and nothing else. A converting
   // route means the treasury cannot hold that asset, so there is no way to settle.
   if (preflight.route.mode !== "direct") throw routeRefused(asset, "destination_no_trustline");
 
   const networkFeeXlm = STELLAR_BASE_FEE_XLM;
-  await assertFundsAvailable(wallet, asset, amountAsset, networkFeeXlm);
+  if (own) await assertOwnWalletFunds(own, asset, amountAsset, networkFeeXlm);
+  else await assertFundsAvailable(wallet, asset, amountAsset, networkFeeXlm);
 
   const payment = await db.$transaction(async (tx) => {
     await tx.exchangeRateSnapshot.create({

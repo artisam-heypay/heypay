@@ -12,12 +12,17 @@ import { conflict, forbidden, notFound } from "@/lib/errors";
 import type { EscrowDepositInstructions } from "@/lib/client/escrow-deposit";
 import { escrowAppliesTo, escrowContractId } from "@/server/stellar/escrow-config";
 import { escrowHoldsAsset, escrowJobId, toStroops } from "@/server/stellar/escrow";
-import { getNetworkPassphrase, isMainnet } from "@/server/stellar/horizon";
+import { getNetworkPassphrase } from "@/server/stellar/horizon";
 import { walletService } from "@/server/stellar/wallet";
+import { ownWalletAccount } from "@/server/wallet/external";
+import { ownWalletCannotHold } from "./own-wallet";
 
 // Long enough to read and approve the payment in the wallet, and no longer: a
 // deposit left valid is one the payer could still send much later.
-const DEPOSIT_VALID_SECONDS = 120;
+export const DEPOSIT_VALID_SECONDS = 120;
+
+/** What a payer on the custodial wallet is told when they ask to sign a payment themselves. */
+export const PAID_FROM_HEYPAY_WALLET = "This payment is paid from your HeyPay wallet.";
 
 export async function prepareEscrowDeposit(input: {
   paymentId: string;
@@ -31,8 +36,8 @@ export async function prepareEscrowDeposit(input: {
   if (payment.payerId !== input.payerId) throw forbidden("not your payment");
 
   // Only a payer who chose their own wallet signs anything themselves.
-  const from = payment.payer.walletMode === "EXTERNAL" ? payment.payer.externalPublicKey : null;
-  if (!from) throw conflict("This payment is paid from your HeyPay wallet.");
+  const from = ownWalletAccount(payment.payer);
+  if (!from) throw conflict(PAID_FROM_HEYPAY_WALLET);
 
   if (payment.status !== "QUOTED") {
     throw conflict(`cannot prepare payment in status ${payment.status}`);
@@ -47,14 +52,7 @@ export async function prepareEscrowDeposit(input: {
   }
   // The account pays from its own balance, so it has to exist on this network
   // and, for an issued asset, hold a line to it.
-  if (!(await walletService.canReceive(from, asset))) {
-    const network = isMainnet() ? "Mainnet" : "Testnet";
-    throw conflict(
-      asset === "XLM"
-        ? `Your wallet's account does not exist on ${network} yet. Fund it, then try again.`
-        : `Your wallet cannot hold ${asset} on ${network} yet. Add ${asset} to it, then try again.`,
-    );
-  }
+  if (!(await walletService.canReceive(from, asset))) throw ownWalletCannotHold(asset);
 
   // The payer's browser asks this server to simulate the deposit.
   const rpcUrl = process.env.SOROBAN_RPC_URL;

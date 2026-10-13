@@ -180,3 +180,128 @@ describe("ConfirmPayment — refused payments", () => {
     expect(screen.queryByRole("button", { name: /Turn on|Pay with/ })).not.toBeInTheDocument();
   });
 });
+
+// ---- paying from the payer's own wallet ----
+const { buildEscrowDeposit, signWithFreighter } = vi.hoisted(() => ({
+  buildEscrowDeposit: vi.fn(),
+  signWithFreighter: vi.fn(),
+}));
+vi.mock("@/lib/client/escrow-deposit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/client/escrow-deposit")>()),
+  buildEscrowDeposit: (instructions: unknown) => buildEscrowDeposit(instructions),
+}));
+vi.mock("@/components/wallet/freighter", () => ({
+  signWithFreighter: (xdr: string, expected: unknown) => signWithFreighter(xdr, expected),
+}));
+
+describe("ConfirmPayment for a payer who pays from their own wallet", () => {
+  const OWN = {
+    address: "GOWNWALLETXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    networkPassphrase: "Test SDF Network ; September 2015",
+    networkName: "Testnet",
+  };
+  const INSTRUCTIONS = { paymentId: "p1", from: OWN.address, amount: "83333334" };
+
+  function renderOwn() {
+    return render(
+      <ConfirmPayment
+        paymentId="p1"
+        merchantId="m1"
+        asset="XLM"
+        assetOptions={OPTIONS}
+        amountPhp="100.00"
+        quotedRate="12.00000000"
+        amountAsset="8.3333334"
+        networkFeeXlm="0.0000100"
+        quoteExpiresAt={null}
+        merchantName="Sari Store"
+        walletPublicKey={OWN.address}
+        availableAsset="100.0000000"
+        approxPhp="1200.00"
+        ownWallet={OWN}
+      />,
+    );
+  }
+
+  /** The paths requested, in order. */
+  const requested = (fetchMock: ReturnType<typeof mockApi>) =>
+    fetchMock.mock.calls.map(([url]) => String(url));
+
+  beforeEach(() => {
+    buildEscrowDeposit.mockReset().mockResolvedValue({ xdr: "UNSIGNED-XDR", txHash: "h" });
+    signWithFreighter.mockReset().mockResolvedValue({ ok: true, signedXdr: "SIGNED-XDR" });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("has the payer sign in Freighter and sends what they signed, with no custodial confirm", async () => {
+    const fetchMock = mockApi({
+      "/api/payments/p1/prepare": [{ status: 200, body: INSTRUCTIONS }],
+      "/api/payments/p1/signed": [{ status: 200, body: { status: "AUTHORIZED" } }],
+    });
+    renderOwn();
+    expect(screen.queryByRole("button", { name: /^confirm/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+
+    // The progress overlay takes over once the server has the signed transaction.
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Processing payment…");
+    expect(requested(fetchMock)).toEqual(["/api/payments/p1/prepare", "/api/payments/p1/signed"]);
+    // Built from what the server said the deposit must be, signed by the connected account.
+    expect(buildEscrowDeposit).toHaveBeenCalledWith(INSTRUCTIONS);
+    expect(signWithFreighter).toHaveBeenCalledWith("UNSIGNED-XDR", OWN);
+    const sent = fetchMock.mock.calls.find(([url]) => url === "/api/payments/p1/signed")![1];
+    expect(JSON.parse(String(sent?.body))).toEqual({ xdr: "SIGNED-XDR" });
+  });
+
+  it("says why and sends nothing when the payer does not approve in Freighter", async () => {
+    signWithFreighter.mockResolvedValue({
+      ok: false,
+      reason: "refused",
+      message: "The payment was not approved in Freighter. Nothing was sent.",
+    });
+    const fetchMock = mockApi({
+      "/api/payments/p1/prepare": [{ status: 200, body: INSTRUCTIONS }],
+    });
+    renderOwn();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/not approved in Freighter/);
+    expect(requested(fetchMock)).toEqual(["/api/payments/p1/prepare"]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // The payment is still a quote: the payer can try again.
+    expect(screen.getByRole("button", { name: /sign with freighter/i })).toBeEnabled();
+  });
+
+  it("shows why the server turned the signed transaction down", async () => {
+    mockApi({
+      "/api/payments/p1/prepare": [{ status: 200, body: INSTRUCTIONS }],
+      "/api/payments/p1/signed": [
+        refused(400, "The transaction is not signed by your connected wallet (GOWN…XXXX).", {
+          reason: "not_signed",
+        }),
+      ],
+    });
+    renderOwn();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /not signed by your connected wallet/,
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("asks nothing of Freighter when the server will not prepare the payment", async () => {
+    mockApi({
+      "/api/payments/p1/prepare": [refused(409, "quote expired; please re-quote", {})],
+    });
+    renderOwn();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/quote expired/);
+    expect(buildEscrowDeposit).not.toHaveBeenCalled();
+    expect(signWithFreighter).not.toHaveBeenCalled();
+  });
+});

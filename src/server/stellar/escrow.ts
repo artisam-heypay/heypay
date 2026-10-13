@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { Keypair, rpc } from "@stellar/stellar-sdk";
+import { Keypair, rpc, type Transaction } from "@stellar/stellar-sdk";
 import {
   basicNodeSigner,
   type AssembledTransaction,
@@ -140,6 +140,29 @@ function getSorobanRpc(): rpc.Server {
 
 export function __resetSorobanRpcForTests(): void {
   defaultServer = null;
+}
+
+/**
+ * What the network said to a transaction it was handed: `accepted` (queued, or
+ * already known), `rejected` with the network's result code (it will not run as
+ * it is, and nothing moved), or `busy` (not taken for now; ask again).
+ */
+export type SendOutcome =
+  { status: "accepted" } | { status: "rejected"; code: string } | { status: "busy" };
+
+/**
+ * Hands the network a transaction someone else signed: the escrow deposit of a
+ * payer who signs with their own wallet. No key of HeyPay's is involved, and
+ * the transaction is sent exactly as it came.
+ */
+export async function sendSignedTransaction(
+  tx: Transaction,
+  server: rpc.Server = getSorobanRpc(),
+): Promise<SendOutcome> {
+  const sent = await server.sendTransaction(tx);
+  if (sent.status === "PENDING" || sent.status === "DUPLICATE") return { status: "accepted" };
+  if (sent.status === "TRY_AGAIN_LATER") return { status: "busy" };
+  return { status: "rejected", code: sent.errorResult?.result().switch().name ?? "unknown" };
 }
 
 const CONTRACT_ERROR_PATTERN = /Error\(Contract, #(\d+)\)/;

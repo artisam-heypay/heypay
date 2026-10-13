@@ -3,6 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { dec, displayPhp } from "@/lib/money";
 import { readRefusal, type RefusedRequest } from "@/lib/payment-refusal";
+import {
+  buildEscrowDeposit,
+  EscrowDepositBuildError,
+  type EscrowDepositInstructions,
+} from "@/lib/client/escrow-deposit";
+import { signWithFreighter } from "@/components/wallet/freighter";
 import { Icon } from "@/components/ui";
 import { AssetPicker } from "./AssetPicker";
 import { ConversionBreakdown } from "./ConversionBreakdown";
@@ -14,6 +20,38 @@ import type { PaymentStatus } from "@/generated/prisma/client";
 const TERMINAL = new Set(["SETTLED", "FAILED", "REFUNDED"]);
 
 export type ConfirmAssetOption = { asset: string; available: string; canReceive: boolean };
+
+/** The payer's own wallet, when it pays instead of the HeyPay one. */
+export type ConfirmOwnWallet = {
+  /** The account they connected; the escrow deposit comes from it. */
+  address: string;
+  /** The network HeyPay runs on; Freighter must be on the same one. */
+  networkPassphrase: string;
+  networkName: string;
+};
+
+/** Where a payment signed in the payer's own wallet has got to. */
+type SigningStep = "preparing" | "signing" | "sending";
+
+const SIGNING_STEP_NOTE: Record<SigningStep, string> = {
+  preparing: "Preparing the payment…",
+  signing: "Approve the payment in Freighter…",
+  sending: "Sending the signed payment…",
+};
+
+/** Why the escrow deposit could not be built in the browser, as the payer reads it. */
+function buildFailure(err: unknown): string {
+  if (err instanceof EscrowDepositBuildError) {
+    if (err.reason === "account_not_found") {
+      return "Your wallet's account was not found on the network. Fund it, then try again.";
+    }
+    if (err.reason === "simulation_failed") {
+      return "The network would not run this payment from your wallet. Check its balance, then try again.";
+    }
+    return "This payment needs a signature your wallet cannot give.";
+  }
+  return "Could not prepare the payment. Try again.";
+}
 
 export function ConfirmPayment(props: {
   paymentId: string;
@@ -31,6 +69,12 @@ export function ConfirmPayment(props: {
   walletPublicKey: string;
   availableAsset: string;
   approxPhp: string;
+  /**
+   * Set when the payer pays from their own wallet: the balances above are that
+   * account's, and the payment is signed in Freighter instead of confirmed
+   * with the HeyPay wallet.
+   */
+  ownWallet?: ConfirmOwnWallet | null;
 }) {
   const router = useRouter();
   const amountPhp = dec(props.amountPhp);
@@ -53,6 +97,9 @@ export function ConfirmPayment(props: {
   // The last quote or confirmation the server turned down, and why.
   const [refused, setRefused] = useState<RefusedRequest | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  // Set while a payment is being signed in the payer's own wallet. The progress
+  // overlay only takes over once the server has the signed transaction.
+  const [signingStep, setSigningStep] = useState<SigningStep | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollBusyRef = useRef(false);
 
@@ -170,6 +217,65 @@ export function ConfirmPayment(props: {
     }, 2000);
   }
 
+  /**
+   * Pays from the payer's own wallet. The server says what the escrow deposit
+   * must be, this browser builds it, Freighter signs it, and the server checks
+   * the signed transaction against the payment before it is sent. HeyPay signs
+   * nothing. Until the server has taken it, nothing was sent, so every failure
+   * on the way leaves the payment as it was and the payer can try again.
+   */
+  async function signAndPay() {
+    const own = props.ownWallet;
+    if (!own) return;
+    const stop = (failed: RefusedRequest) => {
+      setRefused(failed);
+      setSigningStep(null);
+    };
+    setRefused(null);
+    setSigningStep("preparing");
+    try {
+      const json = { "content-type": "application/json" };
+      const prepared = await fetch(`/api/payments/${props.paymentId}/prepare`, {
+        method: "POST",
+        headers: json,
+        body: "{}",
+      });
+      if (!prepared.ok) {
+        const body = await prepared.json().catch(() => null);
+        return stop(readRefusal(body, "Could not prepare the payment."));
+      }
+      const instructions = (await prepared.json()) as EscrowDepositInstructions;
+
+      let deposit: { xdr: string };
+      try {
+        deposit = await buildEscrowDeposit(instructions);
+      } catch (err) {
+        return stop({ message: buildFailure(err), refusal: null });
+      }
+
+      setSigningStep("signing");
+      const signature = await signWithFreighter(deposit.xdr, own);
+      if (!signature.ok) return stop({ message: signature.message, refusal: null });
+
+      setSigningStep("sending");
+      const res = await fetch(`/api/payments/${props.paymentId}/signed`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ xdr: signature.signedXdr }),
+      });
+      if (!res.ok) {
+        return stop(readRefusal(await res.json().catch(() => null), "Could not send the payment."));
+      }
+      const { status: s } = (await res.json()) as { status: PaymentStatus };
+      setSigningStep(null);
+      setStatus(s);
+      setProcessing(true);
+      poll();
+    } catch {
+      stop({ message: "Network error. Nothing was sent. Try again.", refusal: null });
+    }
+  }
+
   async function cancel() {
     await fetch(`/api/payments/${props.paymentId}/cancel`, {
       method: "POST",
@@ -189,7 +295,7 @@ export function ConfirmPayment(props: {
           }))}
           value={props.asset}
           onChange={(asset) => asset !== props.asset && switchAsset(asset)}
-          busy={switching || processing}
+          busy={switching || processing || signingStep !== null}
         />
 
         <ConversionBreakdown
@@ -206,6 +312,7 @@ export function ConfirmPayment(props: {
           availableAsset={availableAsset}
           approxPhp={dec(props.approxPhp)}
           requiredAsset={requiredAsset}
+          own={Boolean(props.ownWallet)}
         />
 
         {expired && (
@@ -225,16 +332,22 @@ export function ConfirmPayment(props: {
           />
         )}
 
+        {signingStep && (
+          <p role="status" className="text-body-md text-on-surface-variant">
+            {SIGNING_STEP_NOTE[signingStep]}
+          </p>
+        )}
+
         <div className="flex flex-wrap gap-stack-md">
           <button
             type="button"
-            onClick={confirm}
-            disabled={expired || insufficient || processing || switching}
-            aria-busy={processing || undefined}
+            onClick={props.ownWallet ? signAndPay : confirm}
+            disabled={expired || insufficient || processing || switching || signingStep !== null}
+            aria-busy={processing || signingStep !== null || undefined}
             className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
           >
-            Confirm
-            <Icon name="lock" />
+            {props.ownWallet ? "Sign with Freighter" : "Confirm"}
+            <Icon name={props.ownWallet ? "account_balance_wallet" : "lock"} />
           </button>
           <button
             type="button"
