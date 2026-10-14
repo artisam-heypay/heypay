@@ -18,7 +18,7 @@ export function MoneyAmount({
 }) {
   const cryptoCls =
     size === "display"
-      ? "text-display-lg text-primary"
+      ? "text-headline-lg text-primary sm:text-display-lg"
       : size === "row"
         ? "text-mono-data"
         : "text-headline-md text-primary font-mono";

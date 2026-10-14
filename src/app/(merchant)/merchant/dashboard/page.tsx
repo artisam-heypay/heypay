@@ -54,7 +54,10 @@ export default async function MerchantDashboard({
         <section className="lg:col-span-2">
           <div className="mb-stack-md flex items-center justify-between">
             <h2 className="text-headline-md">Business transactions</h2>
-            <Link href="/merchant/transactions" className="text-body-sm text-primary">
+            <Link
+              href="/merchant/transactions"
+              className="-my-3 inline-flex min-h-11 items-center text-body-sm text-primary"
+            >
               View all
             </Link>
           </div>
@@ -70,7 +73,10 @@ export default async function MerchantDashboard({
             <p className="text-body-sm text-on-surface-variant">
               Our team is here for settlement or QR questions.
             </p>
-            <Link href="/merchant/settings" className="text-body-sm font-medium text-primary">
+            <Link
+              href="/merchant/settings"
+              className="inline-flex min-h-11 items-center self-start text-body-sm font-medium text-primary"
+            >
               Contact support
             </Link>
           </div>

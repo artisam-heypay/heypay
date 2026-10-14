@@ -18,7 +18,7 @@ export function RecentPaymentsList({ payments }: { payments: RecentPayment[] }) 
         <h2 className="font-display text-headline-md">Recent Payments</h2>
         <Link
           href="/payer/transactions"
-          className="rounded-lg text-body-sm text-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="-my-3 inline-flex min-h-11 items-center rounded-lg text-body-sm text-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
         >
           View all
         </Link>

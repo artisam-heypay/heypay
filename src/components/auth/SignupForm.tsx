@@ -109,7 +109,10 @@ export function SignupForm({ googleEnabled, emailEnabled, notice }: Props) {
           </button>
         ) : null}
       </form>
-      <a href="/login" className="text-center text-body-sm text-primary">
+      <a
+        href="/login"
+        className="inline-flex min-h-11 items-center justify-center text-center text-body-sm text-primary"
+      >
         I already have an account
       </a>
     </main>
