@@ -401,10 +401,12 @@ export function ConfirmPayment(props: {
             {props.ownWallet ? "Sign with Freighter" : "Confirm"}
             <Icon name={props.ownWallet ? "account_balance_wallet" : "lock"} />
           </button>
+          {/* Not while a payment is being signed or sent: it may already be on its way. */}
           <button
             type="button"
             onClick={cancel}
-            className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-4 font-display font-bold text-primary hover:bg-primary/5 focus:outline-none focus:ring-4 focus:ring-primary/10"
+            disabled={processing || signingStep !== null}
+            className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-4 font-display font-bold text-primary hover:bg-primary/5 disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
           >
             Cancel
           </button>

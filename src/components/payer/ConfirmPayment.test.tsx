@@ -280,6 +280,23 @@ describe("ConfirmPayment for a payer who pays from their own wallet", () => {
     expect(JSON.parse(String(sent?.body))).toEqual({ xdr: "SIGNED-XDR" });
   });
 
+  it("offers no Cancel while the payment is being signed, and again once nothing was sent", async () => {
+    // Freighter is still waiting for the payer's answer.
+    let answer: (v: unknown) => void = () => {};
+    signWithFreighter.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    mockApi({ "/api/payments/p1/prepare": [{ status: 200, body: INSTRUCTIONS }] });
+    renderOwn();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+    await waitFor(() => expect(signWithFreighter).toHaveBeenCalled());
+    // A cancel now could land after the signed deposit has been accepted.
+    expect(screen.getByRole("button", { name: /^cancel$/i })).toBeDisabled();
+
+    answer({ ok: false, reason: "cancelled", message: "You cancelled — nothing was sent." });
+    expect(await screen.findByRole("alert")).toHaveTextContent("You cancelled — nothing was sent.");
+    expect(screen.getByRole("button", { name: /^cancel$/i })).toBeEnabled();
+  });
+
   it("says the payer cancelled and sends nothing when they reject in Freighter", async () => {
     signWithFreighter.mockResolvedValue({
       ok: false,

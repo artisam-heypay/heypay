@@ -64,10 +64,21 @@ export async function applyTransition(
   if (!canTransition(payment.status, toStatus)) {
     throw conflict(`illegal transition ${payment.status} -> ${toStatus}`);
   }
-  const updated = await client.payment.update({
-    where: { id: payment.id },
+  // Moves the payment only while it is still in the status the caller read. Two
+  // requests that read the same payment (a cancel and a signed deposit, say)
+  // cannot both move it: the second finds the status changed and is refused,
+  // and its transaction, with whatever it wrote before this, is rolled back.
+  const moved = await client.payment.updateMany({
+    where: { id: payment.id, status: payment.status },
     data: { status: toStatus },
   });
+  if (moved.count === 0) {
+    throw conflict("This payment has already moved on, so nothing was changed.", {
+      reason: "status_changed",
+      expected: payment.status,
+    });
+  }
+  const updated = await client.payment.findUniqueOrThrow({ where: { id: payment.id } });
   await client.paymentEvent.create({
     data: {
       paymentId: payment.id,
