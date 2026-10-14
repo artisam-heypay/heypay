@@ -2,12 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { dec, displayPhp } from "@/lib/money";
-import { readRefusal, type RefusedRequest } from "@/lib/payment-refusal";
-import {
-  buildEscrowDeposit,
-  EscrowDepositBuildError,
-  type EscrowDepositInstructions,
-} from "@/lib/client/escrow-deposit";
+import { payingWalletChange, readRefusal, type RefusedRequest } from "@/lib/payment-refusal";
+import { EscrowCallBuildError } from "@/lib/client/escrow-call";
+import { buildEscrowDeposit, type EscrowDepositInstructions } from "@/lib/client/escrow-deposit";
 import { signWithFreighter } from "@/components/wallet/freighter";
 import { Icon } from "@/components/ui";
 import { AssetPicker } from "./AssetPicker";
@@ -31,17 +28,31 @@ export type ConfirmOwnWallet = {
 };
 
 /** Where a payment signed in the payer's own wallet has got to. */
-type SigningStep = "preparing" | "signing" | "sending";
+type SigningStep = "preparing" | "signing" | "resigning" | "sending";
 
 const SIGNING_STEP_NOTE: Record<SigningStep, string> = {
   preparing: "Preparing the payment…",
   signing: "Approve the payment in Freighter…",
+  resigning:
+    "That approval came after the transaction expired, so nothing was sent. " +
+    "Approve the new one in Freighter…",
   sending: "Sending the signed payment…",
 };
 
+// A deposit is valid for two minutes at most. One approved after that is asked
+// for once more, on a fresh deposit, before the payer is told to start again.
+const SIGN_ATTEMPTS = 2;
+
+/** Why the server did not take a signed deposit, when it says so. */
+function signedRefusalReason(body: unknown): string | null {
+  const reason = (body as { error?: { details?: { reason?: unknown } } } | null)?.error?.details
+    ?.reason;
+  return typeof reason === "string" ? reason : null;
+}
+
 /** Why the escrow deposit could not be built in the browser, as the payer reads it. */
 function buildFailure(err: unknown): string {
-  if (err instanceof EscrowDepositBuildError) {
+  if (err instanceof EscrowCallBuildError) {
     if (err.reason === "account_not_found") {
       return "Your wallet's account was not found on the network. Fund it, then try again.";
     }
@@ -169,10 +180,16 @@ export function ConfirmPayment(props: {
         body: "{}",
       });
       if (!res.ok) {
-        const failed = readRefusal(
-          await res.json().catch(() => null),
-          "Could not authorize the payment.",
-        );
+        const body: unknown = await res.json().catch(() => null);
+        const failed = readRefusal(body, "Could not authorize the payment.");
+        // The payer turned on their own wallet after this page was drawn. The
+        // HeyPay wallet paid nothing; draw the page again for the wallet that pays.
+        if (payingWalletChange(body) === "own_wallet_pays") {
+          setRefused(failed);
+          setProcessing(false);
+          router.refresh();
+          return;
+        }
         // A refusal held nothing, so the payer can fix it here and try again.
         if (failed.refusal) {
           setRefused(failed);
@@ -231,46 +248,81 @@ export function ConfirmPayment(props: {
       setRefused(failed);
       setSigningStep(null);
     };
+    // The payer switched back to their HeyPay wallet (or own wallets were turned
+    // off) after this page was drawn. Nothing was signed for it or sent; draw
+    // the page again for the HeyPay wallet, which they confirm with as usual.
+    const backToHeyPayWallet = () => {
+      stop({
+        message:
+          "You switched back to your HeyPay wallet, so nothing was sent from your own wallet. " +
+          "Check the wallet below, then confirm.",
+        refusal: null,
+      });
+      router.refresh();
+    };
+    const wrongWallet = (res: Response, body: unknown) =>
+      res.status === 404 || payingWalletChange(body) === "heypay_wallet_pays";
+
     setRefused(null);
-    setSigningStep("preparing");
     try {
       const json = { "content-type": "application/json" };
-      const prepared = await fetch(`/api/payments/${props.paymentId}/prepare`, {
-        method: "POST",
-        headers: json,
-        body: "{}",
-      });
-      if (!prepared.ok) {
-        const body = await prepared.json().catch(() => null);
-        return stop(readRefusal(body, "Could not prepare the payment."));
-      }
-      const instructions = (await prepared.json()) as EscrowDepositInstructions;
+      for (let attempt = 1; ; attempt++) {
+        setSigningStep(attempt === 1 ? "preparing" : "resigning");
+        const prepared = await fetch(`/api/payments/${props.paymentId}/prepare`, {
+          method: "POST",
+          headers: json,
+          body: "{}",
+        });
+        if (!prepared.ok) {
+          const body: unknown = await prepared.json().catch(() => null);
+          if (wrongWallet(prepared, body)) return backToHeyPayWallet();
+          return stop(readRefusal(body, "Could not prepare the payment."));
+        }
+        const instructions = (await prepared.json()) as EscrowDepositInstructions;
 
-      let deposit: { xdr: string };
-      try {
-        deposit = await buildEscrowDeposit(instructions);
-      } catch (err) {
-        return stop({ message: buildFailure(err), refusal: null });
-      }
+        let deposit: { xdr: string };
+        try {
+          deposit = await buildEscrowDeposit(instructions);
+        } catch (err) {
+          return stop({ message: buildFailure(err), refusal: null });
+        }
 
-      setSigningStep("signing");
-      const signature = await signWithFreighter(deposit.xdr, own);
-      if (!signature.ok) return stop({ message: signature.message, refusal: null });
+        if (attempt === 1) setSigningStep("signing");
+        const signature = await signWithFreighter(deposit.xdr, own);
+        if (!signature.ok) return stop({ message: signature.message, refusal: null });
 
-      setSigningStep("sending");
-      const res = await fetch(`/api/payments/${props.paymentId}/signed`, {
-        method: "POST",
-        headers: json,
-        body: JSON.stringify({ xdr: signature.signedXdr }),
-      });
-      if (!res.ok) {
-        return stop(readRefusal(await res.json().catch(() => null), "Could not send the payment."));
+        // Approved after the deposit stopped being valid: the network would turn
+        // it down, so it is not sent.
+        const late = Date.now() >= Date.parse(instructions.validUntil);
+        if (!late) {
+          setSigningStep("sending");
+          const res = await fetch(`/api/payments/${props.paymentId}/signed`, {
+            method: "POST",
+            headers: json,
+            body: JSON.stringify({ xdr: signature.signedXdr }),
+          });
+          if (res.ok) {
+            const { status: s } = (await res.json()) as { status: PaymentStatus };
+            setSigningStep(null);
+            setStatus(s);
+            setProcessing(true);
+            poll();
+            return;
+          }
+          const body: unknown = await res.json().catch(() => null);
+          if (wrongWallet(res, body)) return backToHeyPayWallet();
+          if (signedRefusalReason(body) !== "expired") {
+            return stop(readRefusal(body, "Could not send the payment."));
+          }
+        }
+        if (attempt === SIGN_ATTEMPTS) {
+          return stop({
+            message:
+              "The transaction expired before it was approved, so nothing was sent. Try again.",
+            refusal: null,
+          });
+        }
       }
-      const { status: s } = (await res.json()) as { status: PaymentStatus };
-      setSigningStep(null);
-      setStatus(s);
-      setProcessing(true);
-      poll();
     } catch {
       stop({ message: "Network error. Nothing was sent. Try again.", refusal: null });
     }

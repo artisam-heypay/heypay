@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
+const { replace, refresh } = vi.hoisted(() => ({ replace: vi.fn(), refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace, refresh }) }));
 
 import { ConfirmPayment } from "./ConfirmPayment";
 
@@ -181,6 +181,27 @@ describe("ConfirmPayment — refused payments", () => {
   });
 });
 
+describe("ConfirmPayment when the payer turned on their own wallet meanwhile", () => {
+  it("pays nothing from the HeyPay wallet and draws the page again for their own", async () => {
+    mockApi({
+      "/api/payments/p1/confirm": [
+        refused(409, "You pay from your own wallet. Sign this payment in Freighter.", {
+          reason: "own_wallet_pays",
+        }),
+      ],
+    });
+    renderConfirm("XLM");
+
+    await userEvent.click(screen.getByRole("button", { name: /Confirm/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Sign this payment in Freighter/);
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // Not left disabled: once redrawn, the button signs with their own wallet.
+    expect(screen.getByRole("button", { name: /Confirm/ })).toBeEnabled();
+  });
+});
+
 // ---- paying from the payer's own wallet ----
 const { buildEscrowDeposit, signWithFreighter } = vi.hoisted(() => ({
   buildEscrowDeposit: vi.fn(),
@@ -200,7 +221,13 @@ describe("ConfirmPayment for a payer who pays from their own wallet", () => {
     networkPassphrase: "Test SDF Network ; September 2015",
     networkName: "Testnet",
   };
-  const INSTRUCTIONS = { paymentId: "p1", from: OWN.address, amount: "83333334" };
+  const instructions = (validForMs = 90_000) => ({
+    paymentId: "p1",
+    from: OWN.address,
+    amount: "83333334",
+    validUntil: new Date(Date.now() + validForMs).toISOString(),
+  });
+  const INSTRUCTIONS = instructions();
 
   function renderOwn() {
     return render(
@@ -253,11 +280,11 @@ describe("ConfirmPayment for a payer who pays from their own wallet", () => {
     expect(JSON.parse(String(sent?.body))).toEqual({ xdr: "SIGNED-XDR" });
   });
 
-  it("says why and sends nothing when the payer does not approve in Freighter", async () => {
+  it("says the payer cancelled and sends nothing when they reject in Freighter", async () => {
     signWithFreighter.mockResolvedValue({
       ok: false,
-      reason: "refused",
-      message: "The payment was not approved in Freighter. Nothing was sent.",
+      reason: "cancelled",
+      message: "You cancelled — nothing was sent.",
     });
     const fetchMock = mockApi({
       "/api/payments/p1/prepare": [{ status: 200, body: INSTRUCTIONS }],
@@ -266,11 +293,134 @@ describe("ConfirmPayment for a payer who pays from their own wallet", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/not approved in Freighter/);
+    expect(await screen.findByRole("alert")).toHaveTextContent("You cancelled — nothing was sent.");
     expect(requested(fetchMock)).toEqual(["/api/payments/p1/prepare"]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     // The payment is still a quote: the payer can try again.
     expect(screen.getByRole("button", { name: /sign with freighter/i })).toBeEnabled();
+  });
+
+  it.each([
+    [
+      "wrong_network",
+      "Freighter is on another network, so nothing was sent. In Freighter, switch the network to Testnet, then try again.",
+    ],
+    [
+      "wrong_account",
+      "Freighter is on another account, so nothing was sent. In Freighter, switch to GOWN…XXXX, the wallet you connected, then try again.",
+    ],
+  ])("%s: says how to put it right in Freighter and sends nothing", async (reason, message) => {
+    signWithFreighter.mockResolvedValue({ ok: false, reason, message });
+    const fetchMock = mockApi({
+      "/api/payments/p1/prepare": [{ status: 200, body: INSTRUCTIONS }],
+    });
+    renderOwn();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(requested(fetchMock)).toEqual(["/api/payments/p1/prepare"]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign with freighter/i })).toBeEnabled();
+  });
+
+  it("prepares a fresh deposit and asks again when the server finds the signed one expired", async () => {
+    buildEscrowDeposit
+      .mockResolvedValueOnce({ xdr: "UNSIGNED-1", txHash: "h1" })
+      .mockResolvedValueOnce({ xdr: "UNSIGNED-2", txHash: "h2" });
+    signWithFreighter
+      .mockResolvedValueOnce({ ok: true, signedXdr: "SIGNED-1" })
+      .mockResolvedValueOnce({ ok: true, signedXdr: "SIGNED-2" });
+    const fetchMock = mockApi({
+      "/api/payments/p1/prepare": [
+        { status: 200, body: INSTRUCTIONS },
+        { status: 200, body: INSTRUCTIONS },
+      ],
+      "/api/payments/p1/signed": [
+        refused(400, "The transaction you signed has expired. Nothing was sent. Try again.", {
+          reason: "expired",
+        }),
+        { status: 200, body: { status: "AUTHORIZED" } },
+      ],
+    });
+    renderOwn();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Processing payment…");
+    expect(requested(fetchMock).slice(0, 4)).toEqual([
+      "/api/payments/p1/prepare",
+      "/api/payments/p1/signed",
+      "/api/payments/p1/prepare",
+      "/api/payments/p1/signed",
+    ]);
+    // The second signature is over the second deposit, and that is the one sent.
+    expect(signWithFreighter).toHaveBeenNthCalledWith(2, "UNSIGNED-2", OWN);
+    const sent = fetchMock.mock.calls.filter(([url]) => url === "/api/payments/p1/signed");
+    expect(JSON.parse(String(sent[1]![1]?.body))).toEqual({ xdr: "SIGNED-2" });
+  });
+
+  it("does not send a deposit approved after it stopped being valid, and stops after one more try", async () => {
+    const fetchMock = mockApi({
+      "/api/payments/p1/prepare": [
+        { status: 200, body: instructions(-1000) },
+        { status: 200, body: instructions(-1000) },
+      ],
+    });
+    renderOwn();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /expired before it was approved, so nothing was sent/,
+    );
+    expect(requested(fetchMock)).toEqual(["/api/payments/p1/prepare", "/api/payments/p1/prepare"]);
+    expect(signWithFreighter).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign with freighter/i })).toBeEnabled();
+  });
+
+  it.each([
+    [
+      "switched back to the HeyPay wallet",
+      refused(409, "This payment is paid from your HeyPay wallet.", {
+        reason: "heypay_wallet_pays",
+      }),
+    ],
+    ["own wallets were turned off", { status: 404, body: { error: { code: "NOT_FOUND" } } }],
+  ])("falls back to the HeyPay wallet when the payer %s", async (_name, reply) => {
+    const fetchMock = mockApi({ "/api/payments/p1/prepare": [reply] });
+    renderOwn();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /switched back to your HeyPay wallet, so nothing was sent from your own wallet/,
+    );
+    // Nothing was built, signed or sent; the page is drawn again for the wallet that pays.
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(requested(fetchMock)).toEqual(["/api/payments/p1/prepare"]);
+    expect(buildEscrowDeposit).not.toHaveBeenCalled();
+    expect(signWithFreighter).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("falls back as well when the switch happens between signing and sending", async () => {
+    mockApi({
+      "/api/payments/p1/prepare": [{ status: 200, body: INSTRUCTIONS }],
+      "/api/payments/p1/signed": [
+        refused(409, "This payment is paid from your HeyPay wallet.", {
+          reason: "heypay_wallet_pays",
+        }),
+      ],
+    });
+    renderOwn();
+
+    await userEvent.click(screen.getByRole("button", { name: /sign with freighter/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/switched back to your HeyPay/);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("shows why the server turned the signed transaction down", async () => {

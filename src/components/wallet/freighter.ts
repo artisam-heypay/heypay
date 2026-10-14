@@ -75,21 +75,43 @@ export type FreighterSignature =
   | { ok: true; signedXdr: string }
   | {
       ok: false;
-      reason: "not_installed" | "refused" | "wrong_network" | "wrong_account";
+      /**
+       * `cancelled`: the payer turned the request down. `failed`: Freighter gave
+       * no signature for any other reason (locked, closed, an error of its own).
+       */
+      reason: "not_installed" | "cancelled" | "failed" | "wrong_network" | "wrong_account";
       message: string;
     };
 
 /** GABC…WXYZ: enough to recognise an account without filling a phone screen. */
-function shortAddress(address: string): string {
+export function shortAddress(address: string): string {
   return `${address.slice(0, 4)}…${address.slice(-4)}`;
+}
+
+/** Whether Freighter's error says the payer pressed Reject (SEP-43 code -4). */
+function turnedDown(err: unknown): boolean {
+  const { code, message } = (err ?? {}) as { code?: unknown; message?: unknown };
+  return code === -4 || (typeof message === "string" && /reject|declin/i.test(message));
+}
+
+/** No signature came back: the payer said no, or Freighter could not give one. */
+function unsigned(err: unknown): FreighterSignature {
+  return turnedDown(err)
+    ? { ok: false, reason: "cancelled", message: "You cancelled — nothing was sent." }
+    : {
+        ok: false,
+        reason: "failed",
+        message: "Freighter did not sign, so nothing was sent. Unlock Freighter, then try again.",
+      };
 }
 
 /**
  * Asks Freighter to sign a transaction with the payer's connected account. The
  * key stays in Freighter: what comes back is the transaction with the
- * signature on it. Refuses first, with the reason, when Freighter is missing,
- * on another network than HeyPay, or on another account than the one the
- * transaction is from: a signature from either would only be turned down.
+ * signature on it. Refuses first, saying how to put it right in Freighter, when
+ * Freighter is missing, on another network than HeyPay, or on another account
+ * than the one the transaction is from: a signature from either would only be
+ * turned down. Whatever the answer, nothing is sent here.
  */
 export async function signWithFreighter(
   xdr: string,
@@ -111,29 +133,25 @@ export async function signWithFreighter(
       ok: false,
       reason: "wrong_network",
       message:
-        `Freighter is not on ${expected.networkName}. ` +
-        `Switch its network to ${expected.networkName}, then try again.`,
+        `Freighter is on another network, so nothing was sent. ` +
+        `In Freighter, switch the network to ${expected.networkName}, then try again.`,
     };
   }
 
-  const refused: FreighterSignature = {
-    ok: false,
-    reason: "refused",
-    message: "The payment was not approved in Freighter. Nothing was sent.",
-  };
   let address: string;
   try {
     ({ address } = await wallets.fetchAddress());
-  } catch {
-    return refused;
+  } catch (err) {
+    return unsigned(err);
   }
   if (address !== expected.address) {
     return {
       ok: false,
       reason: "wrong_account",
       message:
-        `Freighter is on another account. Switch it to ${shortAddress(expected.address)}, ` +
-        "the wallet you connected, then try again.",
+        `Freighter is on another account, so nothing was sent. ` +
+        `In Freighter, switch to ${shortAddress(expected.address)}, the wallet you connected, ` +
+        "then try again.",
     };
   }
 
@@ -142,9 +160,8 @@ export async function signWithFreighter(
       networkPassphrase: expected.networkPassphrase,
       address: expected.address,
     });
-    return signedTxXdr ? { ok: true, signedXdr: signedTxXdr } : refused;
-  } catch {
-    // Turned down, closed without an answer, or locked: no signature either way.
-    return refused;
+    return signedTxXdr ? { ok: true, signedXdr: signedTxXdr } : unsigned(null);
+  } catch (err) {
+    return unsigned(err);
   }
 }

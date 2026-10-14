@@ -8,7 +8,8 @@
 import "server-only";
 import { db } from "@/server/db";
 import { dec } from "@/lib/money";
-import { conflict, forbidden, notFound } from "@/lib/errors";
+import { conflict, forbidden, notFound, type AppError } from "@/lib/errors";
+import type { PayingWalletChange } from "@/lib/payment-refusal";
 import type { EscrowDepositInstructions } from "@/lib/client/escrow-deposit";
 import { escrowAppliesTo, escrowContractId } from "@/server/stellar/escrow-config";
 import { escrowHoldsAsset, escrowJobId, toStroops } from "@/server/stellar/escrow";
@@ -21,8 +22,16 @@ import { ownWalletCannotHold } from "./own-wallet";
 // deposit left valid is one the payer could still send much later.
 export const DEPOSIT_VALID_SECONDS = 120;
 
-/** What a payer on the custodial wallet is told when they ask to sign a payment themselves. */
-export const PAID_FROM_HEYPAY_WALLET = "This payment is paid from your HeyPay wallet.";
+/**
+ * What a payer on the custodial wallet is told when they ask to sign a payment
+ * themselves. The reason lets a confirm screen drawn for their own wallet (they
+ * switched back after opening it) fall back to the HeyPay wallet.
+ */
+export function heypayWalletPays(): AppError {
+  return conflict("This payment is paid from your HeyPay wallet.", {
+    reason: "heypay_wallet_pays" satisfies PayingWalletChange,
+  });
+}
 
 export async function prepareEscrowDeposit(input: {
   paymentId: string;
@@ -37,7 +46,7 @@ export async function prepareEscrowDeposit(input: {
 
   // Only a payer who chose their own wallet signs anything themselves.
   const from = ownWalletAccount(payment.payer);
-  if (!from) throw conflict(PAID_FROM_HEYPAY_WALLET);
+  if (!from) throw heypayWalletPays();
 
   if (payment.status !== "QUOTED") {
     throw conflict(`cannot prepare payment in status ${payment.status}`);

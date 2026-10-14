@@ -196,11 +196,17 @@ describe("POST /api/payments/[id]/prepare", () => {
     expect(secondsLeft).toBeGreaterThan(110);
   });
 
-  it("refuses a payer on the custodial wallet", async () => {
+  it("refuses a payer on the custodial wallet, saying which wallet pays", async () => {
     const { payment } = await makeQuoted({ walletMode: "CUSTODIAL" });
     const res = await post(payment.id);
     expect(res.status).toBe(409);
-    expect(await refusal(res)).toBe("This payment is paid from your HeyPay wallet.");
+    // The reason lets a confirm screen drawn for their own wallet fall back.
+    expect(await res.json()).toMatchObject({
+      error: {
+        message: "This payment is paid from your HeyPay wallet.",
+        details: { reason: "heypay_wallet_pays" },
+      },
+    });
     expect(canReceive).not.toHaveBeenCalled();
   });
 

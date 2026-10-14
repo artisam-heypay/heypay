@@ -11,11 +11,8 @@ import {
   type rpc,
 } from "@stellar/stellar-sdk";
 import { describe, expect, it, vi } from "vitest";
-import {
-  EscrowDepositBuildError,
-  buildEscrowDeposit,
-  type EscrowDepositInstructions,
-} from "./escrow-deposit";
+import { EscrowCallBuildError } from "./escrow-call";
+import { buildEscrowDeposit, type EscrowDepositInstructions } from "./escrow-deposit";
 
 const PASSPHRASE = "Test SDF Network ; September 2015";
 const CONTRACT_ID = "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E";
@@ -124,7 +121,7 @@ describe("buildEscrowDeposit", () => {
       getAccount: vi.fn().mockRejectedValue(new Error(`Account not found: ${own}`)),
     });
     await expect(build(server)).rejects.toMatchObject({
-      name: "EscrowDepositBuildError",
+      name: "EscrowCallBuildError",
       reason: "account_not_found",
     });
     expect(server.simulateTransaction).not.toHaveBeenCalled();
@@ -141,7 +138,7 @@ describe("buildEscrowDeposit", () => {
       }),
     });
     const err = await build(server).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(EscrowDepositBuildError);
+    expect(err).toBeInstanceOf(EscrowCallBuildError);
     expect(err).toMatchObject({
       reason: "simulation_failed",
       detail: "HostError: Error(Contract, #3)",

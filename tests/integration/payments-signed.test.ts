@@ -481,10 +481,11 @@ describe("POST /api/payments/[id]/signed", () => {
   });
 
   describe("who may sign, and when", () => {
-    it("refuses a payer on the custodial wallet", async () => {
+    it("refuses a payer who switched back to the custodial wallet, saying which wallet pays", async () => {
       const { own, payment } = await makeQuoted({ walletMode: "CUSTODIAL" });
       const res = await post(payment.id, { xdr: signedDeposit(payment, own).xdr });
       expect(res.status).toBe(409);
+      expect(await reason(res)).toBe("heypay_wallet_pays");
       await expectUntouched(payment.id);
     });
 
@@ -556,7 +557,7 @@ describe("confirmPayment for a payer who chose their own wallet", () => {
     const { user, payment } = await makeQuoted();
     await expect(
       confirmPayment({ paymentId: payment.id, payerId: user.id, idemKey: "k-own-1" }),
-    ).rejects.toMatchObject({ status: 409 });
+    ).rejects.toMatchObject({ status: 409, details: { reason: "own_wallet_pays" } });
     const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe("QUOTED");
     expect(enqueueSettle).not.toHaveBeenCalled();
