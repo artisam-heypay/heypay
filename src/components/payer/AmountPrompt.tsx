@@ -16,6 +16,13 @@ const AMOUNT_PATTERN: Record<Currency, RegExp> = {
 
 type WalletResponse = { assets: { asset: string; rate: string | null; available: string }[] };
 
+/** The payer's own wallet (Freighter), as GET /api/wallet/external answers. */
+type OwnWalletResponse = {
+  walletMode: "CUSTODIAL" | "EXTERNAL";
+  externalPublicKey: string | null;
+  holdings: { tokens: { asset: string; available?: string }[] } | null;
+};
+
 /** Parses the typed amount, or null while it is empty or not a positive number. */
 function parseAmount(value: string): Decimal | null {
   if (!/^\d*\.?\d+$|^\d+\.$/.test(value)) return null;
@@ -36,16 +43,32 @@ export function AmountPrompt({
   // Reference XLM→PHP rate for the preview. The quote locks the real rate.
   const [rate, setRate] = useState<Decimal | null>(null);
   const [availableXlm, setAvailableXlm] = useState<Decimal | null>(null);
+  // Whether payments come from the payer's own wallet (Freighter).
+  const [paysWithOwn, setPaysWithOwn] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
+    async function get<T>(url: string): Promise<T | null> {
+      const res = await fetch(url, { signal: controller.signal });
+      return res.ok ? ((await res.json()) as T) : null;
+    }
     void (async () => {
       try {
-        const res = await fetch("/api/wallet", { signal: controller.signal });
-        if (!res.ok) return;
-        const data = (await res.json()) as WalletResponse;
-        const xlm = data.assets.find((a) => a.asset === "XLM");
+        const wallet = await get<WalletResponse>("/api/wallet");
+        const xlm = wallet?.assets.find((a) => a.asset === "XLM");
         if (xlm?.rate) setRate(dec(xlm.rate));
+        // A payer who pays from their own wallet spends from it, not from the
+        // HeyPay wallet, so its XLM is what the amount is checked against. The
+        // route is not there while own wallets are off.
+        const own = await get<OwnWalletResponse>("/api/wallet/external").catch(() => null);
+        if (own?.walletMode === "EXTERNAL" && own.externalPublicKey) {
+          setPaysWithOwn(true);
+          // Stellar could not be read: no check here; the confirm step checks
+          // the wallet itself.
+          const ownXlm = own.holdings?.tokens.find((t) => t.asset === "XLM");
+          if (ownXlm?.available) setAvailableXlm(dec(ownXlm.available));
+          return;
+        }
         if (xlm) setAvailableXlm(dec(xlm.available));
       } catch {
         // The preview is optional; paying in PHP still works without it.
@@ -163,8 +186,18 @@ export function AmountPrompt({
         ) : (
           currency === "XLM" && <p>Loading the XLM rate…</p>
         )}
-        {availableXlm && <p>Available: {displayXlm(availableXlm)}</p>}
-        {overBalance && <p className="text-error">This is more than your available XLM.</p>}
+        {availableXlm && (
+          <p>
+            {paysWithOwn ? "Available in Freighter" : "Available"}: {displayXlm(availableXlm)}
+          </p>
+        )}
+        {overBalance && (
+          <p className="text-error">
+            {paysWithOwn
+              ? "This is more than the XLM you can spend in Freighter."
+              : "This is more than your available XLM."}
+          </p>
+        )}
       </div>
       {error && (
         <p role="alert" className="text-body-sm text-error">
