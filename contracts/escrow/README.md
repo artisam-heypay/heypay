@@ -103,6 +103,10 @@ has its own instance, and `escrowFor(payment.asset)` picks it for every call:
 
 1. `AUTHORIZED → STELLAR_SUBMITTED`: `deposit`, signed by the payer's custodial
    wallet, under job id `sha256(payment.id)` (stored as `Payment.escrowJobId`).
+   A payer who pays from their own wallet (`NONCUSTODIAL_ENABLED`) signs the
+   deposit in Freighter instead, and the server checks it before sending it
+   (`POST /api/payments/:id/signed`); the settle job then confirms it from the
+   job the contract holds.
 2. `PAYOUT_SUBMITTED → SETTLED`: after Xendit reports the payout paid,
    `release` to the treasury (`Payment.escrowReleaseTxHash`).
 3. `REFUND_PENDING → REFUNDED`: after a failed payout, `refund` to the payer
@@ -127,6 +131,14 @@ has its own instance, and `escrowFor(payment.asset)` picks it for every call:
    The contract itself places no such condition on `refund_after_timeout`: once
    the deadline ledger has passed, the payer's signature is all it needs. The
    condition is the custodial app's, which holds the payer's key.
+
+   A deposit the payer signed with their own wallet can only be taken back by
+   that wallet. The app shows **Get my money back** for it: the server says
+   what the call must be, the payer's browser builds it, Freighter signs it,
+   and the server checks it and stops the payout before sending it
+   (`POST /api/payments/:id/escrow-refund/prepare`, then `…/signed`). HeyPay
+   holds no key to that account, so the payer can also make the call without
+   the app; the settle job then finds the job `Refunded` and closes the payment.
 
 A payout is only requested while the escrow still holds the crypto with time
 left on it. If the worker was down and comes back after the deadline, or after
