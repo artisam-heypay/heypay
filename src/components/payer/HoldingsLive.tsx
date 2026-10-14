@@ -38,12 +38,9 @@ export type HoldingsSnapshot = {
 export function HoldingsLive({
   initial,
   live = true,
-  label = "Total Balance",
 }: {
   initial: HoldingsSnapshot;
   live?: boolean;
-  /** What the total is the balance of. */
-  label?: string;
 }) {
   const [snapshot, setSnapshot] = useState(initial);
 
@@ -100,7 +97,7 @@ export function HoldingsLive({
 
   return (
     <div>
-      <p className="text-label-md uppercase text-on-surface-variant">{label}</p>
+      <p className="text-label-md uppercase text-on-surface-variant">Total Balance</p>
       <p className="font-mono text-display-lg text-primary">{displayPhp(dec(snapshot.totalPhp))}</p>
       {snapshot.hasUnpricedBalance && (
         <p className="text-body-sm text-on-surface-variant">
