@@ -13,9 +13,12 @@ const outlinePill =
 export function HeroBalanceCard({
   holdings,
   live = true,
+  label,
 }: {
   holdings: HoldingsSnapshot;
   live?: boolean;
+  /** What the total is the balance of; "Total Balance" when not given. */
+  label?: string;
 }) {
   // Swaps are between XLM and USDC, so they are offered once USDC is in the wallet's list.
   const canSwap = holdings.tokens.some((t) => t.asset === "USDC");
@@ -25,7 +28,7 @@ export function HeroBalanceCard({
         aria-hidden
         className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/5 blur-3xl"
       />
-      <HoldingsLive initial={holdings} live={live} />
+      <HoldingsLive initial={holdings} live={live} label={label} />
       <div className="mt-stack-lg flex flex-wrap gap-stack-md">
         <Link href="/payer/prefund" className={primaryPill}>
           Prefund

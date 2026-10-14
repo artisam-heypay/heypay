@@ -5,8 +5,10 @@ import { stellarTxUrl } from "@/lib/stellar-explorer";
 import { getWalletSummary } from "@/server/payer/data";
 import { getRecentSwaps, swapsAvailable } from "@/server/payer/swap";
 import { walletService } from "@/server/stellar/wallet";
+import { getOwnWallet, nonCustodialEnabled, ownWalletAccount } from "@/server/wallet/external";
 import { Card } from "@/components/ui";
 import { SwapPanel } from "@/components/payer/SwapPanel";
+import { OwnWalletNotice } from "@/components/payer/OwnWalletNotice";
 
 function formatDate(date: Date): string {
   return date.toLocaleString(undefined, {
@@ -44,12 +46,19 @@ export default async function PayerSwapPage() {
   const available = (asset: "XLM" | "USDC") =>
     wallet.balances.find((b) => b.asset === asset)?.available.toFixed(7) ?? "0.0000000";
   const swaps = await getRecentSwaps(user.id);
+  const paysFromOwn = nonCustodialEnabled() ? ownWalletAccount(await getOwnWallet(user.id)) : null;
   const network = process.env.STELLAR_NETWORK;
   const testnet = network !== "mainnet" && network !== "public";
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-stack-lg">
       <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Swap</h1>
+      {paysFromOwn && (
+        <OwnWalletNotice>
+          You pay from your own wallet (Freighter). This page swaps your HeyPay wallet&apos;s
+          balance. To swap the money in your own wallet, use Swap in Freighter.
+        </OwnWalletNotice>
+      )}
       <SwapPanel
         balances={{ XLM: available("XLM"), USDC: available("USDC") }}
         usdcOn={usdcOn}

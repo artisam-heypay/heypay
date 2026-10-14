@@ -7,7 +7,9 @@ import { getWalletSummary } from "@/server/payer/data";
 import { getAssetRate } from "@/server/payments/rate";
 import { assetIssuer } from "@/server/stellar/assets";
 import { walletService } from "@/server/stellar/wallet";
+import { getOwnWallet, nonCustodialEnabled, ownWalletAccount } from "@/server/wallet/external";
 import { PrefundView, type PrefundAsset } from "@/components/payer/PrefundView";
+import { OwnWalletNotice } from "@/components/payer/OwnWalletNotice";
 
 export default async function PayerPrefundPage() {
   const user = await requireRole(Role.PAYER);
@@ -49,10 +51,18 @@ export default async function PayerPrefundPage() {
   );
 
   const qrSvg = wallet ? await QRCode.toString(wallet.publicKey, { type: "svg", margin: 1 }) : "";
+  const paysFromOwn = nonCustodialEnabled() ? ownWalletAccount(await getOwnWallet(user.id)) : null;
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-stack-lg">
       <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Prefund Account</h1>
+      {paysFromOwn && (
+        <OwnWalletNotice>
+          You pay from your own wallet (Freighter, {paysFromOwn.slice(0, 4)}…{paysFromOwn.slice(-4)}
+          ). This page adds money to your HeyPay wallet, which your payments do not use now. To add
+          money to your own wallet, send it to your Freighter address.
+        </OwnWalletNotice>
+      )}
       {wallet && <PrefundView publicKey={wallet.publicKey} qrSvg={qrSvg} assets={assets} />}
     </div>
   );

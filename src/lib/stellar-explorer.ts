@@ -9,3 +9,12 @@ export function stellarTxUrl(
   const net = network === "mainnet" || network === "public" ? "public" : "testnet";
   return `https://stellar.expert/explorer/${net}/tx/${encodeURIComponent(hash)}`;
 }
+
+/** stellar.expert link for an account, on the network the app runs against. */
+export function stellarAccountUrl(
+  address: string,
+  network: string | undefined = process.env.STELLAR_NETWORK,
+): string {
+  const net = network === "mainnet" || network === "public" ? "public" : "testnet";
+  return `https://stellar.expert/explorer/${net}/account/${encodeURIComponent(address)}`;
+}
