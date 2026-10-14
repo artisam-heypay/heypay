@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Ronald Ajusan (Artisam Labs)
+
 use soroban_sdk::{contracttype, Address, BytesN, Env};
 
 use crate::error::Error;

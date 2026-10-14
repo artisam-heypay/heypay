@@ -360,4 +360,4 @@ Friendbot; treasury (admin): `GDZ2BQPZ…KLIN37`. Job ids are
 
 ## License
 
-MIT — see the repository `LICENSE`.
+MIT. See [LICENSE](LICENSE).
