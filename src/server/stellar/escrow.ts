@@ -165,6 +165,30 @@ export async function sendSignedTransaction(
   return { status: "rejected", code: sent.errorResult?.result().switch().name ?? "unknown" };
 }
 
+/** How a transaction the network accepted ended, or that it has no result for it. */
+export type SentTransactionResult = "SUCCESS" | "FAILED" | "NOT_FOUND";
+
+const RESULT_POLL_MS = 1000;
+
+/**
+ * Waits for a transaction the network accepted to end, asking about once a
+ * second until `giveUpAt` (ms). Pass a moment after the transaction's last
+ * valid second: one the network still has no result for by then never ran.
+ */
+export async function awaitSentTransaction(
+  txHash: string,
+  giveUpAt: number,
+  server: rpc.Server = getSorobanRpc(),
+): Promise<SentTransactionResult> {
+  for (;;) {
+    const { status } = await server.getTransaction(txHash);
+    if (status === rpc.Api.GetTransactionStatus.SUCCESS) return "SUCCESS";
+    if (status === rpc.Api.GetTransactionStatus.FAILED) return "FAILED";
+    if (Date.now() >= giveUpAt) return "NOT_FOUND";
+    await new Promise((resolve) => setTimeout(resolve, RESULT_POLL_MS));
+  }
+}
+
 const CONTRACT_ERROR_PATTERN = /Error\(Contract, #(\d+)\)/;
 const CONTRACT_ERROR_NAMES: Record<number, { message: string }> = ContractErrors;
 

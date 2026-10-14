@@ -993,7 +993,14 @@ async function stepRefundEscrow(p: PaymentWithRels): Promise<void> {
   const jobId = escrowJob(p);
   let txHash = p.refundTxHash;
   // Cancelled at the escrow deadline: the crypto is the payer's to take back.
-  if (!txHash && (await awaitsPayerRefund(p.id))) return;
+  if (!txHash && (await awaitsPayerRefund(p.id))) {
+    // A payer who paid from their own wallet holds its key, and can call the
+    // contract without HeyPay hearing of it. The contract says whether they
+    // have; if so the payment is closed, with no hash to show for it.
+    if (!p.externalPublicKey || (await escrowHold(p)) !== "refunded") return;
+    await creditRefund(p, null);
+    return;
+  }
   if (!txHash) {
     treasurySecret(); // fail before claiming if the admin key is missing
     // Claim the refund atomically, as in stepRefund. A marker left by a crashed

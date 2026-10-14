@@ -1,14 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Button, Icon, StatusBadge } from "@/components/ui";
-import { WALLET_UPDATED_EVENT } from "./HoldingsLive";
-
-type EscrowRefund = {
-  available: boolean;
-  secondsUntilAvailable: number;
-  /** Past the deadline, but the bank transfer is in progress and can't be stopped. */
-  waitingOnPayout?: boolean;
-};
+import { Icon, StatusBadge } from "@/components/ui";
+import { EscrowRefundPanel, type EscrowRefund } from "./EscrowRefundPanel";
 
 /** The refund link's label says who returned the crypto, and how. */
 const REFUND_LABELS = {
@@ -177,74 +170,6 @@ export function TransactionDrawer({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function waitLabel(seconds: number): string {
-  return seconds < 90 ? `${seconds} seconds` : `${Math.ceil(seconds / 60)} minutes`;
-}
-
-/**
- * Shown while the payment's crypto is held in the escrow. Once the escrow's
- * deadline has passed the payer can take it back themselves; the refund then
- * appears as "Timeout refund on Stellar" above.
- */
-function EscrowRefundPanel({
-  paymentId,
-  asset,
-  state,
-  onRefunded,
-}: {
-  paymentId: string;
-  asset: string;
-  state: EscrowRefund;
-  onRefunded: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function refund() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/payments/${paymentId}/escrow-refund`, { method: "POST" });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setError(body?.error?.message ?? "Could not refund from escrow.");
-        return;
-      }
-      window.dispatchEvent(new Event(WALLET_UPDATED_EVENT));
-      onRefunded();
-    } catch {
-      setError("Network error. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-stack-sm rounded-lg bg-surface-container p-stack-md">
-      <h3 className="font-display text-body-lg">Held in escrow</h3>
-      <p className="text-body-sm text-on-surface-variant">
-        {state.waitingOnPayout
-          ? `The bank transfer to the merchant is already on its way and can't be stopped, so this payment can't be refunded yet. If the transfer fails, your ${asset} is refunded automatically.`
-          : state.available
-            ? `This payment was not completed in time and can't proceed. You can take your ${asset} back now.`
-            : `If this payment is not completed, you can take your ${asset} back in about ${waitLabel(state.secondsUntilAvailable)}.`}
-      </p>
-      {error && (
-        <p role="alert" className="text-body-sm text-error">
-          {error}
-        </p>
-      )}
-      {state.available && (
-        <Button size="md" variant="outline-pill" onClick={refund} loading={busy}>
-          {busy ? "Refunding…" : "Refund from escrow"}
-        </Button>
-      )}
     </div>
   );
 }
