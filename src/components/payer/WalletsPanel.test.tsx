@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 
 const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
@@ -41,17 +41,23 @@ describe("WalletsPanel paying from the payer's own wallet", () => {
     render(<WalletsPanel paysWithOwn heypay={HEYPAY} own={OWN} canSwap />);
   });
 
-  it("shows both wallets side by side, each with its own balance, never added together", () => {
-    expect(within(ownCard()).getByText("₱114,247.72")).toBeInTheDocument();
-    expect(within(heypayCard()).getByText("₱21,584.90")).toBeInTheDocument();
-    expect(screen.queryByText("₱135,832.62")).not.toBeInTheDocument();
+  it("shows both wallets side by side, each with its own total, never added together", () => {
+    expect(screen.getByTestId("wallet-own-total")).toHaveTextContent("≈ ₱114,247.72");
+    expect(screen.getByTestId("wallet-heypay-total")).toHaveTextContent("≈ ₱21,584.90");
+    expect(screen.queryByText(/135,832\.62/)).not.toBeInTheDocument();
   });
 
-  it("shows each wallet's tokens on one short line", () => {
-    expect(screen.getByTestId("wallet-own-assets")).toHaveTextContent("9,925.95 XLM · 0 USDC");
-    expect(screen.getByTestId("wallet-heypay-assets")).toHaveTextContent(
-      "948.87 XLM · 169.53 USDC",
-    );
+  it("shows each asset on its own row, with its amount and what it is worth in pesos", () => {
+    expect(screen.getByTestId("wallet-own-XLM")).toHaveTextContent("XLM9,925.95≈ ₱114,247.72");
+    expect(screen.getByTestId("wallet-own-USDC")).toHaveTextContent("USDC0.00≈ ₱0.00");
+    expect(screen.getByTestId("wallet-heypay-XLM")).toHaveTextContent("XLM948.87≈ ₱10,915.00");
+    expect(screen.getByTestId("wallet-heypay-USDC")).toHaveTextContent("USDC169.53≈ ₱10,669.90");
+  });
+
+  it("never rounds a small balance down to zero", () => {
+    expect(
+      within(screen.getByTestId("wallet-heypay-XLM")).getByTitle("948.8742173 XLM"),
+    ).toBeInTheDocument();
   });
 
   it("marks the own wallet as in use, in words as well as colour", () => {
@@ -128,7 +134,7 @@ describe("WalletsPanel when Stellar cannot be read", () => {
       window.dispatchEvent(new Event("focus"));
     });
 
-    expect(within(ownCard()).getByText("₱114,247.72")).toBeInTheDocument();
+    expect(screen.getByTestId("wallet-own-total")).toHaveTextContent("≈ ₱114,247.72");
   });
 
   it("shows a fresh balance after a successful read", async () => {
@@ -150,6 +156,26 @@ describe("WalletsPanel when Stellar cannot be read", () => {
       window.dispatchEvent(new Event("focus"));
     });
 
-    expect(await within(ownCard()).findByText("₱100,000.00")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("wallet-own-total")).toHaveTextContent("≈ ₱100,000.00"),
+    );
+  });
+});
+
+describe("WalletsPanel small amounts", () => {
+  it("shows up to seven decimals below 1, so a small balance is not 0.00", () => {
+    render(
+      <WalletsPanel
+        paysWithOwn={false}
+        heypay={{
+          totalPhp: "0.29",
+          hasUnpricedBalance: false,
+          tokens: [{ asset: "USDC", balance: "0.0047000", valuePhp: "0.29" }],
+        }}
+        own={null}
+        canSwap
+      />,
+    );
+    expect(screen.getByTestId("wallet-heypay-USDC")).toHaveTextContent("USDC0.0047≈ ₱0.29");
   });
 });

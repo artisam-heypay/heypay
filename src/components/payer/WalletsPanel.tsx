@@ -23,7 +23,25 @@ const pill =
   "inline-flex min-h-11 items-center gap-stack-sm rounded-full px-stack-md py-2 font-display font-bold " +
   "focus:outline-none focus:ring-4 focus:ring-primary/10";
 
-const amount = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const twoDecimals = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const smallAmount = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 7,
+});
+
+/**
+ * A token amount that reads at a glance: two decimals from 1 up, and up to
+ * seven below 1, so a small balance never shows as 0.00.
+ */
+function formatAmount(balance: string): string {
+  const value = Number(balance);
+  return Math.abs(value) >= 1 || value === 0
+    ? twoDecimals.format(value)
+    : smallAmount.format(value);
+}
 
 function shortAddress(address: string): string {
   return `${address.slice(0, 4)}…${address.slice(-4)}`;
@@ -231,22 +249,50 @@ function WalletCard({
       </div>
 
       {holdings ? (
-        <div>
+        <div className="flex flex-col">
+          <ul className="divide-y divide-outline-variant">
+            {holdings.tokens.map((t) => (
+              <li
+                key={t.asset}
+                className="flex items-center justify-between gap-stack-md py-stack-sm"
+                data-testid={`${testId}-${t.asset}`}
+              >
+                <span className="flex items-center gap-stack-sm">
+                  <span
+                    aria-hidden
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 font-display text-label-md font-bold text-primary"
+                  >
+                    {t.asset.slice(0, 1)}
+                  </span>
+                  <span className="font-display text-body-md font-bold">{t.asset}</span>
+                </span>
+                <span className="flex flex-col items-end">
+                  <span
+                    className="font-mono text-body-lg font-bold tabular-nums"
+                    title={`${t.balance} ${t.asset}`}
+                  >
+                    {formatAmount(t.balance)}
+                  </span>
+                  <span className="font-mono text-body-sm tabular-nums text-on-surface-variant">
+                    {t.valuePhp === null ? "No rate" : `≈ ${displayPhp(dec(t.valuePhp))}`}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
           <p
-            className={clsx(
-              "font-mono text-headline-lg tabular-nums",
-              selected ? "text-primary" : "text-on-surface",
-            )}
+            className="flex items-baseline justify-between gap-stack-md border-t border-outline-variant pt-stack-sm"
+            data-testid={`${testId}-total`}
           >
-            {displayPhp(dec(holdings.totalPhp))}
-          </p>
-          <p
-            className="font-mono text-body-sm tabular-nums text-on-surface-variant"
-            data-testid={`${testId}-assets`}
-          >
-            {holdings.tokens
-              .map((t) => `${amount.format(Number(t.balance))} ${t.asset}`)
-              .join(" · ")}
+            <span className="text-label-md uppercase text-on-surface-variant">Total</span>
+            <span
+              className={clsx(
+                "font-mono text-body-lg font-bold tabular-nums",
+                selected ? "text-primary" : "text-on-surface",
+              )}
+            >
+              ≈ {displayPhp(dec(holdings.totalPhp))}
+            </span>
           </p>
         </div>
       ) : (
