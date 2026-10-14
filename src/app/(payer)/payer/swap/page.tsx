@@ -55,8 +55,7 @@ export default async function PayerSwapPage() {
       <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Swap</h1>
       {paysFromOwn && (
         <OwnWalletNotice>
-          You pay from your own wallet (Freighter). This page swaps your HeyPay wallet&apos;s
-          balance. To swap the money in your own wallet, use Swap in Freighter.
+          You pay with Freighter now. This swaps your HeyPay wallet; swap in Freighter instead.
         </OwnWalletNotice>
       )}
       <SwapPanel

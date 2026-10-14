@@ -58,9 +58,7 @@ export default async function PayerPrefundPage() {
       <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Prefund Account</h1>
       {paysFromOwn && (
         <OwnWalletNotice>
-          You pay from your own wallet (Freighter, {paysFromOwn.slice(0, 4)}…{paysFromOwn.slice(-4)}
-          ). This page adds money to your HeyPay wallet, which your payments do not use now. To add
-          money to your own wallet, send it to your Freighter address.
+          You pay with Freighter now. This adds money to your HeyPay wallet.
         </OwnWalletNotice>
       )}
       {wallet && <PrefundView publicKey={wallet.publicKey} qrSvg={qrSvg} assets={assets} />}

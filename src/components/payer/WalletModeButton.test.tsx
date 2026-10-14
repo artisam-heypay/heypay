@@ -20,9 +20,9 @@ describe("WalletModeButton", () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ walletMode: "CUSTODIAL", externalPublicKey: OWN })),
     );
-    render(<WalletModeButton to="CUSTODIAL">Use for payments</WalletModeButton>);
+    render(<WalletModeButton to="CUSTODIAL">Use this wallet</WalletModeButton>);
 
-    await userEvent.click(screen.getByRole("button", { name: "Use for payments" }));
+    await userEvent.click(screen.getByRole("button", { name: "Use this wallet" }));
 
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
@@ -37,9 +37,9 @@ describe("WalletModeButton", () => {
         status: 409,
       }),
     );
-    render(<WalletModeButton to="EXTERNAL">Use for payments</WalletModeButton>);
+    render(<WalletModeButton to="EXTERNAL">Use this wallet</WalletModeButton>);
 
-    await userEvent.click(screen.getByRole("button", { name: "Use for payments" }));
+    await userEvent.click(screen.getByRole("button", { name: "Use this wallet" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Connect your wallet first.");
     expect(refresh).not.toHaveBeenCalled();

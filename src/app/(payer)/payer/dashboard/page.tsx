@@ -5,7 +5,6 @@ import { getRecentPayments } from "@/server/payer/data";
 import { getHoldings, getOwnWalletHoldings, holdingsSnapshot } from "@/server/payer/holdings";
 import { getFaucetStatus } from "@/server/payer/faucet";
 import { getOwnWallet, nonCustodialEnabled, ownWalletAccount } from "@/server/wallet/external";
-import { stellarAccountUrl } from "@/lib/stellar-explorer";
 import { HeroBalanceCard } from "@/components/payer/HeroBalanceCard";
 import { ScanQrphCard } from "@/components/payer/ScanQrphCard";
 import { RecentPaymentsList } from "@/components/payer/RecentPaymentsList";
@@ -60,7 +59,6 @@ export default async function PayerDashboardPage() {
                 connected
                   ? {
                       address: connected,
-                      explorerUrl: stellarAccountUrl(connected),
                       holdings: ownHoldings ? holdingsSnapshot(ownHoldings) : null,
                     }
                   : null

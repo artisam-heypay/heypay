@@ -11,25 +11,12 @@ const OWN_ADDRESS = "GDY2RNPWRZCEROBS2YJIHG7QDXVJ7VNF7XTFL2R4GJO4OAWI3LQ7UBH6";
 
 const OWN: OwnWalletView = {
   address: OWN_ADDRESS,
-  explorerUrl: `https://stellar.expert/explorer/testnet/account/${OWN_ADDRESS}`,
   holdings: {
     totalPhp: "114247.72",
     hasUnpricedBalance: false,
     tokens: [
-      {
-        asset: "XLM",
-        balance: "9925.9534020",
-        available: "9924.7533920",
-        valuePhp: "114247.72",
-        canReceive: true,
-      },
-      {
-        asset: "USDC",
-        balance: "0.0000000",
-        available: "0.0000000",
-        valuePhp: "0.00",
-        canReceive: false,
-      },
+      { asset: "XLM", balance: "9925.9534020", valuePhp: "114247.72", canReceive: true },
+      { asset: "USDC", balance: "0.0000000", valuePhp: "0.00", canReceive: false },
     ],
   },
 };
@@ -60,46 +47,41 @@ describe("WalletsPanel paying from the payer's own wallet", () => {
     expect(screen.queryByText("₱135,832.62")).not.toBeInTheDocument();
   });
 
-  it("marks the own wallet as the one payments come from, in words as well as colour", () => {
-    expect(within(ownCard()).getByText("Used for payments")).toBeInTheDocument();
-    expect(within(heypayCard()).queryByText("Used for payments")).not.toBeInTheDocument();
-    expect(ownCard()).toHaveAccessibleName("Freighter, used for payments");
+  it("shows each wallet's tokens on one short line", () => {
+    expect(screen.getByTestId("wallet-own-assets")).toHaveTextContent("9,925.95 XLM · 0 USDC");
+    expect(screen.getByTestId("wallet-heypay-assets")).toHaveTextContent(
+      "948.87 XLM · 169.53 USDC",
+    );
+  });
+
+  it("marks the own wallet as in use, in words as well as colour", () => {
+    expect(within(ownCard()).getByText("In use")).toBeInTheDocument();
+    expect(within(heypayCard()).queryByText("In use")).not.toBeInTheDocument();
+    expect(ownCard()).toHaveAccessibleName("Freighter, in use for payments");
     expect(heypayCard()).toHaveAccessibleName("HeyPay wallet");
   });
 
-  it("says plainly who can move each wallet's money", () => {
-    expect(within(ownCard()).getByText(/Only you can move this money/)).toBeInTheDocument();
-    expect(within(heypayCard()).getByText("HeyPay keeps this money for you.")).toBeInTheDocument();
-  });
-
-  it("shows the own wallet's short address, what a payment can spend, and what it cannot hold", () => {
+  it("names who holds each wallet: the payer's own address, or HeyPay", () => {
     expect(within(ownCard()).getByText("GDY2…UBH6")).toBeInTheDocument();
-    expect(within(ownCard()).getByText(/Spendable now/)).toHaveTextContent("9924.7533920 XLM");
-    expect(screen.getByTestId("wallet-own-USDC")).toHaveTextContent(
-      "Add USDC in Freighter to pay with it.",
-    );
-    expect(within(ownCard()).getByRole("link", { name: /View on Stellar/ })).toHaveAttribute(
-      "href",
-      OWN.explorerUrl,
-    );
+    expect(within(heypayCard()).getByText("Held by HeyPay")).toBeInTheDocument();
   });
 
   it("offers the HeyPay wallet for payments, and not its prefund or swap", () => {
     expect(
-      within(heypayCard()).getByRole("button", { name: "Use for payments" }),
+      within(heypayCard()).getByRole("button", { name: "Use this wallet" }),
     ).toBeInTheDocument();
     expect(within(heypayCard()).queryByRole("link", { name: /Prefund/ })).not.toBeInTheDocument();
     expect(
-      within(ownCard()).queryByRole("button", { name: "Use for payments" }),
+      within(ownCard()).queryByRole("button", { name: "Use this wallet" }),
     ).not.toBeInTheDocument();
   });
 });
 
 describe("WalletsPanel paying from the HeyPay wallet", () => {
-  it("marks the HeyPay wallet, offers its prefund and swap, and offers the own wallet for payments", () => {
+  it("marks the HeyPay wallet, offers its prefund and swap, and offers the own wallet", () => {
     render(<WalletsPanel paysWithOwn={false} heypay={HEYPAY} own={OWN} canSwap />);
 
-    expect(within(heypayCard()).getByText("Used for payments")).toBeInTheDocument();
+    expect(within(heypayCard()).getByText("In use")).toBeInTheDocument();
     expect(within(heypayCard()).getByRole("link", { name: /Prefund/ })).toHaveAttribute(
       "href",
       "/payer/prefund",
@@ -108,16 +90,14 @@ describe("WalletsPanel paying from the HeyPay wallet", () => {
       "href",
       "/payer/swap",
     );
-    expect(within(ownCard()).getByRole("button", { name: "Use for payments" })).toBeInTheDocument();
-    // Spendable is only worth reading for the wallet that pays.
-    expect(within(ownCard()).queryByText(/Spendable now/)).not.toBeInTheDocument();
+    expect(within(ownCard()).getByRole("button", { name: "Use this wallet" })).toBeInTheDocument();
   });
 
   it("offers to connect a wallet of their own when none is connected", () => {
     render(<WalletsPanel paysWithOwn={false} heypay={HEYPAY} own={null} canSwap={false} />);
 
     const connect = screen.getByTestId("wallet-own-connect");
-    expect(within(connect).getByRole("link", { name: /Connect Freighter/ })).toHaveAttribute(
+    expect(within(connect).getByRole("link", { name: /Connect/ })).toHaveAttribute(
       "href",
       "/payer/settings",
     );
@@ -128,7 +108,9 @@ describe("WalletsPanel paying from the HeyPay wallet", () => {
 describe("WalletsPanel when Stellar cannot be read", () => {
   it("says so instead of showing an empty own wallet", () => {
     render(<WalletsPanel paysWithOwn heypay={HEYPAY} own={{ ...OWN, holdings: null }} canSwap />);
-    expect(within(ownCard()).getByRole("status")).toHaveTextContent(/could not be reached/);
+    expect(within(ownCard()).getByRole("status")).toHaveTextContent(
+      "Can't read Stellar right now.",
+    );
     expect(within(ownCard()).queryByText(/₱/)).not.toBeInTheDocument();
   });
 
@@ -169,25 +151,5 @@ describe("WalletsPanel when Stellar cannot be read", () => {
     });
 
     expect(await within(ownCard()).findByText("₱100,000.00")).toBeInTheDocument();
-  });
-});
-
-describe("WalletsPanel hints", () => {
-  it("tells the payer to add an asset in Freighter only on the Freighter card", () => {
-    render(
-      <WalletsPanel
-        paysWithOwn
-        heypay={{
-          ...HEYPAY,
-          tokens: [{ asset: "USDC", balance: "0.0000000", valuePhp: "0.00", canReceive: false }],
-        }}
-        own={OWN}
-        canSwap
-      />,
-    );
-    expect(within(heypayCard()).queryByText(/Add USDC in Freighter/)).not.toBeInTheDocument();
-    expect(
-      within(ownCard()).getByText("Add USDC in Freighter to pay with it."),
-    ).toBeInTheDocument();
   });
 });
