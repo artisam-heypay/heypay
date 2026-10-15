@@ -1,18 +1,20 @@
 import { z } from "zod";
 import { route, json, parseBody } from "@/lib/http";
 import { unauthorized, tooManyRequests } from "@/lib/errors";
-import { db } from "@/server/db";
 import { redis } from "@/server/redis";
 import { clientIp } from "@/lib/net";
 import { verifyPassword, DUMMY_PASSWORD_HASH } from "@/server/auth/password";
+import { findUserByLogin, normalizeEmail } from "@/server/auth/accounts";
 import { createSession } from "@/server/auth/sessions";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { audit } from "@/server/auth/audit";
 import { captureUserEvent } from "@/server/observability/analytics";
 
+// `username` also takes the account's email: accounts made by email or Google
+// sign-up are known by their address, older and scripted ones by username.
 const loginSchema = z.object({
-  username: z.string().min(1).max(64),
+  username: z.string().trim().min(1).max(254),
   password: z.string().min(1).max(200),
 });
 
@@ -24,17 +26,22 @@ export const POST = route(async (req) => {
   const ip = clientIp(req);
   await rateLimit(`login:ip:${ip}`, { limit: 20, windowSec: 900 });
 
-  const { username, password } = await parseBody(req, loginSchema);
+  const body = await parseBody(req, loginSchema);
+  const { password } = body;
+  // One spelling per account, so the lockout cannot be dodged by changing case.
+  const username = body.username.includes("@") ? normalizeEmail(body.username) : body.username;
 
   const lockKey = `lockout:${username}`;
   if (await redis.get(lockKey)) {
     throw tooManyRequests("Account temporarily locked. Try again later.");
   }
 
-  const user = await db.user.findUnique({ where: { username } });
-  // Always run a verify (against a dummy hash for unknown users) to equalize timing.
-  const ok = !!user && user.isActive && (await verifyPassword(user.passwordHash, password));
-  if (!user) await verifyPassword(DUMMY_PASSWORD_HASH, password);
+  const user = await findUserByLogin(username);
+  // Always run a verify (against a dummy hash for unknown users, and for
+  // Google-only accounts, which have no password) to equalize timing.
+  const ok =
+    !!user?.passwordHash && user.isActive && (await verifyPassword(user.passwordHash, password));
+  if (!user?.passwordHash) await verifyPassword(DUMMY_PASSWORD_HASH, password);
 
   if (!ok) {
     const failKey = `fails:${username}`;
@@ -49,7 +56,7 @@ export const POST = route(async (req) => {
         active: user.isActive,
         locked: fails >= MAX_FAILS,
       });
-    throw unauthorized("Invalid username or password");
+    throw unauthorized("Invalid email, username or password");
   }
 
   await redis.del(`fails:${username}`);

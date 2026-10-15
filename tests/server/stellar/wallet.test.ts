@@ -276,4 +276,261 @@ describe("WalletService.listIncomingPayments", () => {
     expect(out.cursor).toBe("c3"); // advances past every scanned record
     expect(builder.cursor).toHaveBeenCalledWith("c0");
   });
+
+  it("does not report a sponsored account's empty creation as a deposit", async () => {
+    const records = [
+      {
+        id: "1",
+        type: "create_account",
+        account: "GME",
+        funder: "GSPONSOR",
+        starting_balance: "0.0000000",
+        transaction_hash: "h1",
+        created_at: "2026-10-07T00:00:00Z",
+        paging_token: "c1",
+      },
+    ];
+    const builder = {
+      order: vi.fn(),
+      limit: vi.fn(),
+      cursor: vi.fn(),
+      call: vi.fn().mockResolvedValue({ records }),
+    };
+    builder.order.mockReturnValue(builder);
+    builder.limit.mockReturnValue(builder);
+    const server = fakeServer({
+      payments: vi.fn().mockReturnValue({ forAccount: vi.fn().mockReturnValue(builder) }),
+    });
+    const out = await createWalletService(server, PASSPHRASE).listIncomingPayments("GME");
+    expect(out.items).toEqual([]);
+    expect(out.cursor).toBe("c1"); // still scanned, so it is not read again
+  });
+});
+
+describe("WalletService.activateSponsored", () => {
+  // Circle's testnet issuer, the default for USDC off mainnet.
+  const ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+  const usdcLine = {
+    asset_type: "credit_alphanum4",
+    asset_code: "USDC",
+    asset_issuer: ISSUER,
+    balance: "0.0000000",
+  };
+  type SubmittedTx = {
+    source: string;
+    fee: string;
+    signatures: unknown[];
+    operations: {
+      type: string;
+      source?: string;
+      sponsoredId?: string;
+      destination?: string;
+      startingBalance?: string;
+      line?: { code: string; issuer: string };
+    }[];
+  };
+
+  /** `walletBalances` is what Horizon holds for the wallet; null when it has no account. */
+  async function activate(walletBalances: unknown[] | null) {
+    const keys = createWalletService(fakeServer(), PASSPHRASE);
+    const sponsor = keys.generate();
+    const wallet = keys.generate();
+    const submit = vi.fn().mockResolvedValue({ hash: "sponsorhash" });
+    const loadAccount = vi.fn(async (id: string) => {
+      if (id === wallet.publicKey) {
+        if (!walletBalances) throw { name: "NotFoundError", response: { status: 404 } };
+        return { balances: walletBalances };
+      }
+      return {
+        accountId: () => sponsor.publicKey,
+        sequenceNumber: () => "1",
+        incrementSequenceNumber: () => undefined,
+      };
+    });
+    const svc = createWalletService(
+      fakeServer({ loadAccount, submitTransaction: submit }),
+      PASSPHRASE,
+    );
+    const res = await svc.activateSponsored({
+      sponsorEncryptedSecret: sponsor.encryptedSecret,
+      encryptedSecret: wallet.encryptedSecret,
+      assets: ["USDC"],
+    });
+    const tx = submit.mock.calls[0]?.[0] as SubmittedTx | undefined;
+    return { res, tx, sponsor: sponsor.publicKey, wallet: wallet.publicKey };
+  }
+
+  it("creates the account empty and adds the trustline, all under the sponsor", async () => {
+    const { res, tx, sponsor, wallet } = await activate(null);
+    expect(res).toEqual({ txHash: "sponsorhash", created: true, trustlines: ["USDC"] });
+    // The sponsor is the source, so the fee is the sponsor's too.
+    expect(tx!.source).toBe(sponsor);
+    expect(tx!.operations.map((op) => op.type)).toEqual([
+      "beginSponsoringFutureReserves",
+      "createAccount",
+      "changeTrust",
+      "endSponsoringFutureReserves",
+    ]);
+    const [begin, create, trust, end] = tx!.operations;
+    expect(begin!.sponsoredId).toBe(wallet);
+    expect(create!.destination).toBe(wallet);
+    // No XLM reaches the wallet: there is nothing for its owner to see or spend.
+    expect(Number(create!.startingBalance)).toBe(0);
+    expect(trust!.source).toBe(wallet);
+    expect(trust!.line).toMatchObject({ code: "USDC", issuer: ISSUER });
+    expect(end!.source).toBe(wallet);
+    expect(tx!.signatures).toHaveLength(2); // the sponsor and the wallet
+  });
+
+  it("sponsors only the trustline when the account already exists", async () => {
+    const { res, tx } = await activate([{ asset_type: "native", balance: "5.0000000" }]);
+    expect(res).toEqual({ txHash: "sponsorhash", created: false, trustlines: ["USDC"] });
+    expect(tx!.operations.map((op) => op.type)).toEqual([
+      "beginSponsoringFutureReserves",
+      "changeTrust",
+      "endSponsoringFutureReserves",
+    ]);
+  });
+
+  it("sends nothing when the account already holds the trustline", async () => {
+    const { res, tx } = await activate([{ asset_type: "native", balance: "5.0000000" }, usdcLine]);
+    expect(res).toEqual({ txHash: null, created: false, trustlines: [] });
+    expect(tx).toBeUndefined();
+  });
+});
+
+describe("WalletService.holdsOtherIssuer", () => {
+  // Circle's testnet issuer is the default; any other issuer's USDC is a different asset.
+  const OURS = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+  const OTHER = "GCKFBEIYV2U22IO2BJ4KVJOIP7XPWQGQFKKWXR6DOSJBV7STMAQSMTGG";
+  const native = { asset_type: "native", balance: "20.0000000" };
+  const usdc = (issuer: string, balance: string) => ({
+    asset_type: "credit_alphanum4",
+    asset_code: "USDC",
+    asset_issuer: issuer,
+    balance,
+  });
+  const holding = (...balances: unknown[]) =>
+    createWalletService(
+      fakeServer({ loadAccount: vi.fn().mockResolvedValue({ balances }) }),
+      PASSPHRASE,
+    );
+
+  it("is true when the account holds USDC from an issuer that is not ours", async () => {
+    const svc = holding(native, usdc(OTHER, "20.0000000"));
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(true);
+  });
+
+  it("is true even when the account also holds ours", async () => {
+    const svc = holding(native, usdc(OURS, "0.5000000"), usdc(OTHER, "20.0000000"));
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(true);
+  });
+
+  it("is false when the only USDC is ours", async () => {
+    const svc = holding(native, usdc(OURS, "50.0000000"));
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(false);
+  });
+
+  it("is false for an empty trustline to another issuer: nothing is held", async () => {
+    const svc = holding(native, usdc(OTHER, "0.0000000"));
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(false);
+  });
+
+  it("is false for XLM, which has no issuer, without asking Horizon", async () => {
+    const loadAccount = vi.fn();
+    const svc = createWalletService(fakeServer({ loadAccount }), PASSPHRASE);
+    expect(await svc.holdsOtherIssuer("GABC", "XLM")).toBe(false);
+    expect(loadAccount).not.toHaveBeenCalled();
+  });
+
+  it("is false for an account that does not exist yet", async () => {
+    const svc = createWalletService(
+      fakeServer({
+        loadAccount: vi
+          .fn()
+          .mockRejectedValue({ name: "NotFoundError", response: { status: 404 } }),
+      }),
+      PASSPHRASE,
+    );
+    expect(await svc.holdsOtherIssuer("GABC", "USDC")).toBe(false);
+  });
+});
+
+describe("WalletService.swapOutcome", () => {
+  const HASH = "b".repeat(64);
+  const SENT_BY = new Date("2026-10-09T00:00:00Z");
+  // A swap can be taken for 30 seconds, and 60 more are allowed for clocks.
+  const BEFORE_LAST_CHANCE = "2026-10-09T00:01:29Z";
+  const AFTER_LAST_CHANCE = "2026-10-09T00:01:31Z";
+  const notFound = { name: "NotFoundError", response: { status: 404 } };
+
+  /** Horizon with its latest ledger closed at `latestClose`, answering for the swap as given. */
+  function horizon(opts: { latestClose: string; tx?: unknown; txError?: unknown; op?: unknown }) {
+    const ledgers = {
+      order: () => ledgers,
+      limit: () => ledgers,
+      call: vi.fn().mockResolvedValue({ records: [{ closed_at: opts.latestClose }] }),
+    };
+    const txCall = opts.tx
+      ? vi.fn().mockResolvedValue(opts.tx)
+      : vi.fn().mockRejectedValue(opts.txError ?? notFound);
+    const opCall = vi.fn().mockResolvedValue({ records: opts.op ? [opts.op] : [] });
+    return createWalletService(
+      fakeServer({
+        ledgers: vi.fn().mockReturnValue(ledgers),
+        transactions: vi.fn().mockReturnValue({ transaction: () => ({ call: txCall }) }),
+        operations: vi.fn().mockReturnValue({ forTransaction: () => ({ call: opCall }) }),
+      }),
+      PASSPHRASE,
+    );
+  }
+
+  it("reports what a swap in a ledger moved and was charged", async () => {
+    const svc = horizon({
+      latestClose: AFTER_LAST_CHANCE,
+      tx: { successful: true, fee_charged: "100" },
+      op: { source_amount: "10.0000000", amount: "9.4458598" },
+    });
+    const lookup = await svc.swapOutcome(HASH, SENT_BY);
+    expect(lookup).toMatchObject({ state: "landed", result: { txHash: HASH, ok: true } });
+    if (lookup.state !== "landed") throw new Error("expected a landed swap");
+    expect(lookup.result.sent.toFixed(7)).toBe("10.0000000");
+    expect(lookup.result.received.toFixed(7)).toBe("9.4458598");
+    expect(lookup.result.feeXlm.toFixed(7)).toBe("0.0000100");
+  });
+
+  it("reports a swap a ledger took and failed, with only its fee", async () => {
+    const svc = horizon({
+      latestClose: AFTER_LAST_CHANCE,
+      tx: { successful: false, fee_charged: "100" },
+    });
+    const lookup = await svc.swapOutcome(HASH, SENT_BY);
+    expect(lookup).toMatchObject({ state: "landed", result: { ok: false, failure: null } });
+    if (lookup.state !== "landed") throw new Error("expected a landed swap");
+    expect(lookup.result.sent.isZero()).toBe(true);
+    expect(lookup.result.feeXlm.toFixed(7)).toBe("0.0000100");
+  });
+
+  it("is expired when no ledger has it and one closed after its last chance", async () => {
+    const svc = horizon({ latestClose: AFTER_LAST_CHANCE });
+    expect(await svc.swapOutcome(HASH, SENT_BY)).toEqual({ state: "expired" });
+  });
+
+  it("is pending while Horizon has no ledger from after its last chance", async () => {
+    const svc = horizon({ latestClose: BEFORE_LAST_CHANCE });
+    expect(await svc.swapOutcome(HASH, SENT_BY)).toEqual({ state: "pending" });
+  });
+
+  it("throws when a swap went through and what it moved cannot be read", async () => {
+    const svc = horizon({
+      latestClose: AFTER_LAST_CHANCE,
+      tx: { successful: true, fee_charged: "100" },
+    });
+    await expect(svc.swapOutcome(HASH, SENT_BY)).rejects.toThrow(/cannot be read/);
+  });
+
+  it("throws when Horizon cannot answer for the transaction", async () => {
+    const svc = horizon({ latestClose: AFTER_LAST_CHANCE, txError: new Error("timeout") });
+    await expect(svc.swapOutcome(HASH, SENT_BY)).rejects.toThrow("timeout");
+  });
 });

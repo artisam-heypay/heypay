@@ -8,6 +8,8 @@ WORKDIR /app
 # ---- Dependencies (cached on lockfile) ----
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+# Workspace packages are linked into node_modules, so the install needs their manifests.
+COPY packages/settlement-route/package.json ./packages/settlement-route/package.json
 RUN pnpm install --frozen-lockfile
 
 # ---- Build: generate Prisma client + build Next ----
@@ -57,6 +59,8 @@ COPY --from=build /app/next.config.ts ./next.config.ts
 # ERR_MODULE_NOT_FOUND: Cannot find package '@/server'.
 COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/src ./src
+# node_modules/@heypay/* are links into packages/; the worker loads them from source.
+COPY --from=build /app/packages ./packages
 COPY --from=build /app/.next ./.next
 # Static files `next start` serves from /, e.g. the test shop QR on the scan page.
 COPY --from=build /app/public ./public

@@ -25,6 +25,11 @@ vi.mock("@/server/queue/queues", () => ({
   enqueueSettle: (id: string) => enqueueSettle(id),
 }));
 
+const { resolveUnconfirmedSwaps } = vi.hoisted(() => ({ resolveUnconfirmedSwaps: vi.fn() }));
+vi.mock("@/server/payer/swap", () => ({
+  resolveUnconfirmedSwaps: () => resolveUnconfirmedSwaps(),
+}));
+
 import { processReconcileJob } from "./reconcile";
 
 async function makeInFlightPayment(opts: {
@@ -32,6 +37,7 @@ async function makeInFlightPayment(opts: {
   payoutRef?: string;
   ageMs?: number; // how far in the past updatedAt sits (default: fresh)
   escrowJobId?: string;
+  asset?: "USDC";
 }) {
   const { user } = await makePayer();
   const { merchant } = await makeMerchant();
@@ -40,6 +46,7 @@ async function makeInFlightPayment(opts: {
       reference: newPaymentReference(),
       payerId: user.id,
       merchantId: merchant.id,
+      asset: opts.asset ?? "XLM",
       amountPhp: "100.00",
       quotedRate: "12.00000000",
       amountAsset: "8.3333334",
@@ -52,9 +59,31 @@ async function makeInFlightPayment(opts: {
   });
 }
 
+describe("processReconcileJob — swap leg", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetDb();
+  });
+
+  it("settles unconfirmed swaps and reports how many", async () => {
+    resolveUnconfirmedSwaps.mockResolvedValue({ checked: 2, resolved: 1 });
+    const res = await processReconcileJob();
+    expect(res).toMatchObject({ swapsChecked: 2, swapsResolved: 1 });
+  });
+
+  it("still checks wallets when the swap leg throws", async () => {
+    resolveUnconfirmedSwaps.mockRejectedValue(new Error("no such table"));
+    await makePayer({ cachedXlm: "10.0000000" });
+    getBalances.mockResolvedValue(horizonXlm("10"));
+    const res = await processReconcileJob();
+    expect(res).toMatchObject({ checked: 1, drift: 0, swapsChecked: 0, swapsResolved: 0 });
+  });
+});
+
 describe("processReconcileJob — wallet (XLM) leg", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    resolveUnconfirmedSwaps.mockResolvedValue({ checked: 0, resolved: 0 });
     await resetDb();
   });
 
@@ -118,6 +147,7 @@ describe("processReconcileJob — wallet (XLM) leg", () => {
 describe("processReconcileJob — payout leg (missed-webhook fallback)", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    resolveUnconfirmedSwaps.mockResolvedValue({ checked: 0, resolved: 0 });
     await resetDb();
     getBalances.mockResolvedValue(horizonXlm("1000")); // makePayer default cache → no wallet drift
   });
@@ -181,6 +211,28 @@ describe("processReconcileJob — payout leg (missed-webhook fallback)", () => {
       where: { action: "reconcile.payment_drift", target: payment.id },
     });
     expect(log.metadata).toMatchObject({ railState: "stuck", escrowJobId: "cd".repeat(32) });
+  });
+
+  it("re-drives a USDC payment stuck mid-refund, naming its asset", async () => {
+    const payment = await makeInFlightPayment({
+      status: "REFUND_PENDING",
+      ageMs: 5 * 60_000,
+      escrowJobId: "ef".repeat(32),
+      asset: "USDC",
+    });
+
+    const res = await processReconcileJob();
+
+    expect(res.paymentDrift).toBe(1);
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
+    const log = await db.auditLog.findFirstOrThrow({
+      where: { action: "reconcile.payment_drift", target: payment.id },
+    });
+    expect(log.metadata).toMatchObject({
+      asset: "USDC",
+      railState: "stuck",
+      escrowJobId: "ef".repeat(32),
+    });
   });
 
   it("re-drives a stale PAYOUT_SUBMITTED payment whose payout failed", async () => {

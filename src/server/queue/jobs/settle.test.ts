@@ -17,19 +17,24 @@ vi.mock("@/server/stellar/wallet", () => ({
   },
 }));
 
-const escrow = vi.hoisted(() => ({
-  deposit: vi.fn(),
-  release: vi.fn(),
-  refund: vi.fn(),
-  getJob: vi.fn(),
-  getFeeCharged: vi.fn(),
-  getTimeout: vi.fn(),
-  setTimeout: vi.fn(),
-  getLatestLedger: vi.fn(),
-}));
+// One mock stands in for every escrow instance; `escrowFor` records which
+// asset's instance was asked for.
+const { escrow, escrowFor } = vi.hoisted(() => {
+  const escrow = {
+    deposit: vi.fn(),
+    release: vi.fn(),
+    refund: vi.fn(),
+    getJob: vi.fn(),
+    getFeeCharged: vi.fn(),
+    getTimeout: vi.fn(),
+    setTimeout: vi.fn(),
+    getLatestLedger: vi.fn(),
+  };
+  return { escrow, escrowFor: vi.fn((_asset: string) => escrow) };
+});
 vi.mock("@/server/stellar/escrow", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/server/stellar/escrow")>()),
-  escrowService: escrow,
+  escrowFor: (asset: string) => escrowFor(asset),
 }));
 
 const { getDepositAddress, createPayout, getPayoutStatus, cancelPayout, fastSettleEnabled } =
@@ -709,17 +714,106 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     expect(w.cachedXlmBalance.toFixed(7)).toBe("91.6666566");
   });
 
-  it("keeps USDC on the direct treasury path (escrow is XLM only in D1)", async () => {
-    sendAsset.mockResolvedValue({ txHash: "USDCHASH-E" });
+  it("asks the XLM escrow instance for an XLM payment", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-A" });
+    escrow.release.mockResolvedValue({ txHash: "RELEASEHASH-A" });
     mockHappyRail();
 
-    const { payment } = await makeAuthorizedUsdc();
+    const { payment } = await makeAuthorized();
+    await drive(payment.id);
+
+    expect(escrowFor).toHaveBeenCalled();
+    expect(escrowFor.mock.calls.every(([asset]) => asset === "XLM")).toBe(true);
+  });
+
+  it("holds a USDC payment in the USDC escrow from deposit to release", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "USDCDEPOSIT1" });
+    escrow.release.mockResolvedValue({ txHash: "USDCRELEASE1" });
+    mockHappyRail();
+
+    const { wallet, payment } = await makeAuthorizedUsdc();
     const final = await drive(payment.id);
 
     expect(final.status).toBe("SETTLED");
-    expect(final.escrowJobId).toBeNull();
-    expect(escrow.deposit).not.toHaveBeenCalled();
-    expect(sendAsset.mock.calls[0]![0].asset).toBe("USDC");
+    expect(final.escrowJobId).toBe(escrowJobId(payment.id).toString("hex"));
+    expect(final.stellarTxHash).toBe("USDCDEPOSIT1");
+    expect(final.escrowReleaseTxHash).toBe("USDCRELEASE1");
+    expect(sendAsset).not.toHaveBeenCalled(); // nothing goes straight to the treasury
+    // Every contract call went to the USDC instance, never the XLM one.
+    expect(escrowFor).toHaveBeenCalled();
+    expect(escrowFor.mock.calls.every(([asset]) => asset === "USDC")).toBe(true);
+
+    const dep = escrow.deposit.mock.calls[0]![0];
+    expect(dep.encryptedSecret).toBe(wallet.encryptedSecret); // signed by the payer
+    // The USDC amount alone: the network fee is XLM and cannot be held in USDC.
+    expect(dep.amount.toFixed(7)).toBe("1.6039000");
+    expect(escrow.release.mock.calls[0]![0].equals(escrowJobId(payment.id))).toBe(true);
+
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.cached.toFixed(7)).toBe("48.3961000");
+    expect(usdc.reserved.toFixed(7)).toBe("0.0000000");
+  });
+
+  it("charges a USDC deposit's fees to XLM, adding up to what the chain took", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "USDCDEPOSIT-FEE" });
+    escrow.release.mockResolvedValue({ txHash: "USDCRELEASE-FEE" });
+    escrow.getFeeCharged.mockResolvedValue(dec("0.1060597"));
+    mockHappyRail();
+
+    const { wallet, payment } = await makeAuthorizedUsdc();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    // 10 - 0.1060597: the deposit's fee includes the base fee, it is not on top.
+    expect(w.cachedXlmBalance.toFixed(7)).toBe("9.8939403");
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+    const xlmDebits = await db.walletTransaction.findMany({
+      where: { paymentId: payment.id, asset: "XLM" },
+    });
+    expect(
+      xlmDebits
+        .map((t) => `${t.memo?.replace(payment.reference, "")}:${t.amount.toFixed(7)}`)
+        .sort(),
+    ).toEqual([" escrow network fee:-0.1060497", " network fee:-0.0000100"]);
+    // The USDC leg is the amount and nothing else.
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.cached.toFixed(7)).toBe("48.3961000");
+  });
+
+  it("debits only the base fee for a USDC deposit whose fee cannot be read", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "USDCDEPOSIT-NOFEE" });
+    escrow.release.mockResolvedValue({ txHash: "USDCRELEASE-NOFEE" });
+    escrow.getFeeCharged.mockRejectedValue(new Error("rpc down"));
+    mockHappyRail();
+
+    const { wallet, payment } = await makeAuthorizedUsdc();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("SETTLED");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.cachedXlmBalance.toFixed(7)).toBe("9.9999900");
+  });
+
+  it("FAILs a USDC payment the contract rejects and releases both holds", async () => {
+    escrow.deposit.mockRejectedValue(new EscrowContractError("deposit", "InvalidAmount"));
+
+    const { wallet, payment } = await makeAuthorizedUsdc();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("FAILED");
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.cached.toFixed(7)).toBe("50.0000000");
+    expect(usdc.reserved.toFixed(7)).toBe("0.0000000");
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.reservedXlm.toFixed(7)).toBe("0.0000000");
+    expect(createPayout).not.toHaveBeenCalled();
   });
 
   it("FAILs and releases the reservation when the contract rejects the deposit", async () => {
@@ -824,6 +918,73 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     expect(credits[0]!.stellarTxHash).toBe("ESCROWREFUND-X");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.cachedXlmBalance.toFixed(7)).toBe("100.0000000");
+  });
+
+  it("refunds a failed USDC payment from the USDC escrow, in USDC", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "USDCDEPOSIT-X" });
+    escrow.refund.mockResolvedValue({ txHash: "USDCREFUND-X" });
+    escrow.getFeeCharged.mockResolvedValue(dec("0.1060597"));
+    mockHappyRail();
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "INVALID_DESTINATION" });
+
+    const { wallet, payment } = await makeAuthorizedUsdc();
+    const final = await drive(payment.id);
+
+    expect(final.status).toBe("REFUNDED");
+    expect(final.refundTxHash).toBe("USDCREFUND-X");
+    // A contract call on the USDC instance: the treasury sends nothing itself.
+    expect(escrow.refund.mock.calls[0]![0].equals(escrowJobId(payment.id))).toBe(true);
+    expect(escrowFor.mock.calls.every(([asset]) => asset === "USDC")).toBe(true);
+    expect(escrow.release).not.toHaveBeenCalled();
+    expect(sendAsset).not.toHaveBeenCalled();
+
+    const credits = await db.walletTransaction.findMany({
+      where: { walletId: wallet.id, type: "REFUND_CREDIT" },
+    });
+    expect(credits).toHaveLength(1);
+    expect(credits[0]!.asset).toBe("USDC");
+    expect(credits[0]!.amount.toFixed(7)).toBe("1.6039000");
+    expect(credits[0]!.stellarTxHash).toBe("USDCREFUND-X");
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.cached.toFixed(7)).toBe("50.0000000"); // debited, then restored
+    expect(usdc.reserved.toFixed(7)).toBe("0.0000000");
+    // The XLM spent on the deposit's fees is not returned, and no XLM is credited.
+    const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    expect(w.cachedXlmBalance.toFixed(7)).toBe("9.8939403");
+  });
+
+  it("resumes a USDC refund left unfinished, once the earlier attempt has expired", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "USDCDEPOSIT-S" });
+    // The first refund is cut off without an answer, so its claim stays.
+    escrow.refund.mockRejectedValueOnce(new Error("soroban rpc unavailable"));
+    mockHappyRail();
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "INVALID_DESTINATION" });
+
+    const { wallet, payment } = await makeAuthorizedUsdc();
+    const stuck = await drive(payment.id);
+    expect(stuck.status).toBe("REFUND_PENDING");
+    expect(escrow.refund).toHaveBeenCalledTimes(1); // reruns wait for the claim to expire
+
+    // What the reconcile job does for a stuck refund: run the settle job again.
+    await db.payment.update({
+      where: { id: payment.id },
+      data: { refundSubmittedAt: new Date(Date.now() - 6 * 60_000) },
+    });
+    escrow.refund.mockResolvedValue({ txHash: "USDCREFUND-S" });
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    const final = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(final.status).toBe("REFUNDED");
+    expect(final.refundTxHash).toBe("USDCREFUND-S");
+    const usdc = await db.walletBalance.findUniqueOrThrow({
+      where: { walletId_asset: { walletId: wallet.id, asset: "USDC" } },
+    });
+    expect(usdc.cached.toFixed(7)).toBe("50.0000000");
+    expect(
+      await db.walletTransaction.count({ where: { walletId: wallet.id, type: "REFUND_CREDIT" } }),
+    ).toBe(1);
   });
 
   it("treats NotHeld on a refund rerun as done, without crediting twice", async () => {

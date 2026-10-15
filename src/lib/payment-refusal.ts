@@ -1,0 +1,92 @@
+// src/lib/payment-refusal.ts
+//
+// The reasons a payment is refused before any money moves that the payer can do
+// something about, and what the payer reads for each. The reason travels in the
+// error's `details`, so a screen can offer the next step (a button or a link)
+// next to the message.
+import type { PaymentAsset } from "@/lib/assets";
+
+export type PaymentRefusalReason =
+  /** The payer's wallet has no trustline for the asset yet. */
+  | "payer_no_trustline"
+  /** The asset the payer has, or what would take it, is not the asset HeyPay accepts. */
+  | "asset_mismatch"
+  /** The wallet holds less of the asset than the payment needs. */
+  | "insufficient_balance"
+  /** The wallet holds too little XLM for the network fees. */
+  | "insufficient_fee";
+
+const REASONS: readonly PaymentRefusalReason[] = [
+  "payer_no_trustline",
+  "asset_mismatch",
+  "insufficient_balance",
+  "insufficient_fee",
+];
+
+/**
+ * Where an `asset_mismatch` was found. A payer whose own asset is the wrong one
+ * is told so; the other two are HeyPay's side and read the same.
+ */
+export type AssetMismatchCause =
+  /** The escrow instance set for the asset holds a different token. */
+  | "escrow"
+  /** The payer's wallet holds the same code from another issuer. */
+  | "payer_issuer"
+  /** The treasury cannot receive the asset. */
+  | "destination";
+
+export type PaymentRefusal = {
+  reason: PaymentRefusalReason;
+  /** The asset the payment was to be made in. */
+  asset: PaymentAsset;
+  /** Where the mismatch is, for `asset_mismatch`. */
+  cause?: AssetMismatchCause;
+  /** Another asset the payer could use for this payment, when there is one. */
+  payWith?: PaymentAsset;
+  /** Roughly how much XLM the network fees need, for `insufficient_fee`. */
+  feeXlm?: string;
+};
+
+/** What the payer reads: what is wrong, then what to do about it. */
+export function refusalMessage({ reason, asset, cause, payWith, feeXlm }: PaymentRefusal): string {
+  switch (reason) {
+    case "payer_no_trustline":
+      return `Turn on ${asset} first.`;
+    case "asset_mismatch":
+      // The payer can see this asset in their wallet, so say why it is not taken.
+      if (cause === "payer_issuer") {
+        const why = `Your ${asset} is from a different issuer than the one HeyPay accepts, so it can't be used here.`;
+        return payWith ? `${why} Pay with ${payWith} instead.` : why;
+      }
+      return payWith
+        ? `This shop is paid in a different currency. Pay with ${payWith} instead.`
+        : "This shop is paid in a different currency.";
+    case "insufficient_balance":
+      return payWith
+        ? `Not enough ${asset} — add more or pay with ${payWith}.`
+        : `Not enough ${asset} — add more.`;
+    case "insufficient_fee":
+      return feeXlm
+        ? `Not enough XLM for the network fee — add about ${feeXlm} XLM.`
+        : "Not enough XLM for the network fee — add more XLM.";
+  }
+}
+
+/** A failed request as a screen shows it: the message, and the refusal when it is one. */
+export type RefusedRequest = { message: string; refusal: PaymentRefusal | null };
+
+/**
+ * Reads an API error body. `refusal` is set only when the body names one of the
+ * reasons above; any other error keeps its message, or gets `fallback`.
+ */
+export function readRefusal(body: unknown, fallback: string): RefusedRequest {
+  const error = (body as { error?: { message?: unknown; details?: unknown } } | null)?.error;
+  const message = typeof error?.message === "string" ? error.message : fallback;
+  const details = error?.details as Partial<PaymentRefusal> | null | undefined;
+  const reason = REASONS.find((r) => r === details?.reason);
+  if (!reason || typeof details?.asset !== "string") return { message, refusal: null };
+  return {
+    message,
+    refusal: { reason, asset: details.asset, payWith: details.payWith, feeXlm: details.feeXlm },
+  };
+}

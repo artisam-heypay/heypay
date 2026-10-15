@@ -25,7 +25,8 @@ export const POST = route(async (req) => {
   const { currentPassword, newPassword } = await parseBody(req, passwordSchema);
 
   const user = await db.user.findUnique({ where: { id: sessionUser.id } });
-  if (!user || !(await verifyPassword(user.passwordHash, currentPassword))) {
+  // A Google-only account has no password to confirm, so none can be set here.
+  if (!user?.passwordHash || !(await verifyPassword(user.passwordHash, currentPassword))) {
     throw unauthorized("Current password is incorrect");
   }
 

@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import { requireRole } from "@/server/auth/sessions";
 import { Role } from "@/generated/prisma/client";
 import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
+import { stellarTxUrl } from "@/lib/stellar-explorer";
 import { getWalletSummary } from "@/server/payer/data";
 import { getAssetRate } from "@/server/payments/rate";
 import { assetIssuer } from "@/server/stellar/assets";
@@ -41,6 +42,7 @@ export default async function PayerPrefundPage() {
         approxPhp: rate ? b.cached.times(rate).toFixed(2) : null,
         trustlineRequired: isIssuedAsset(b.asset),
         canReceive: isIssuedAsset(b.asset) ? (onChain[b.asset] ?? b.canReceive) : true,
+        trustlineTxUrl: b.trustlineTxHash ? stellarTxUrl(b.trustlineTxHash) : null,
         issuer: assetIssuer(b.asset),
       };
     }),

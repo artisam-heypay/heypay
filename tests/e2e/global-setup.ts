@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import { e2eTreasury } from "./treasury";
+import { E2E_DATABASE_URL } from "./env";
 
 // Truncate every public table except Prisma's migration ledger, in one statement.
 // Run through `prisma db execute` (no client import — Playwright's ESM loader can't
@@ -15,10 +16,6 @@ BEGIN
     EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' RESTART IDENTITY CASCADE';
   END LOOP;
 END $$;`;
-
-const E2E_DATABASE_URL =
-  process.env.E2E_DATABASE_URL ??
-  "postgresql://heypay:heypay@localhost:5433/heypay_e2e?schema=public";
 
 export default async function globalSetup(): Promise<void> {
   const env = {

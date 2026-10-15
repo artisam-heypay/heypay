@@ -10,19 +10,27 @@ import {
   type Transaction,
   type rpc,
 } from "@stellar/stellar-sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Decimal } from "@/lib/money";
 import { __resetKeyringForTests, encryptSecret } from "@/server/crypto/envelope";
 import {
   EscrowContractError,
   EscrowTxFailedError,
+  __resetEscrowTokensForTests,
+  __resetSorobanRpcForTests,
   createEscrowService,
+  escrowFor,
+  escrowHoldsAsset,
   escrowJobId,
   toStroops,
 } from "@/server/stellar/escrow";
 
 const PASSPHRASE = "Test SDF Network ; September 2015";
 const CONTRACT_ID = "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E";
+const USDC_CONTRACT_ID = "CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG";
+// Stellar Asset Contracts on Testnet: native XLM, and Circle's testnet USDC.
+const XLM_TOKEN = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+const USDC_TOKEN = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
 const TX_HASH = "a".repeat(64);
 
 const payer = Keypair.random();
@@ -91,6 +99,7 @@ function sentCall(server: ReturnType<typeof fakeServer>) {
   const call = op.func.invokeContract();
   return {
     tx,
+    contractId: Address.fromScAddress(call.contractAddress()).toString(),
     fn: call.functionName().toString(),
     args: call.args().map((a) => scValToNative(a)),
   };
@@ -357,5 +366,103 @@ describe("EscrowService.getFeeCharged", () => {
     });
 
     expect(await service(server).getFeeCharged(TX_HASH)).toBeNull();
+  });
+});
+
+describe("EscrowService.getToken", () => {
+  it("reads the token the instance holds, without sending anything", async () => {
+    const server = fakeServer({
+      simulateTransaction: vi
+        .fn()
+        .mockResolvedValue(simSuccess(Address.fromString(USDC_TOKEN).toScVal())),
+    });
+
+    await expect(service(server).getToken()).resolves.toBe(USDC_TOKEN);
+    expect(server.sendTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("escrowHoldsAsset", () => {
+  beforeEach(() => {
+    process.env.ESCROW_CONTRACT_ID_USDC = USDC_CONTRACT_ID;
+    __resetEscrowTokensForTests();
+  });
+  afterEach(() => {
+    delete process.env.ESCROW_CONTRACT_ID_USDC;
+  });
+
+  const holding = (token: string) => ({ getToken: vi.fn().mockResolvedValue(token) });
+
+  it("is true when the instance holds the asset's own token contract", async () => {
+    await expect(escrowHoldsAsset("USDC", holding(USDC_TOKEN))).resolves.toBe(true);
+    await expect(escrowHoldsAsset("XLM", holding(XLM_TOKEN))).resolves.toBe(true);
+  });
+
+  it("is false when the instance set for USDC holds XLM", async () => {
+    await expect(escrowHoldsAsset("USDC", holding(XLM_TOKEN))).resolves.toBe(false);
+  });
+
+  it("is false for an instance that was never initialized", async () => {
+    const escrow = {
+      getToken: vi.fn().mockRejectedValue(new EscrowContractError("token", "NotInitialized")),
+    };
+    await expect(escrowHoldsAsset("USDC", escrow)).resolves.toBe(false);
+  });
+
+  it("does not guess when the contract cannot be read", async () => {
+    const escrow = { getToken: vi.fn().mockRejectedValue(new Error("rpc down")) };
+    await expect(escrowHoldsAsset("USDC", escrow)).rejects.toThrow("rpc down");
+  });
+
+  it("asks once for a match, and again after a mismatch", async () => {
+    const wrong = holding(XLM_TOKEN);
+    await escrowHoldsAsset("USDC", wrong);
+    await escrowHoldsAsset("USDC", wrong);
+    expect(wrong.getToken).toHaveBeenCalledTimes(2);
+
+    const right = holding(USDC_TOKEN);
+    await escrowHoldsAsset("USDC", right);
+    await expect(escrowHoldsAsset("USDC", right)).resolves.toBe(true);
+    expect(right.getToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks again when the asset's contract ID changes", async () => {
+    const escrow = holding(USDC_TOKEN);
+    await escrowHoldsAsset("USDC", escrow);
+    process.env.ESCROW_CONTRACT_ID_USDC = CONTRACT_ID;
+    await escrowHoldsAsset("USDC", escrow);
+    expect(escrow.getToken).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("escrowFor", () => {
+  afterEach(() => {
+    delete process.env.ESCROW_CONTRACT_ID_USDC;
+    delete process.env.SOROBAN_RPC_URL;
+    __resetSorobanRpcForTests();
+  });
+
+  it("sends to the contract ID read when the call is made", async () => {
+    const server = fakeServer();
+    let contractId = CONTRACT_ID;
+    const escrow = createEscrowService({
+      server: server as unknown as rpc.Server,
+      contractId: () => contractId,
+      networkPassphrase: PASSPHRASE,
+      adminEncryptedSecret: adminSecretEnc,
+    });
+    contractId = USDC_CONTRACT_ID;
+    await escrow.release(jobId);
+    expect(sentCall(server).contractId).toBe(USDC_CONTRACT_ID);
+  });
+
+  it("fails the call, not the lookup, when the asset's contract ID is not set", async () => {
+    process.env.SOROBAN_RPC_URL = "https://rpc.test";
+    const escrow = escrowFor("USDC");
+    await expect(escrow.getTimeout()).rejects.toThrow("ESCROW_CONTRACT_ID_USDC is not set");
+  });
+
+  it("refuses an asset that has no escrow", () => {
+    expect(() => escrowFor("USDT")).toThrow("No escrow holds USDT");
   });
 });

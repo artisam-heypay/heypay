@@ -1,14 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 import { e2eTreasury, encryptForApp } from "./tests/e2e/treasury";
+import { E2E_DATABASE_URL, ENCRYPTION_MASTER_KEY } from "./tests/e2e/env";
 
 const PORT = process.env.E2E_PORT ?? "3100";
 const BASE_URL = `http://localhost:${PORT}`;
-const E2E_DATABASE_URL =
-  process.env.E2E_DATABASE_URL ??
-  "postgresql://heypay:heypay@localhost:5433/heypay_e2e?schema=public";
 const E2E_REDIS_URL = process.env.E2E_REDIS_URL ?? "redis://localhost:6380";
-const ENCRYPTION_MASTER_KEY =
-  process.env.ENCRYPTION_MASTER_KEY ?? "base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=";
 const TREASURY = e2eTreasury();
 
 export default defineConfig({
@@ -46,8 +42,6 @@ export default defineConfig({
       HEYPAY_TREASURY_PUBLIC_KEY: TREASURY.publicKey(),
       // The refund path sends from the treasury, so it needs the secret.
       HEYPAY_TREASURY_SECRET_ENC: encryptForApp(TREASURY.secret(), ENCRYPTION_MASTER_KEY),
-      // e2e creates ~6 accounts from one IP; lift the per-IP signup cap so it doesn't 429.
-      SIGNUP_RATE_LIMIT: "1000",
       // Magic PHP amount the admin-retry-refund spec uses to force a settlement failure.
       MOCK_FAIL_PHP_AMOUNT: "66.66",
       STELLAR_NETWORK: "testnet",

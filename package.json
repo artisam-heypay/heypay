@@ -28,12 +28,15 @@
     "contract:bindings": "scripts/escrow-bindings.sh",
     "escrow:deploy:treasury": "scripts/escrow-deploy-treasury.sh",
     "docs:guide": "tsx scripts/render-testing-guide.ts",
-    "faucet": "node --conditions=react-server --import tsx scripts/faucet.ts"
+    "faucet": "node --conditions=react-server --import tsx scripts/faucet.ts",
+    "wallet:sponsor": "node --conditions=react-server --import tsx scripts/wallet-sponsor.ts",
+    "user:create": "node --conditions=react-server --import tsx scripts/create-user.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1076.0",
     "@aws-sdk/s3-presigned-post": "^3.1076.0",
     "@aws-sdk/s3-request-presigner": "^3.1076.0",
+    "@heypay/settlement-route": "workspace:*",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@stellar/stellar-sdk": "^16.3.0",
@@ -42,7 +45,7 @@
     "decimal.js": "^10.6.0",
     "ioredis": "^5.11.1",
     "jsqr": "^1.4.0",
-    "next": "^16.3.7",
+    "next": "~16.3.8",
     "pg": "^8.22.0",
     "posthog-js": "^1.434.15",
     "react": "^19.2.7",

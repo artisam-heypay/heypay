@@ -11,6 +11,7 @@ import {
 import { processSettleJob } from "@/server/queue/jobs/settle";
 import { processDepositPollJob } from "@/server/queue/jobs/deposit-poller";
 import { processReconcileJob } from "@/server/queue/jobs/reconcile";
+import { processWalletActivateJob } from "@/server/queue/jobs/wallet-activate";
 import { ensureBucket } from "@/server/storage/s3";
 import { captureException } from "@/server/observability/error-tracking";
 import { flushLogs, startLogShipping } from "@/server/observability/logs";
@@ -47,8 +48,17 @@ async function main() {
     },
     { connection: bullConnection, concurrency: 1 },
   );
+  const walletActivateWorker = new Worker(
+    QUEUE_NAMES.walletActivate,
+    async (job) => {
+      await processWalletActivateJob({ data: job.data as { userId: string } });
+    },
+    // One at a time: every activation is sent from the one sponsor account, and
+    // two built together would claim the same sequence number.
+    { connection: bullConnection, concurrency: 1 },
+  );
 
-  for (const w of [settleWorker, depositWorker, reconcileWorker]) {
+  for (const w of [settleWorker, depositWorker, reconcileWorker, walletActivateWorker]) {
     w.on("failed", (job, err) => {
       console.error(`[worker] ${w.name} job ${job?.id} failed`, err.message);
       captureException(err, {
@@ -68,7 +78,7 @@ async function main() {
     { repeat: { every: 5 * 60_000 }, jobId: "reconcile-cron" },
   );
 
-  console.log("[worker] started: settle, deposit-poll, reconcile");
+  console.log("[worker] started: settle, deposit-poll, reconcile, wallet-activate");
 
   const shutdown = async (signal: string) => {
     console.log(`[worker] ${signal} received, shutting down`);
@@ -76,6 +86,7 @@ async function main() {
       settleWorker.close(),
       depositWorker.close(),
       reconcileWorker.close(),
+      walletActivateWorker.close(),
     ]);
     await bullConnection.quit();
     await flushLogs();

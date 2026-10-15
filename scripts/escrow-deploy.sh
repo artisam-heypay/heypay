@@ -13,18 +13,24 @@
 #                           signs initialize() and later release()/refund(), and
 #                           receives released funds, so it should be the HeyPay
 #                           treasury. Default: the deployer.
-#   ESCROW_TOKEN            Stellar Asset Contract the escrow holds.
-#                           Default: the network's native XLM SAC.
+#   ESCROW_ASSET            Asset the escrow holds: native, or CODE:ISSUER for an
+#                           issued asset such as USDC. One escrow holds one
+#                           asset, so each asset needs its own deploy. The admin
+#                           must already trust an issued asset, or release()
+#                           cannot pay it. Default: native.
+#   ESCROW_TOKEN            Stellar Asset Contract the escrow holds, when it is
+#                           not the one for ESCROW_ASSET.
 #   ESCROW_TIMEOUT_LEDGERS  If set, calls set_timeout() with this many ledgers.
 #
 # Prints the new contract ID and its Stellar Expert link. Set ESCROW_CONTRACT_ID
-# to that ID in .env.
+# (native) or ESCROW_CONTRACT_ID_<CODE> (issued asset) to that ID in .env.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 NETWORK="${ESCROW_NETWORK:-testnet}"
 DEPLOYER="${ESCROW_DEPLOYER:-heypay-deployer}"
+ASSET="${ESCROW_ASSET:-native}"
 WASM="target/wasm32v1-none/release/escrow.wasm"
 
 log() { printf '==> %s\n' "$*" >&2; }
@@ -55,7 +61,7 @@ fi
 # `stellar keys address` accepts an identity name or a secret key, so the admin
 # public key can be shown without ever printing the secret.
 ADMIN_ADDRESS="$(stellar keys address "$ADMIN")"
-TOKEN="${ESCROW_TOKEN:-$(stellar contract id asset --asset native --network "$NETWORK")}"
+TOKEN="${ESCROW_TOKEN:-$(stellar contract id asset --asset "$ASSET" --network "$NETWORK")}"
 
 log "Building the escrow contract"
 stellar contract build --package escrow >/dev/null
@@ -98,5 +104,9 @@ fi
 EXPERT_NETWORK="$NETWORK"
 [[ "$NETWORK" == "mainnet" ]] && EXPERT_NETWORK="public"
 
-echo "ESCROW_CONTRACT_ID=$CONTRACT_ID"
+# The app looks an issued asset's escrow up by its code: ESCROW_CONTRACT_ID_USDC.
+ENV_KEY="ESCROW_CONTRACT_ID"
+[[ "$ASSET" != "native" ]] && ENV_KEY="ESCROW_CONTRACT_ID_${ASSET%%:*}"
+
+echo "$ENV_KEY=$CONTRACT_ID"
 echo "https://stellar.expert/explorer/$EXPERT_NETWORK/contract/$CONTRACT_ID"

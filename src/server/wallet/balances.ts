@@ -25,6 +25,8 @@ export type WalletAssetBalance = {
   available: Decimal;
   /** Null for XLM (no trustline needed) and for issued assets not yet trusted. */
   trustlineEstablishedAt: Date | null;
+  /** The changeTrust transaction that created the trustline, when HeyPay sent it. */
+  trustlineTxHash: string | null;
   /** Whether the wallet can receive this asset today. */
   canReceive: boolean;
 };
@@ -49,6 +51,7 @@ export async function getAssetBalance(
       reserved,
       available: availableAmount(cached, reserved),
       trustlineEstablishedAt: null,
+      trustlineTxHash: null,
       canReceive: true,
     };
   }
@@ -63,6 +66,7 @@ export async function getAssetBalance(
     reserved,
     available: availableAmount(cached, reserved),
     trustlineEstablishedAt: row?.trustlineEstablishedAt ?? null,
+    trustlineTxHash: row?.trustlineTxHash ?? null,
     canReceive: row?.trustlineEstablishedAt != null,
   };
 }
@@ -168,23 +172,30 @@ export async function creditAsset(
 }
 
 /**
- * Record that the wallet holds a trustline to `asset`'s issuer. Idempotent: the
- * first timestamp wins, so re-running trustline setup doesn't rewrite history.
+ * Record that the wallet holds a trustline to `asset`'s issuer, and the
+ * changeTrust transaction that created it when there is one. Idempotent: the
+ * first timestamp and the first hash win, so re-running trustline setup doesn't
+ * rewrite history.
  */
 export async function markTrustlineEstablished(
   walletId: string,
   asset: PaymentAsset,
+  txHash: string | null = null,
   at: Date = new Date(),
 ): Promise<void> {
   if (!isIssuedAsset(asset)) return;
   const existing = await db.walletBalance.findUnique({
     where: { walletId_asset: { walletId, asset } },
-    select: { trustlineEstablishedAt: true },
+    select: { trustlineEstablishedAt: true, trustlineTxHash: true },
   });
-  if (existing?.trustlineEstablishedAt) return;
+  const data = {
+    ...(!existing?.trustlineEstablishedAt && { trustlineEstablishedAt: at }),
+    ...(txHash && !existing?.trustlineTxHash && { trustlineTxHash: txHash }),
+  };
+  if (Object.keys(data).length === 0) return;
   await db.walletBalance.upsert({
     where: { walletId_asset: { walletId, asset } },
-    create: { walletId, asset, trustlineEstablishedAt: at },
-    update: { trustlineEstablishedAt: at },
+    create: { walletId, asset, ...data },
+    update: data,
   });
 }

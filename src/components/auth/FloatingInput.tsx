@@ -6,9 +6,22 @@ type Props = {
   type?: string;
   autoComplete?: string;
   required?: boolean;
+  inputMode?: "numeric" | "email";
+  maxLength?: number;
+  pattern?: string;
 };
 
-export function FloatingInput({ id, name, label, type = "text", autoComplete, required }: Props) {
+export function FloatingInput({
+  id,
+  name,
+  label,
+  type = "text",
+  autoComplete,
+  required,
+  inputMode,
+  maxLength,
+  pattern,
+}: Props) {
   return (
     <div className="relative">
       <input
@@ -17,6 +30,9 @@ export function FloatingInput({ id, name, label, type = "text", autoComplete, re
         type={type}
         autoComplete={autoComplete}
         required={required}
+        inputMode={inputMode}
+        maxLength={maxLength}
+        pattern={pattern}
         placeholder=" "
         className="peer w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-4 pt-6 pb-2 text-body-md text-on-surface outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
       />

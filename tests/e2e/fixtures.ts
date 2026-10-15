@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { APIRequestContext, expect, Page, request as playwrightRequest } from "@playwright/test";
+import { E2E_DATABASE_URL, ENCRYPTION_MASTER_KEY } from "./env";
 
 // Playwright's API request context is not a browser, so it sends no Origin /
 // Sec-Fetch-Site header. The app's CSRF guard (assertSameOrigin) requires one on
@@ -68,13 +70,30 @@ export function uniqueUser(prefix: string): { username: string; password: string
   };
 }
 
+// Creates the account and signs `request` in as it. Signing up on the site needs
+// a code from an email inbox, which the suite has none of, so the account is
+// made by scripts/create-user.ts in the e2e database instead.
 export async function signup(
   request: APIRequestContext,
   user: { username: string; password: string },
   role: "PAYER" | "MERCHANT",
 ): Promise<void> {
-  const res = await request.post("/api/auth/signup", { data: { ...user, role }, ...CSRF });
-  expect(res.ok(), `signup failed: ${res.status()} ${await res.text()}`).toBeTruthy();
+  execFileSync(
+    "node",
+    ["--conditions=react-server", "--import", "tsx", "scripts/create-user.ts", user.username, role],
+    {
+      env: {
+        ...process.env,
+        DATABASE_URL: E2E_DATABASE_URL,
+        ENCRYPTION_MASTER_KEY,
+        ENCRYPTION_KEY_VERSION: "1",
+        CREATE_USER_PASSWORD: user.password,
+      },
+      stdio: "pipe",
+    },
+  );
+  const res = await request.post("/api/auth/login", { data: user, ...CSRF });
+  expect(res.ok(), `login failed: ${res.status()} ${await res.text()}`).toBeTruthy();
 }
 
 export async function login(
