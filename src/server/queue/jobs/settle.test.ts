@@ -70,7 +70,7 @@ const TREASURY_SECRET = "STREASURYSECRETXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 import { processSettleJob } from "./settle";
 import { escrowJobId, EscrowContractError, EscrowTxFailedError } from "@/server/stellar/escrow";
-import { isTerminal } from "@/server/payments/state-machine";
+import { applyTransition, isTerminal } from "@/server/payments/state-machine";
 
 async function makeAuthorized(merchantOpts?: { payoutEmail?: string | null }) {
   // reservedXlm already includes amountAsset + fee, set at confirm time.
@@ -882,6 +882,34 @@ describe("processSettleJob — escrow on (ESCROW_ENABLED)", () => {
     expect(p.escrowReleaseTxHash).toBe("RELEASEHASH-F");
   });
 
+  it("never refunds a payout another job recorded first while this one asked for it", async () => {
+    escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-R" });
+    mockHappyRail();
+
+    const { payment } = await makeAuthorized();
+    await processSettleJob({ data: { paymentId: payment.id } }); // → STELLAR_SUBMITTED
+    await processSettleJob({ data: { paymentId: payment.id } }); // → STELLAR_CONFIRMED
+    // A second settle job asks for the same payout (same reference) and records
+    // it while this one is still waiting on the rail.
+    createPayout.mockImplementationOnce(async () => {
+      await db.payment.update({ where: { id: payment.id }, data: { payoutRef: "disb-1" } });
+      await applyTransition(
+        db,
+        { id: payment.id, status: "STELLAR_CONFIRMED" },
+        "PAYOUT_SUBMITTED",
+      );
+      return { payoutRef: "disb-1" };
+    });
+    enqueueSettle.mockClear();
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    const p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("PAYOUT_SUBMITTED");
+    expect(p.failureReason).toBeNull();
+    expect(escrow.refund).not.toHaveBeenCalled();
+    expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
+  });
+
   it("treats NotHeld on a release rerun as done when the job is already released", async () => {
     escrow.deposit.mockResolvedValue({ txHash: "DEPOSITHASH-N" });
     escrow.release.mockRejectedValue(new EscrowContractError("release", "NotHeld"));
@@ -1414,6 +1442,28 @@ describe("processSettleJob — the payer signed the deposit with their own walle
       where: { paymentId: payment.id, toStatus: "STELLAR_CONFIRMED" },
     });
     expect(confirmed.detail).toMatchObject({ externalPublicKey: OWN, depositedAsset: "8.3333334" });
+  });
+
+  it("leaves a deposit another job confirmed first as it is, never refunded", async () => {
+    const { wallet, payment } = await makePayerSigned();
+    await processSettleJob({ data: { paymentId: payment.id } }); // AUTHORIZED → STELLAR_SUBMITTED
+    // A re-check that ran at the same moment reads the contract and confirms the
+    // deposit while this one is still reading it.
+    escrow.getJob.mockImplementationOnce(async () => {
+      await applyTransition(
+        db,
+        { id: payment.id, status: "STELLAR_SUBMITTED" },
+        "STELLAR_CONFIRMED",
+      );
+      return heldFrom(OWN);
+    });
+    await processSettleJob({ data: { paymentId: payment.id } });
+
+    const p = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(p.status).toBe("STELLAR_CONFIRMED");
+    expect(p.failureReason).toBeNull();
+    expect(escrow.refund).not.toHaveBeenCalled();
+    await expectHeyPayWalletUntouched(wallet.id);
   });
 
   it("refunds a failed payout through the contract, to the payer's own account", async () => {

@@ -29,6 +29,7 @@ import { enqueueSettle } from "@/server/queue/queues";
 import { creditAsset, debitAsset, releaseAsset } from "@/server/wallet/balances";
 import {
   applyTransition,
+  isStatusChanged,
   isTerminal,
   nextStep,
   XLM_MOVED,
@@ -142,6 +143,14 @@ export async function processSettleJob(job: { data: { paymentId: string } }): Pr
   try {
     await dispatch(payment);
   } catch (err) {
+    // Another job, or a request, moved the payment while this step worked from the
+    // status it read. That move stands and this step changed nothing, so the
+    // payment is neither failed nor refunded for it: it is picked up again at the
+    // status it is in now.
+    if (isStatusChanged(err)) {
+      await enqueueSettle(payment.id);
+      return;
+    }
     await handleFailure(payment, err);
     return; // terminal/refund path handled; do not rethrow
   }

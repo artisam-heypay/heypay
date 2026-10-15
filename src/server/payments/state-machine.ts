@@ -1,7 +1,7 @@
 // src/server/payments/state-machine.ts
 import "server-only";
 import { PaymentStatus, type Payment, type Prisma } from "@/generated/prisma/client";
-import { conflict } from "@/lib/errors";
+import { AppError, conflict } from "@/lib/errors";
 import { analyticsEnabled, captureUserEvent } from "@/server/observability/analytics";
 import { assetContract } from "@/server/observability/payment-trail";
 
@@ -53,6 +53,17 @@ export function isTerminal(status: PaymentStatus): boolean {
 
 export function nextStep(status: PaymentStatus): PaymentStatus | null {
   return NEXT[status] ?? null;
+}
+
+/**
+ * Whether `err` is applyTransition refusing a payment that another caller moved
+ * after this one read it. The other caller's move stands; this one changed nothing.
+ */
+export function isStatusChanged(err: unknown): boolean {
+  return (
+    err instanceof AppError &&
+    (err.details as { reason?: unknown } | undefined)?.reason === "status_changed"
+  );
 }
 
 export async function applyTransition(
