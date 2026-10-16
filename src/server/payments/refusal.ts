@@ -30,6 +30,8 @@ export function paymentRefused(
   asset: PaymentAsset,
   amounts: Record<string, Decimal> = {},
   cause?: AssetMismatchCause,
+  /** The other asset to offer. Left out, a payment in an issued asset is offered XLM. */
+  payWith: PaymentAsset | undefined = alternativeTo(asset),
 ): AppError {
   const short = reason === "insufficient_balance" || reason === "insufficient_fee";
   const refusal: PaymentRefusal = {
@@ -37,7 +39,7 @@ export function paymentRefused(
     asset,
     ...(cause && { cause }),
     // Fees are XLM for every asset, so another asset does not help a short fee.
-    ...(reason !== "insufficient_fee" && { payWith: alternativeTo(asset) }),
+    ...(reason !== "insufficient_fee" && { payWith }),
     ...(reason === "insufficient_fee" &&
       amounts.requiredXlm && {
         feeXlm: amounts.requiredXlm.toDecimalPlaces(2, Decimal.ROUND_UP).toString(),

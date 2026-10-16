@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { dec } from "@/lib/money";
 import { Icon, StatusBadge } from "@/components/ui";
 import { EscrowRefundPanel, type EscrowRefund } from "./EscrowRefundPanel";
 
@@ -12,6 +13,10 @@ const REFUND_LABELS = {
 
 /** About one Stellar ledger: the slack before asking again after the deadline. */
 const SECONDS_PER_LEDGER = 5;
+/** How often an open drawer asks whether a payment still in progress has moved. */
+const POLL_MS = 3000;
+/** A payment never leaves these. */
+const FINAL = new Set(["SETTLED", "FAILED", "REFUNDED", "CANCELLED"]);
 
 type PaymentDetail = {
   payment: {
@@ -56,6 +61,27 @@ export function TransactionDrawer({
       .catch(() => {});
     return () => controller.abort();
   }, [paymentId, version]);
+
+  // A payment still in progress moves on while the drawer is open. Ask for its
+  // status alone (reading the escrow asks the Soroban RPC), and load the whole
+  // payment again once it has changed.
+  const status = data?.payment.status;
+  useEffect(() => {
+    if (!status || FINAL.has(status)) return;
+    const controller = new AbortController();
+    const id = setInterval(() => {
+      fetch(`/api/payments/${paymentId}`, { signal: controller.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { payment: { status: string } } | null) => {
+          if (d && d.payment.status !== status) setVersion((v) => v + 1);
+        })
+        .catch(() => {});
+    }, POLL_MS);
+    return () => {
+      controller.abort();
+      clearInterval(id);
+    };
+  }, [paymentId, status]);
 
   // Look again once the escrow deadline should have passed, so the refund
   // button appears without reopening the drawer.
@@ -116,9 +142,20 @@ export function TransactionDrawer({
 
             <dl className="divide-y divide-outline-variant">
               <Row label="Amount (PHP)" value={`₱${data.payment.amountPhp}`} />
-              <Row label="Rate" value={`1 ${data.payment.asset} = ₱${data.payment.quotedRate}`} />
               <Row
-                label={`${data.payment.asset} debited`}
+                label="Rate"
+                value={`1 ${data.payment.asset} = ₱${dec(data.payment.quotedRate).toFixed(2)}`}
+              />
+              <Row
+                // Nothing has left the wallet until the payment is on Stellar, and a
+                // refunded payment's crypto is back in it.
+                label={`${data.payment.asset} ${
+                  data.payment.status === "REFUNDED"
+                    ? "refunded"
+                    : data.payment.stellarTxHash
+                      ? "debited"
+                      : "amount"
+                }`}
                 value={`${data.payment.amountAsset} ${data.payment.asset}`}
               />
               <Row label="Network fee" value={`${data.payment.networkFeeXlm} XLM`} />

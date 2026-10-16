@@ -7,12 +7,15 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ replace, refresh }) }));
 
 import { ConfirmPayment } from "./ConfirmPayment";
 
+/** The confirm button, which names the amount it pays. */
+const PAY_BUTTON = /^Pay (up to )?\d/;
+
 const OPTIONS = [
   { asset: "XLM", available: "100.0000000", canReceive: true },
   { asset: "USDC", available: "50.0000000", canReceive: true },
 ];
 
-function renderConfirm(asset: "XLM" | "USDC" = "XLM") {
+function renderConfirm(asset: "XLM" | "USDC" = "XLM", quoteExpiresAt: string | null = null) {
   return render(
     <ConfirmPayment
       paymentId="p1"
@@ -23,7 +26,7 @@ function renderConfirm(asset: "XLM" | "USDC" = "XLM") {
       quotedRate={asset === "XLM" ? "12.00000000" : "62.34000000"}
       amountAsset={asset === "XLM" ? "8.3333334" : "1.6041066"}
       networkFeeXlm="0.0000100"
-      quoteExpiresAt={null}
+      quoteExpiresAt={quoteExpiresAt}
       merchantName="Sari Store"
       walletPublicKey="GPAYER"
       availableAsset={asset === "XLM" ? "100.0000000" : "50.0000000"}
@@ -100,7 +103,7 @@ describe("ConfirmPayment — refused payments", () => {
     );
     // The payment on screen is the XLM one already, so it only has to be confirmed.
     expect(screen.queryByRole("button", { name: "Pay with XLM" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Confirm/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: PAY_BUTTON })).toBeEnabled();
     expect(replace).not.toHaveBeenCalled();
   });
 
@@ -118,14 +121,14 @@ describe("ConfirmPayment — refused payments", () => {
     });
     renderConfirm("USDC");
 
-    await user.click(screen.getByRole("button", { name: /Confirm/ }));
+    await user.click(screen.getByRole("button", { name: PAY_BUTTON }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Not enough USDC — add more or pay with XLM.",
     );
     // Nothing was held, so the screen is back, not a failed payment.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Confirm/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: PAY_BUTTON })).toBeEnabled();
     expect(screen.getByRole("link", { name: "Add USDC" })).toHaveAttribute(
       "href",
       "/payer/prefund",
@@ -150,7 +153,7 @@ describe("ConfirmPayment — refused payments", () => {
     });
     renderConfirm("USDC");
 
-    await user.click(screen.getByRole("button", { name: /Confirm/ }));
+    await user.click(screen.getByRole("button", { name: PAY_BUTTON }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Not enough XLM for the network fee — add about 0.21 XLM.",
@@ -192,13 +195,13 @@ describe("ConfirmPayment when the payer turned on their own wallet meanwhile", (
     });
     renderConfirm("XLM");
 
-    await userEvent.click(screen.getByRole("button", { name: /Confirm/ }));
+    await userEvent.click(screen.getByRole("button", { name: PAY_BUTTON }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/Sign this payment in Freighter/);
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     // Not left disabled: once redrawn, the button signs with their own wallet.
-    expect(screen.getByRole("button", { name: /Confirm/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: PAY_BUTTON })).toBeEnabled();
   });
 });
 
@@ -470,5 +473,83 @@ describe("ConfirmPayment for a payer who pays from their own wallet", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/quote expired/);
     expect(buildEscrowDeposit).not.toHaveBeenCalled();
     expect(signWithFreighter).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConfirmPayment — a price that ran out", () => {
+  it("offers a new price in the same coin, without scanning again", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({
+      "/api/payments/quote": [{ status: 200, body: { paymentId: "p2" } }],
+    });
+    renderConfirm("XLM", new Date(Date.now() - 1000).toISOString());
+
+    expect(await screen.findByText("This price ran out.")).toBeInTheDocument();
+    // Not an error: nothing went wrong, the payer only took their time.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: PAY_BUTTON })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Get a new price" }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/payer/pay/p2/confirm"));
+    expect(quotedAssets(fetchMock)).toEqual(["XLM"]);
+    // The price that ran out is called off, so it holds nothing.
+    expect(fetchMock).toHaveBeenCalledWith("/api/payments/p1/cancel", expect.anything());
+  });
+
+  it("shows only the refusal in red when another coin is refused after the price ran out", async () => {
+    const user = userEvent.setup();
+    mockApi({
+      "/api/payments/quote": [
+        refused(409, "Not enough USDC — add more or pay with XLM.", {
+          reason: "insufficient_balance",
+          asset: "USDC",
+          payWith: "XLM",
+        }),
+      ],
+    });
+    renderConfirm("XLM", new Date(Date.now() - 1000).toISOString());
+
+    await user.click(screen.getByRole("radio", { name: /USDC/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not enough USDC — add more or pay with XLM.",
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    // Paying in XLM again needs a new price, which is offered next to it.
+    expect(screen.getByRole("button", { name: "Get a new price" })).toBeInTheDocument();
+  });
+});
+
+describe("ConfirmPayment — the pay button", () => {
+  it("names the amount and the coin that leave the wallet", () => {
+    renderConfirm("USDC");
+    expect(screen.getByRole("button", { name: PAY_BUTTON })).toHaveTextContent(
+      "Pay 1.6041066 USDC",
+    );
+  });
+
+  it("says up to for XLM, whose escrow fee is only a most", () => {
+    render(
+      <ConfirmPayment
+        paymentId="p1"
+        merchantId="m1"
+        asset="XLM"
+        assetOptions={OPTIONS}
+        amountPhp="100.00"
+        quotedRate="12.00000000"
+        amountAsset="8.3333334"
+        networkFeeXlm="0.0000100"
+        escrowFeeXlm="0.2000000"
+        quoteExpiresAt={null}
+        merchantName="Sari Store"
+        walletPublicKey="GPAYER"
+        availableAsset="100.0000000"
+        approxPhp="1200.00"
+      />,
+    );
+    expect(screen.getByRole("button", { name: PAY_BUTTON })).toHaveTextContent(
+      "Pay up to 8.5333434 XLM",
+    );
   });
 });

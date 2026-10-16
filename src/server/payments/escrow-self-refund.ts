@@ -24,6 +24,7 @@ import { audit } from "@/server/auth/audit";
 import { captureException } from "@/server/observability/error-tracking";
 import { captureUserEvent } from "@/server/observability/analytics";
 import {
+  AWAITS_PAYER_REFUND_DETAIL,
   creditRefundEntry,
   debitRefundFee,
   ESCROW_EXPIRED_DETAIL,
@@ -86,6 +87,11 @@ export type EscrowSelfRefundState = {
    * stopped: the payer has to wait for its result.
    */
   waitingOnPayout: boolean;
+  /**
+   * HeyPay's own refund of this failed payment has been running for longer than
+   * usual. The payer can take the crypto back instead.
+   */
+  refundDelayed?: boolean;
   /**
    * Set when the deposit came from the payer's own wallet. Only that account
    * can take it back, so the payer signs the refund there and HeyPay signs
@@ -177,7 +183,33 @@ export async function escrowSelfRefundState(
   }
 }
 
+/**
+ * How long HeyPay's own refund of a failed payment runs before the payer is
+ * offered theirs. It usually lands within seconds. Offering the payer a button
+ * meanwhile asks them to do what is already being done.
+ */
+export const AUTO_REFUND_GRACE_MS = ESCROW_REFUND_RECLAIM_MS;
+
+/**
+ * For a REFUND_PENDING payment that HeyPay is refunding: whether it started
+ * recently or is taking longer than usual. Null when the refund is the payer's
+ * to make, because the payment was cancelled at the escrow deadline.
+ */
+async function heyPayRefunding(paymentId: string): Promise<"recent" | "delayed" | null> {
+  const pending = await db.paymentEvent.findFirst({
+    where: { paymentId, toStatus: PaymentStatus.REFUND_PENDING },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true, detail: true },
+  });
+  if (!pending) return null;
+  const detail = pending.detail as Record<string, unknown> | null;
+  if (detail?.[AWAITS_PAYER_REFUND_DETAIL] === true) return null;
+  return Date.now() - pending.createdAt.getTime() < AUTO_REFUND_GRACE_MS ? "recent" : "delayed";
+}
+
 async function refundState(p: StatePayment): Promise<EscrowSelfRefundState | null> {
+  const refunding = p.status === PaymentStatus.REFUND_PENDING ? await heyPayRefunding(p.id) : null;
+  if (refunding === "recent") return null;
   const seconds = await secondsUntilRefundable(
     escrowFor(p.asset),
     Buffer.from(p.escrowJobId!, "hex"),
@@ -193,7 +225,12 @@ async function refundState(p: StatePayment): Promise<EscrowSelfRefundState | nul
     if (payout.state === "SETTLED") return null; // about to be completed
     if (payout.state === "PENDING") return waiting;
   }
-  return { available: seconds === 0, secondsUntilAvailable: seconds, waitingOnPayout: false };
+  return {
+    available: seconds === 0,
+    secondsUntilAvailable: seconds,
+    waitingOnPayout: false,
+    ...(refunding === "delayed" && { refundDelayed: true }),
+  };
 }
 
 /** Refuses unless the escrow still holds the job and its deadline has passed. */

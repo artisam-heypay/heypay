@@ -5,7 +5,7 @@ import { requireRole } from "@/server/auth/sessions";
 import { assertSameOrigin } from "@/server/auth/csrf";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { dec } from "@/lib/money";
-import { createQuote } from "@/server/payments/quote";
+import { createQuote, payableAssets } from "@/server/payments/quote";
 import { captureUserEvent } from "@/server/observability/analytics";
 
 const bodySchema = z.object({
@@ -16,6 +16,9 @@ const bodySchema = z.object({
     .refine((d) => d.greaterThan(0), "amount must be > 0"),
   // Optional; defaults to XLM. USDC/USDT are gated by PAYMENT_ASSETS (SPEC §1/§4).
   asset: z.enum(["XLM", "USDC", "USDT"]).optional(),
+  // With no asset given: start in the one asset the wallet can pay with, or,
+  // when several can, lock no price and answer with them so the payer picks.
+  chooseAsset: z.boolean().optional(),
 });
 
 const ZERO_XLM = "0.0000000";
@@ -24,7 +27,23 @@ export const POST = route(async (req) => {
   assertSameOrigin(req);
   const user = await requireRole("PAYER");
   await rateLimit(`quote:user:${user.id}`, { limit: 30, windowSec: 60 });
-  const { merchantId, amountPhp, asset } = await parseBody(req, bodySchema);
+  const body = await parseBody(req, bodySchema);
+  const { merchantId, amountPhp } = body;
+  let asset = body.asset;
+  if (!asset && body.chooseAsset) {
+    const options = await payableAssets(user.id, amountPhp);
+    if (options.length > 1) {
+      return json({
+        choose: options.map((o) => ({
+          asset: o.asset,
+          amountAsset: o.amountAsset.toFixed(7),
+          available: o.available.toFixed(7),
+        })),
+      });
+    }
+    // None can pay: XLM, as before, and its refusal says what to do.
+    asset = options[0]?.asset;
+  }
 
   let q: Awaited<ReturnType<typeof createQuote>>;
   try {

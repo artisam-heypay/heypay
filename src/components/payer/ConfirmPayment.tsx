@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { dec, displayPhp } from "@/lib/money";
+import { dec, displayAsset, displayPhp } from "@/lib/money";
+import { bankRefusedPayout } from "@/lib/payment-status";
 import { payingWalletChange, readRefusal, type RefusedRequest } from "@/lib/payment-refusal";
 import { EscrowCallBuildError } from "@/lib/client/escrow-call";
 import { buildEscrowDeposit, type EscrowDepositInstructions } from "@/lib/client/escrow-deposit";
 import { signWithFreighter } from "@/components/wallet/freighter";
-import { Icon } from "@/components/ui";
+import { Button, Icon } from "@/components/ui";
 import { AssetPicker } from "./AssetPicker";
 import { ConversionBreakdown } from "./ConversionBreakdown";
 import { PaymentRefusalNotice } from "./PaymentRefusalNotice";
@@ -99,12 +100,17 @@ export function ConfirmPayment(props: {
   const requiredAsset = isXlm
     ? amountAsset.plus(networkFeeXlm).plus(escrowFeeXlm ?? 0)
     : amountAsset;
+  // The button names what leaves the wallet, as "Most taken from your wallet"
+  // does. Only an XLM payment's escrow fee is a most, not an exact amount.
+  const payLabel = `Pay ${isXlm && escrowFeeXlm ? "up to " : ""}${displayAsset(requiredAsset, props.asset)}`;
 
   const [processing, setProcessing] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [status, setStatus] = useState<PaymentStatus>("AUTHORIZED");
   // Why the payment being followed failed, as the overlay shows it.
   const [failureReason, setFailureReason] = useState<string | null>(null);
+  // The shop's bank refused the payout. Read from the status poll.
+  const [bankRefused, setBankRefused] = useState(false);
   // The last quote or confirmation the server turned down, and why.
   const [refused, setRefused] = useState<RefusedRequest | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
@@ -221,7 +227,7 @@ export function ConfirmPayment(props: {
           payment: { status: PaymentStatus; failureReason?: string | null };
         };
         setStatus(payment.status);
-        if (payment.failureReason) setFailureReason(payment.failureReason);
+        setBankRefused(bankRefusedPayout(payment.failureReason));
         if (TERMINAL.has(payment.status) && pollRef.current) {
           clearInterval(pollRef.current);
           pollRef.current = null;
@@ -367,13 +373,26 @@ export function ConfirmPayment(props: {
           own={Boolean(props.ownWallet)}
         />
 
-        {expired && (
-          <p role="alert" className="text-body-md text-error">
-            Quote expired — rescan to get a fresh rate.
-          </p>
-        )}
-        {secondsLeft !== null && secondsLeft > 0 && (
-          <p className="text-body-sm text-on-surface-variant">Rate locked for {secondsLeft}s</p>
+        {expired ? (
+          // A payer who stopped to read gets a new price here, without scanning again.
+          <div className="flex flex-wrap items-center gap-stack-md">
+            <p role="status" className="text-body-md text-on-surface-variant">
+              This price ran out.
+            </p>
+            <Button
+              type="button"
+              size="md"
+              variant="outline-pill"
+              disabled={switching || processing}
+              onClick={() => switchAsset(props.asset)}
+            >
+              Get a new price
+            </Button>
+          </div>
+        ) : (
+          secondsLeft !== null && (
+            <p className="text-body-sm text-on-surface-variant">Rate locked for {secondsLeft}s</p>
+          )
         )}
         {!processing && refused && (
           <PaymentRefusalNotice
@@ -398,7 +417,7 @@ export function ConfirmPayment(props: {
             aria-busy={processing || signingStep !== null || undefined}
             className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
           >
-            {props.ownWallet ? "Sign with Freighter" : "Confirm"}
+            {props.ownWallet ? "Sign with Freighter" : payLabel}
             <Icon name={props.ownWallet ? "account_balance_wallet" : "lock"} />
           </button>
           {/* Not while a payment is being signed or sent: it may already be on its way. */}
@@ -419,6 +438,7 @@ export function ConfirmPayment(props: {
           merchantName={props.merchantName}
           amountPhpDisplay={displayPhp(amountPhp)}
           failureReason={failureReason}
+          bankRefused={bankRefused}
         />
       )}
     </>

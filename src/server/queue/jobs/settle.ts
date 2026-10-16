@@ -19,6 +19,7 @@ import {
 import { dec, type Decimal } from "@/lib/money";
 import { isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { withRetry } from "@/lib/retry";
+import { payoutFailedReason } from "@/lib/payment-status";
 import { decryptSecret } from "@/server/crypto/envelope";
 import { audit } from "@/server/auth/audit";
 import { captureException } from "@/server/observability/error-tracking";
@@ -616,7 +617,7 @@ async function stepCheckPayout(p: PaymentWithRels): Promise<void> {
     payoutResultProperties(p.payoutRef!, status),
   );
   if (status.state === "FAILED") {
-    throw new Error(`Payout ${p.payoutRef} failed: ${status.failureCode ?? "unknown reason"}`);
+    throw new Error(payoutFailedReason(p.payoutRef!, status.failureCode));
   }
   await markSettled(p, status);
 }

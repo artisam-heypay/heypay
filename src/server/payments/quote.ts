@@ -8,7 +8,7 @@ import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-c
 import { withRetry } from "@/lib/retry";
 import { AppError, badRequest, conflict, notFound } from "@/lib/errors";
 import type { AssetMismatchCause } from "@/lib/payment-refusal";
-import { assertAssetEnabled, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
+import { assertAssetEnabled, enabledAssets, isIssuedAsset, type PaymentAsset } from "@/lib/assets";
 import { getAssetBalance } from "@/server/wallet/balances";
 import { getOwnWallet, nonCustodialEnabled, ownWalletAccount } from "@/server/wallet/external";
 import { assertOwnWalletFunds, ownWalletRouteRefused } from "./own-wallet";
@@ -40,6 +40,58 @@ export type CreateQuoteResult = {
   quoteExpiresAt: Date;
 };
 
+/**
+ * The wallet a payment would come from. A payer who chose their own wallet pays
+ * from that account: it is the one the route and the funds are checked for, and
+ * no HeyPay balance comes into it.
+ */
+async function payingWallet(payerId: string) {
+  const wallet = await db.custodialWallet.findUnique({ where: { userId: payerId } });
+  if (!wallet) throw conflict("payer wallet not found");
+  const own = nonCustodialEnabled() ? ownWalletAccount(await getOwnWallet(payerId)) : null;
+  return { wallet, own };
+}
+
+/**
+ * An asset the payer could pay with: about how much of it the payment takes, and
+ * how much of it the paying wallet has.
+ */
+export type PayOption = { asset: PaymentAsset; amountAsset: Decimal; available: Decimal };
+
+/** How much of `asset` the paying wallet has: the HeyPay balance, or the own wallet's on-chain one. */
+async function heldAmount(
+  paying: { wallet: { id: string }; own: string | null },
+  asset: PaymentAsset,
+): Promise<Decimal> {
+  if (!paying.own) return (await getAssetBalance(db, paying.wallet.id, asset)).available;
+  const balances = await walletService.getBalances(paying.own, [asset]);
+  return balances.find((b) => b.asset === asset)?.balance ?? dec("0");
+}
+
+/**
+ * The enabled assets the paying wallet holds enough of for `amountPhp`, fees
+ * included, in the order HeyPay lists them. It is a first look to choose by:
+ * no price is locked, and the quote for the asset chosen checks everything again.
+ */
+export async function payableAssets(payerId: string, amountPhp: Decimal): Promise<PayOption[]> {
+  const paying = await payingWallet(payerId);
+  const { wallet, own } = paying;
+  const options: PayOption[] = [];
+  for (const asset of enabledAssets()) {
+    try {
+      const { rate } = await rail.getQuote({ sell: asset, buy: "PHP", phpAmount: amountPhp });
+      const amountAsset = phpToAsset(amountPhp, rate);
+      if (own) await assertOwnWalletFunds(own, asset, amountAsset, STELLAR_BASE_FEE_XLM);
+      else await assertFundsAvailable(wallet, asset, amountAsset, STELLAR_BASE_FEE_XLM);
+      options.push({ asset, amountAsset, available: await heldAmount(paying, asset) });
+    } catch {
+      // Too little of it, no rate for it, or a balance that cannot be read: not
+      // one to offer. Quoting it would say why.
+    }
+  }
+  return options;
+}
+
 export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteResult> {
   const asset: PaymentAsset = input.asset ?? "XLM";
   assertAssetEnabled(asset); // gated behind PAYMENT_ASSETS
@@ -48,11 +100,7 @@ export async function createQuote(input: CreateQuoteInput): Promise<CreateQuoteR
   if (!merchant || merchant.status !== "ACTIVE")
     throw notFound("merchant not available for payment");
 
-  const wallet = await db.custodialWallet.findUnique({ where: { userId: input.payerId } });
-  if (!wallet) throw conflict("payer wallet not found");
-  // A payer who chose their own wallet pays from that account: it is the one
-  // the route and the funds are checked for, and no HeyPay balance comes into it.
-  const own = nonCustodialEnabled() ? ownWalletAccount(await getOwnWallet(input.payerId)) : null;
+  const { wallet, own } = await payingWallet(input.payerId);
 
   // A price source refusing to quote (AppError) is final; only transient
   // failures are worth retrying.
@@ -165,6 +213,15 @@ function routeRefused(asset: PaymentAsset, reason: RouteRefusal): AppError {
   return badRequest(ROUTE_REFUSAL_MESSAGE[reason as OutageRefusal](asset), { asset, reason });
 }
 
+/** An enabled issued asset the wallet holds some of, or undefined when it holds none. */
+async function heldIssuedAsset(walletId: string): Promise<PaymentAsset | undefined> {
+  for (const asset of enabledAssets().filter(isIssuedAsset)) {
+    const { available } = await getAssetBalance(db, walletId, asset);
+    if (available.greaterThan(0)) return asset;
+  }
+  return undefined;
+}
+
 /**
  * A payment spends two balances when funded by an issued asset: `amountAsset` of
  * that asset, plus the XLM network fee. For XLM both legs come out of the same
@@ -187,7 +244,10 @@ async function assertFundsAvailable(
     const { available } = await getAssetBalance(db, walletId, asset);
     const required = amountAsset.plus(xlmFees);
     if (available.lessThan(required)) {
-      throw paymentRefused("insufficient_balance", asset, { available, required });
+      // A payment starts in XLM, so this is where a payer who keeps their money
+      // in USDC is turned away. Offer them the asset they do hold.
+      const held = await heldIssuedAsset(walletId);
+      throw paymentRefused("insufficient_balance", asset, { available, required }, undefined, held);
     }
     return;
   }

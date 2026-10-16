@@ -26,6 +26,16 @@ const LABELS: Record<PaymentStatus, string> = {
  */
 export const NEVER_PAID: PaymentStatus[] = ["CREATED", "QUOTED", "CANCELLED"];
 
+/** The failure reason recorded when the shop's bank refuses a payout. Admins read it. */
+export function payoutFailedReason(payoutRef: string, code: string | null | undefined): string {
+  return `Payout ${payoutRef} failed: ${code ?? "unknown reason"}`;
+}
+
+/** Whether a payment's failure reason says the shop's bank refused the payout. */
+export function bankRefusedPayout(failureReason: string | null | undefined): boolean {
+  return /^Payout \S+ failed: /.test(failureReason ?? "");
+}
+
 export function statusLabel(s: PaymentStatus | string): string {
   return LABELS[s as PaymentStatus] ?? String(s);
 }

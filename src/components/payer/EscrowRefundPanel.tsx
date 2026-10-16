@@ -24,6 +24,8 @@ export type EscrowRefund = {
   secondsUntilAvailable: number;
   /** Past the deadline, but the bank transfer is in progress and can't be stopped. */
   waitingOnPayout?: boolean;
+  /** HeyPay's own refund is taking longer than usual; the payer can take it back instead. */
+  refundDelayed?: boolean;
   /**
    * Set when the payer paid from their own wallet: only that account can take
    * the payment back, so the refund is signed in Freighter.
@@ -45,6 +47,20 @@ const SIGNING_STEP_NOTE: Record<SigningStep, string> = {
 
 function waitLabel(seconds: number): string {
   return seconds < 90 ? `${seconds} seconds` : `${Math.ceil(seconds / 60)} minutes`;
+}
+
+/** Why the payer can take the payment back now, and where it goes. */
+function availableNote(
+  state: EscrowRefund,
+  asset: string,
+  own: EscrowRefundSigner | null | undefined,
+): string {
+  const why = state.refundDelayed
+    ? `Your refund is taking longer than usual. You can take your ${asset} back yourself now.`
+    : `This payment was not completed in time and can't proceed. You can take your ${asset} back now.`;
+  return own
+    ? `${why} It returns to the wallet you paid from (${shortAddress(own.address)}), and you approve it in Freighter.`
+    : why;
 }
 
 /** What an API error says, or `fallback` when it says nothing. */
@@ -172,9 +188,7 @@ export function EscrowRefundPanel({
         {state.waitingOnPayout
           ? `The bank transfer to the merchant is already on its way and can't be stopped, so this payment can't be refunded yet. If the transfer fails, your ${asset} is refunded automatically.`
           : state.available
-            ? own
-              ? `This payment was not completed in time and can't proceed. You can take your ${asset} back now. It returns to the wallet you paid from (${shortAddress(own.address)}), and you approve it in Freighter.`
-              : `This payment was not completed in time and can't proceed. You can take your ${asset} back now.`
+            ? availableNote(state, asset, own)
             : `If this payment is not completed, you can take your ${asset} back in about ${waitLabel(state.secondsUntilAvailable)}.`}
       </p>
       {error && (
