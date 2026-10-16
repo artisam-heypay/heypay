@@ -19,6 +19,13 @@ const LABELS: Record<PaymentStatus, string> = {
   CANCELLED: "Cancelled",
 };
 
+/**
+ * A payment in one of these never took any money: a price the payer did not
+ * confirm, or one they called off, for example by picking another coin. Payer
+ * and shop lists leave them out; admins still see them.
+ */
+export const NEVER_PAID: PaymentStatus[] = ["CREATED", "QUOTED", "CANCELLED"];
+
 export function statusLabel(s: PaymentStatus | string): string {
   return LABELS[s as PaymentStatus] ?? String(s);
 }
