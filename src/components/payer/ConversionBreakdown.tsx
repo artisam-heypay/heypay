@@ -45,7 +45,7 @@ export function ConversionBreakdown({
         )}
         <div className="flex items-center justify-between py-stack-sm">
           <dt className="font-display text-body-md font-bold">
-            {escrowFeeXlm ? "Maximum deduction" : "Total deduction"}
+            {escrowFeeXlm ? "Most taken from your wallet" : "Taken from your wallet"}
           </dt>
           <dd>
             <MoneyAmount xlm={total} asset={asset} php={amountPhp} size="row" />

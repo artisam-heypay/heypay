@@ -250,7 +250,19 @@ function WalletCard({
 
       {holdings ? (
         <div className="flex flex-col">
-          <ul className="divide-y divide-outline-variant">
+          {/* The one number a glance needs, so it comes first and largest. */}
+          <p className="flex flex-col" data-testid={`${testId}-total`}>
+            <span className="text-label-md uppercase text-on-surface-variant">Total</span>
+            <span
+              className={clsx(
+                "font-mono text-headline-md font-bold tabular-nums",
+                selected ? "text-primary" : "text-on-surface",
+              )}
+            >
+              ≈ {displayPhp(dec(holdings.totalPhp))}
+            </span>
+          </p>
+          <ul className="mt-stack-sm divide-y divide-outline-variant border-t border-outline-variant">
             {holdings.tokens.map((t) => (
               <li
                 key={t.asset}
@@ -280,20 +292,6 @@ function WalletCard({
               </li>
             ))}
           </ul>
-          <p
-            className="flex items-baseline justify-between gap-stack-md border-t border-outline-variant pt-stack-sm"
-            data-testid={`${testId}-total`}
-          >
-            <span className="text-label-md uppercase text-on-surface-variant">Total</span>
-            <span
-              className={clsx(
-                "font-mono text-body-lg font-bold tabular-nums",
-                selected ? "text-primary" : "text-on-surface",
-              )}
-            >
-              ≈ {displayPhp(dec(holdings.totalPhp))}
-            </span>
-          </p>
         </div>
       ) : (
         <p role="status" className="text-body-md text-on-surface-variant">

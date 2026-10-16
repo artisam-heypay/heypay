@@ -31,7 +31,7 @@ describe("ConversionBreakdown", () => {
       />,
     );
     expect(screen.getByText("up to 0.2000000 XLM")).toBeInTheDocument();
-    expect(screen.getByText("Maximum deduction")).toBeInTheDocument();
+    expect(screen.getByText("Most taken from your wallet")).toBeInTheDocument();
     // 8.4175084 + 0.0000100 + 0.2000000
     expect(screen.getByText("8.6175184 XLM")).toBeInTheDocument();
   });
