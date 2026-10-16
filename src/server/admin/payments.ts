@@ -120,8 +120,8 @@ export async function getAdminPayment(id: string): Promise<AdminPaymentDetail | 
   };
 }
 
-// Statuses from which a retry makes no sense (already done / refund track).
-const NON_RETRYABLE: PaymentStatus[] = ["SETTLED", "REFUND_PENDING", "REFUNDED"];
+// Statuses from which a retry makes no sense (already done / refund track / called off).
+const NON_RETRYABLE: PaymentStatus[] = ["SETTLED", "REFUND_PENDING", "REFUNDED", "CANCELLED"];
 
 export async function retryPayment(input: {
   id: string;

@@ -144,7 +144,7 @@ describe("a cancel racing another request on the same payment", () => {
     const res = await postCancel(payment.id);
     expect(res.status).toBe(200);
     const after = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    expect(after.status).toBe("FAILED");
+    expect(after.status).toBe("CANCELLED");
   });
 });
 

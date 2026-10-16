@@ -16,6 +16,7 @@ const LABELS: Record<PaymentStatus, string> = {
   FAILED: "Failed",
   REFUND_PENDING: "Refund Pending",
   REFUNDED: "Refunded",
+  CANCELLED: "Cancelled",
 };
 
 export function statusLabel(s: PaymentStatus | string): string {
@@ -25,6 +26,6 @@ export function statusLabel(s: PaymentStatus | string): string {
 export function statusTone(s: PaymentStatus | string): StatusTone {
   if (s === "SETTLED" || s === "REFUNDED") return "settled";
   if (s === "FAILED" || s === "REFUND_PENDING") return "failed";
-  if (s === "CREATED" || s === "QUOTED") return "neutral";
+  if (s === "CREATED" || s === "QUOTED" || s === "CANCELLED") return "neutral";
   return "pending";
 }

@@ -42,11 +42,8 @@ export const POST = route(async (req, ctx) => {
         await releaseAsset(tx, walletId, payment.asset, amountAsset.plus(networkFeeXlm));
       }
     }
-    await tx.payment.update({
-      where: { id: payment.id },
-      data: { failureReason: "cancelled by payer" },
-    });
-    return applyTransition(tx, payment, "FAILED", { reason: "cancelled by payer" });
+    // Called off, not failed: kept out of the failures admins look into.
+    return applyTransition(tx, payment, "CANCELLED", { reason: "cancelled by payer" });
   });
   return json({ status: updated.status });
 });

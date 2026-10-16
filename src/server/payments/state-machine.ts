@@ -10,9 +10,10 @@ export type TxClient = Prisma.TransactionClient;
 const S = PaymentStatus;
 
 export const TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
-  [S.CREATED]: [S.QUOTED, S.FAILED],
-  [S.QUOTED]: [S.AUTHORIZED, S.FAILED],
-  [S.AUTHORIZED]: [S.STELLAR_SUBMITTED, S.FAILED],
+  // Until the crypto is submitted the payer can still call the payment off.
+  [S.CREATED]: [S.QUOTED, S.FAILED, S.CANCELLED],
+  [S.QUOTED]: [S.AUTHORIZED, S.FAILED, S.CANCELLED],
+  [S.AUTHORIZED]: [S.STELLAR_SUBMITTED, S.FAILED, S.CANCELLED],
   // submitted-but-unconfirmed: confirm step decides CONFIRMED vs FAILED (tx never landed)
   [S.STELLAR_SUBMITTED]: [S.STELLAR_CONFIRMED, S.FAILED],
   // from here on the crypto has left the wallet → failures branch to REFUND_PENDING
@@ -25,9 +26,15 @@ export const TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
   [S.SETTLED]: [],
   [S.FAILED]: [],
   [S.REFUNDED]: [],
+  [S.CANCELLED]: [],
 };
 
-export const TERMINAL: ReadonlySet<PaymentStatus> = new Set([S.SETTLED, S.FAILED, S.REFUNDED]);
+export const TERMINAL: ReadonlySet<PaymentStatus> = new Set([
+  S.SETTLED,
+  S.FAILED,
+  S.REFUNDED,
+  S.CANCELLED,
+]);
 export const XLM_MOVED: ReadonlySet<PaymentStatus> = new Set([
   S.STELLAR_CONFIRMED,
   S.PAYOUT_SUBMITTED,

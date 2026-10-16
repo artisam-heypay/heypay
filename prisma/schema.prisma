@@ -36,6 +36,9 @@ enum PaymentStatus {
   FAILED
   REFUND_PENDING
   REFUNDED
+  // The payer called it off before any crypto was sent. Not a failure, so it is
+  // kept apart from FAILED.
+  CANCELLED
 }
 
 enum WalletTxType {

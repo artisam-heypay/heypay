@@ -162,7 +162,7 @@ describe("payments API", () => {
     expect(res.status).toBe(403);
   });
 
-  it("cancel a QUOTED payment releases nothing and marks FAILED; cannot cancel after STELLAR_SUBMITTED", async () => {
+  it("cancel an AUTHORIZED payment releases its reservation and marks CANCELLED; cannot cancel after STELLAR_SUBMITTED", async () => {
     const { user, wallet } = await makePayer({
       cachedXlm: "100.0000000",
       reservedXlm: "8.3333434",
@@ -188,7 +188,7 @@ describe("payments API", () => {
       }),
       { params: Promise.resolve({ id: authd.id }) },
     );
-    expect((await cRes.json()).status).toBe("FAILED");
+    expect((await cRes.json()).status).toBe("CANCELLED");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000"); // reservation released on cancel
 
