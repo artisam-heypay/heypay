@@ -2,6 +2,7 @@ import { requireRole } from "@/server/auth/sessions";
 import { Role } from "@/generated/prisma/client";
 import { displayAsset } from "@/lib/money";
 import { stellarTxUrl } from "@/lib/stellar-explorer";
+import { formatDayTime } from "@/lib/dates";
 import { getWalletSummary } from "@/server/payer/data";
 import { getRecentSwaps, swapsAvailable } from "@/server/payer/swap";
 import { walletService } from "@/server/stellar/wallet";
@@ -9,15 +10,6 @@ import { getOwnWallet, nonCustodialEnabled, ownWalletAccount } from "@/server/wa
 import { Card } from "@/components/ui";
 import { SwapPanel } from "@/components/payer/SwapPanel";
 import { OwnWalletNotice } from "@/components/payer/OwnWalletNotice";
-
-function formatDate(date: Date): string {
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 export default async function PayerSwapPage() {
   const user = await requireRole(Role.PAYER);
@@ -81,7 +73,9 @@ export default async function PayerSwapPage() {
                     {displayAsset(s.sent, s.from)}
                     {s.received && s.to && ` → ${displayAsset(s.received, s.to)}`}
                   </p>
-                  <p className="text-body-sm text-on-surface-variant">{formatDate(s.createdAt)}</p>
+                  <p className="text-body-sm text-on-surface-variant">
+                    {formatDayTime(s.createdAt)}
+                  </p>
                 </div>
                 <a
                   href={stellarTxUrl(s.txHash)}
