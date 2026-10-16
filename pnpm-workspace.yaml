@@ -3,7 +3,7 @@
 packages:
   - "packages/*"
 overrides:
-  postcss@<8.5.10: ">=8.5.10"
+  postcss@<8.5.23: ">=8.5.23"
   "@hono/node-server@<1.19.13": ">=1.19.13"
   # Dedupe ioredis so bullmq and the app share one copy (avoids type clash).
   ioredis: 5.11.1
@@ -17,3 +17,17 @@ overrides:
   smol-toml@<1.7.1: ">=1.7.1"
   axios@<1.20.0: ">=1.20.0"
   source-map-js@<1.2.2: ">=1.2.2"
+  # Transitive security fixes for the dev tools (pnpm audit), pulled in by eslint,
+  # typescript-eslint, @tailwindcss/postcss, jsdom and concurrently. Each stays on
+  # the major its parent expects.
+  "brace-expansion@<1.1.21": ^1.1.21
+  "brace-expansion@>=5.0.0 <5.0.12": ^5.0.12
+  js-yaml@<4.3.2: ^4.3.2
+  nanoid@<3.3.18: ^3.3.18
+  shell-quote@<1.11.0: ^1.11.0
+  undici@<7.29.1: ^7.29.1
+  # The wallets kit ships a module for every wallet it knows, and HeyPay loads
+  # only Freighter's. The HOT wallet SDK it would otherwise pull in brings Solana
+  # and NEAR packages with open advisories (pnpm audit --prod), one of them with
+  # no fixed version, so that dependency is left out.
+  "@creit.tech/stellar-wallets-kit>@hot-wallet/sdk": "-"

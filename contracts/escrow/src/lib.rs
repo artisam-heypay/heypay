@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Ronald Ajusan (Artisam Labs)
+
 #![no_std]
 //! HeyPay settlement escrow: holds a payer's funds per job until the operator
 //! releases them to the treasury or refunds them to the payer.

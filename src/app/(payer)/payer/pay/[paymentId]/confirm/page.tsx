@@ -3,11 +3,26 @@ import { requireRole } from "@/server/auth/sessions";
 import { Role } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { dec } from "@/lib/money";
+import { enabledAssets } from "@/lib/assets";
 import { getWalletSummary } from "@/server/payer/data";
 import { getAssetRate } from "@/server/payments/rate";
 import { rail } from "@/server/rails";
+import { isAssetConfigured } from "@/server/stellar/assets";
 import { escrowAppliesTo, escrowFeeEstimateXlm } from "@/server/stellar/escrow-config";
+import { getNetworkPassphrase, isMainnet } from "@/server/stellar/horizon";
+import { walletService } from "@/server/stellar/wallet";
+import { getOwnWallet, nonCustodialEnabled, ownWalletAccount } from "@/server/wallet/external";
 import { ConfirmPayment } from "@/components/payer/ConfirmPayment";
+
+/**
+ * What the payer's own account holds, read from the chain: HeyPay keeps no
+ * balance for it. An issued asset it has no line to cannot be paid with.
+ */
+async function ownWalletBalances(account: string) {
+  const assets = enabledAssets().filter(isAssetConfigured);
+  const onChain = await walletService.getBalances(account, assets);
+  return onChain.map((b) => ({ asset: b.asset, available: b.balance, canReceive: b.trustline }));
+}
 
 export default async function ConfirmPaymentPage({
   params,
@@ -24,8 +39,11 @@ export default async function ConfirmPaymentPage({
   if (!payment) throw notFound("payment not found");
   if (payment.payerId !== user.id) throw forbidden("not your payment");
 
+  // A payer who chose their own wallet pays from that account and signs the
+  // payment in Freighter; everyone else pays from the HeyPay wallet.
+  const own = nonCustodialEnabled() ? ownWalletAccount(await getOwnWallet(user.id)) : null;
   const wallet = await getWalletSummary(user.id);
-  const balances = wallet?.balances ?? [];
+  const balances = own ? await ownWalletBalances(own) : (wallet?.balances ?? []);
   const funding = balances.find((b) => b.asset === payment.asset);
   const available = funding?.available ?? dec("0");
 
@@ -67,7 +85,16 @@ export default async function ConfirmPaymentPage({
         escrowFeeXlm={escrowAppliesTo(payment.asset) ? escrowFeeEstimateXlm().toFixed(7) : null}
         quoteExpiresAt={payment.quoteExpiresAt?.toISOString() ?? null}
         merchantName={payment.merchant.businessName}
-        walletPublicKey={wallet?.publicKey ?? ""}
+        walletPublicKey={own ?? wallet?.publicKey ?? ""}
+        ownWallet={
+          own
+            ? {
+                address: own,
+                networkPassphrase: getNetworkPassphrase(),
+                networkName: isMainnet() ? "Mainnet" : "Testnet",
+              }
+            : null
+        }
         availableAsset={available.toFixed(7)}
         approxPhp={approxPhp.toFixed(2)}
       />

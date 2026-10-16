@@ -28,7 +28,11 @@ vi.mock("@/server/auth/sessions", () => ({
 }));
 vi.mock("@/server/auth/rate-limit", () => ({ rateLimit: vi.fn(async () => {}) }));
 vi.mock("@/server/stellar/wallet", () => ({
-  walletService: { canReceive: async () => true, holdsOtherIssuer: async () => false },
+  walletService: {
+    canReceive: async () => true,
+    holdsOtherIssuer: async () => false,
+    lockedXlm: async () => dec("0"),
+  },
 }));
 vi.mock("@/server/rails", () => ({
   rail: {
@@ -106,6 +110,61 @@ describe("payments API", () => {
     expect(g.events.length).toBeGreaterThanOrEqual(2); // CREATED→QUOTED, QUOTED→AUTHORIZED
   });
 
+  it("asks which coin to pay with when the wallet can pay in either, locking no price", async () => {
+    process.env.PAYMENT_ASSETS = "XLM,USDC";
+    try {
+      const { user } = await makePayer({
+        cachedXlm: "100.0000000",
+        assets: { USDC: { cached: "50.0000000" } },
+      });
+      const { merchant } = await makeMerchant();
+      sessionUser.current = { id: user.id, username: user.username, role: "PAYER", isActive: true };
+
+      const res = await quote(
+        new NextRequest("http://localhost/api/payments/quote", {
+          method: "POST",
+          headers: sameOrigin,
+          body: JSON.stringify({ merchantId: merchant.id, amountPhp: "100", chooseAsset: true }),
+        }),
+        { params: Promise.resolve({}) },
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        choose: [
+          { asset: "XLM", amountAsset: "8.3333334", available: "100.0000000" },
+          { asset: "USDC", amountAsset: "8.3333334", available: "50.0000000" },
+        ],
+      });
+      expect(await db.payment.count()).toBe(0);
+    } finally {
+      delete process.env.PAYMENT_ASSETS;
+    }
+  });
+
+  it("starts in the only coin that can pay when asked to choose", async () => {
+    process.env.PAYMENT_ASSETS = "XLM,USDC";
+    try {
+      const { user } = await makePayer({ cachedXlm: "100.0000000" });
+      const { merchant } = await makeMerchant();
+      sessionUser.current = { id: user.id, username: user.username, role: "PAYER", isActive: true };
+
+      const res = await quote(
+        new NextRequest("http://localhost/api/payments/quote", {
+          method: "POST",
+          headers: sameOrigin,
+          body: JSON.stringify({ merchantId: merchant.id, amountPhp: "100", chooseAsset: true }),
+        }),
+        { params: Promise.resolve({}) },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.asset).toBe("XLM");
+      expect(body.paymentId).toBeTruthy();
+    } finally {
+      delete process.env.PAYMENT_ASSETS;
+    }
+  });
+
   it("confirm without Idempotency-Key → 400", async () => {
     const { user } = await makePayer();
     const { merchant } = await makeMerchant();
@@ -162,7 +221,7 @@ describe("payments API", () => {
     expect(res.status).toBe(403);
   });
 
-  it("cancel a QUOTED payment releases nothing and marks FAILED; cannot cancel after STELLAR_SUBMITTED", async () => {
+  it("cancel an AUTHORIZED payment releases its reservation and marks CANCELLED; cannot cancel after STELLAR_SUBMITTED", async () => {
     const { user, wallet } = await makePayer({
       cachedXlm: "100.0000000",
       reservedXlm: "8.3333434",
@@ -188,7 +247,7 @@ describe("payments API", () => {
       }),
       { params: Promise.resolve({ id: authd.id }) },
     );
-    expect((await cRes.json()).status).toBe("FAILED");
+    expect((await cRes.json()).status).toBe("CANCELLED");
     const w = await db.custodialWallet.findUniqueOrThrow({ where: { id: wallet.id } });
     expect(w.reservedXlm.toFixed(7)).toBe("0.0000000"); // reservation released on cancel
 

@@ -90,3 +90,16 @@ export function readRefusal(body: unknown, fallback: string): RefusedRequest {
     refusal: { reason, asset: details.asset, payWith: details.payWith, feeXlm: details.feeXlm },
   };
 }
+
+/**
+ * Set on a request made for the wrong wallet: the payer changed which wallet
+ * pays after the confirm screen was drawn. Names the wallet that pays now.
+ */
+export type PayingWalletChange = "heypay_wallet_pays" | "own_wallet_pays";
+
+/** Reads an API error body for a `PayingWalletChange`, or null when it carries none. */
+export function payingWalletChange(body: unknown): PayingWalletChange | null {
+  const reason = (body as { error?: { details?: { reason?: unknown } } } | null)?.error?.details
+    ?.reason;
+  return reason === "heypay_wallet_pays" || reason === "own_wallet_pays" ? reason : null;
+}

@@ -5,6 +5,7 @@ import { displayAsset, displayPhp } from "@/lib/money";
 import { enabledAssets, type PaymentAsset } from "@/lib/assets";
 import { isAssetConfigured } from "@/server/stellar/assets";
 import { getAssetBalances, type WalletAssetBalance } from "@/server/wallet/balances";
+import { NEVER_PAID } from "@/lib/payment-status";
 import type { PaymentStatus } from "@/generated/prisma/client";
 
 export type WalletSummary = {
@@ -44,7 +45,7 @@ export type RecentPayment = {
 
 export async function getRecentPayments(payerId: string, limit = 5): Promise<RecentPayment[]> {
   const rows = await db.payment.findMany({
-    where: { payerId },
+    where: { payerId, status: { notIn: NEVER_PAID } },
     orderBy: { createdAt: "desc" },
     take: limit,
     include: { merchant: { select: { businessName: true, qrphMerchantCity: true } } },
@@ -79,7 +80,7 @@ export async function getPayerPayments(
   opts: { cursor?: string; limit: number },
 ): Promise<{ items: PayerPaymentListItem[]; nextCursor?: string }> {
   const rows = await db.payment.findMany({
-    where: { payerId },
+    where: { payerId, status: { notIn: NEVER_PAID } },
     orderBy: { createdAt: "desc" },
     take: opts.limit + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),

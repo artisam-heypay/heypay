@@ -1,14 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Button, Icon, StatusBadge } from "@/components/ui";
-import { WALLET_UPDATED_EVENT } from "./HoldingsLive";
-
-type EscrowRefund = {
-  available: boolean;
-  secondsUntilAvailable: number;
-  /** Past the deadline, but the bank transfer is in progress and can't be stopped. */
-  waitingOnPayout?: boolean;
-};
+import { dec } from "@/lib/money";
+import { Icon, StatusBadge } from "@/components/ui";
+import { EscrowRefundPanel, type EscrowRefund } from "./EscrowRefundPanel";
 
 /** The refund link's label says who returned the crypto, and how. */
 const REFUND_LABELS = {
@@ -19,6 +13,10 @@ const REFUND_LABELS = {
 
 /** About one Stellar ledger: the slack before asking again after the deadline. */
 const SECONDS_PER_LEDGER = 5;
+/** How often an open drawer asks whether a payment still in progress has moved. */
+const POLL_MS = 3000;
+/** A payment never leaves these. */
+const FINAL = new Set(["SETTLED", "FAILED", "REFUNDED", "CANCELLED"]);
 
 type PaymentDetail = {
   payment: {
@@ -63,6 +61,27 @@ export function TransactionDrawer({
       .catch(() => {});
     return () => controller.abort();
   }, [paymentId, version]);
+
+  // A payment still in progress moves on while the drawer is open. Ask for its
+  // status alone (reading the escrow asks the Soroban RPC), and load the whole
+  // payment again once it has changed.
+  const status = data?.payment.status;
+  useEffect(() => {
+    if (!status || FINAL.has(status)) return;
+    const controller = new AbortController();
+    const id = setInterval(() => {
+      fetch(`/api/payments/${paymentId}`, { signal: controller.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { payment: { status: string } } | null) => {
+          if (d && d.payment.status !== status) setVersion((v) => v + 1);
+        })
+        .catch(() => {});
+    }, POLL_MS);
+    return () => {
+      controller.abort();
+      clearInterval(id);
+    };
+  }, [paymentId, status]);
 
   // Look again once the escrow deadline should have passed, so the refund
   // button appears without reopening the drawer.
@@ -123,9 +142,20 @@ export function TransactionDrawer({
 
             <dl className="divide-y divide-outline-variant">
               <Row label="Amount (PHP)" value={`₱${data.payment.amountPhp}`} />
-              <Row label="Rate" value={`1 ${data.payment.asset} = ₱${data.payment.quotedRate}`} />
               <Row
-                label={`${data.payment.asset} debited`}
+                label="Rate"
+                value={`1 ${data.payment.asset} = ₱${dec(data.payment.quotedRate).toFixed(2)}`}
+              />
+              <Row
+                // Nothing has left the wallet until the payment is on Stellar, and a
+                // refunded payment's crypto is back in it.
+                label={`${data.payment.asset} ${
+                  data.payment.status === "REFUNDED"
+                    ? "refunded"
+                    : data.payment.stellarTxHash
+                      ? "debited"
+                      : "amount"
+                }`}
                 value={`${data.payment.amountAsset} ${data.payment.asset}`}
               />
               <Row label="Network fee" value={`${data.payment.networkFeeXlm} XLM`} />
@@ -177,74 +207,6 @@ export function TransactionDrawer({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function waitLabel(seconds: number): string {
-  return seconds < 90 ? `${seconds} seconds` : `${Math.ceil(seconds / 60)} minutes`;
-}
-
-/**
- * Shown while the payment's crypto is held in the escrow. Once the escrow's
- * deadline has passed the payer can take it back themselves; the refund then
- * appears as "Timeout refund on Stellar" above.
- */
-function EscrowRefundPanel({
-  paymentId,
-  asset,
-  state,
-  onRefunded,
-}: {
-  paymentId: string;
-  asset: string;
-  state: EscrowRefund;
-  onRefunded: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function refund() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/payments/${paymentId}/escrow-refund`, { method: "POST" });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setError(body?.error?.message ?? "Could not refund from escrow.");
-        return;
-      }
-      window.dispatchEvent(new Event(WALLET_UPDATED_EVENT));
-      onRefunded();
-    } catch {
-      setError("Network error. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-stack-sm rounded-lg bg-surface-container p-stack-md">
-      <h3 className="font-display text-body-lg">Held in escrow</h3>
-      <p className="text-body-sm text-on-surface-variant">
-        {state.waitingOnPayout
-          ? `The bank transfer to the merchant is already on its way and can't be stopped, so this payment can't be refunded yet. If the transfer fails, your ${asset} is refunded automatically.`
-          : state.available
-            ? `This payment was not completed in time and can't proceed. You can take your ${asset} back now.`
-            : `If this payment is not completed, you can take your ${asset} back in about ${waitLabel(state.secondsUntilAvailable)}.`}
-      </p>
-      {error && (
-        <p role="alert" className="text-body-sm text-error">
-          {error}
-        </p>
-      )}
-      {state.available && (
-        <Button size="md" variant="outline-pill" onClick={refund} loading={busy}>
-          {busy ? "Refunding…" : "Refund from escrow"}
-        </Button>
-      )}
     </div>
   );
 }

@@ -51,7 +51,10 @@ export function LoginForm({ googleEnabled, notice }: Props) {
           {pending ? "Signing in…" : "Sign in"}
         </button>
       </form>
-      <a href="/signup" className="text-center text-body-sm text-primary">
+      <a
+        href="/signup"
+        className="inline-flex min-h-11 items-center justify-center text-center text-body-sm text-primary"
+      >
         Create an account
       </a>
     </main>

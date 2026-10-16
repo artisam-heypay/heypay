@@ -1,7 +1,7 @@
 // src/server/payments/state-machine.ts
 import "server-only";
 import { PaymentStatus, type Payment, type Prisma } from "@/generated/prisma/client";
-import { conflict } from "@/lib/errors";
+import { AppError, conflict } from "@/lib/errors";
 import { analyticsEnabled, captureUserEvent } from "@/server/observability/analytics";
 import { assetContract } from "@/server/observability/payment-trail";
 
@@ -10,9 +10,10 @@ export type TxClient = Prisma.TransactionClient;
 const S = PaymentStatus;
 
 export const TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
-  [S.CREATED]: [S.QUOTED, S.FAILED],
-  [S.QUOTED]: [S.AUTHORIZED, S.FAILED],
-  [S.AUTHORIZED]: [S.STELLAR_SUBMITTED, S.FAILED],
+  // Until the crypto is submitted the payer can still call the payment off.
+  [S.CREATED]: [S.QUOTED, S.FAILED, S.CANCELLED],
+  [S.QUOTED]: [S.AUTHORIZED, S.FAILED, S.CANCELLED],
+  [S.AUTHORIZED]: [S.STELLAR_SUBMITTED, S.FAILED, S.CANCELLED],
   // submitted-but-unconfirmed: confirm step decides CONFIRMED vs FAILED (tx never landed)
   [S.STELLAR_SUBMITTED]: [S.STELLAR_CONFIRMED, S.FAILED],
   // from here on the crypto has left the wallet → failures branch to REFUND_PENDING
@@ -25,9 +26,15 @@ export const TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
   [S.SETTLED]: [],
   [S.FAILED]: [],
   [S.REFUNDED]: [],
+  [S.CANCELLED]: [],
 };
 
-export const TERMINAL: ReadonlySet<PaymentStatus> = new Set([S.SETTLED, S.FAILED, S.REFUNDED]);
+export const TERMINAL: ReadonlySet<PaymentStatus> = new Set([
+  S.SETTLED,
+  S.FAILED,
+  S.REFUNDED,
+  S.CANCELLED,
+]);
 export const XLM_MOVED: ReadonlySet<PaymentStatus> = new Set([
   S.STELLAR_CONFIRMED,
   S.PAYOUT_SUBMITTED,
@@ -55,6 +62,17 @@ export function nextStep(status: PaymentStatus): PaymentStatus | null {
   return NEXT[status] ?? null;
 }
 
+/**
+ * Whether `err` is applyTransition refusing a payment that another caller moved
+ * after this one read it. The other caller's move stands; this one changed nothing.
+ */
+export function isStatusChanged(err: unknown): boolean {
+  return (
+    err instanceof AppError &&
+    (err.details as { reason?: unknown } | undefined)?.reason === "status_changed"
+  );
+}
+
 export async function applyTransition(
   client: TxClient,
   payment: { id: string; status: PaymentStatus },
@@ -64,10 +82,21 @@ export async function applyTransition(
   if (!canTransition(payment.status, toStatus)) {
     throw conflict(`illegal transition ${payment.status} -> ${toStatus}`);
   }
-  const updated = await client.payment.update({
-    where: { id: payment.id },
+  // Moves the payment only while it is still in the status the caller read. Two
+  // requests that read the same payment (a cancel and a signed deposit, say)
+  // cannot both move it: the second finds the status changed and is refused,
+  // and its transaction, with whatever it wrote before this, is rolled back.
+  const moved = await client.payment.updateMany({
+    where: { id: payment.id, status: payment.status },
     data: { status: toStatus },
   });
+  if (moved.count === 0) {
+    throw conflict("This payment has already moved on, so nothing was changed.", {
+      reason: "status_changed",
+      expected: payment.status,
+    });
+  }
+  const updated = await client.payment.findUniqueOrThrow({ where: { id: payment.id } });
   await client.paymentEvent.create({
     data: {
       paymentId: payment.id,
@@ -94,7 +123,8 @@ export async function applyTransition(
       asset: updated.asset,
       ...assetContract(updated.asset),
       amount_php: Number(updated.amountPhp),
-      payer_wallet_address: wallet?.stellarPublicKey,
+      // The payer's own account when they signed the deposit themselves.
+      payer_wallet_address: updated.externalPublicKey ?? wallet?.stellarPublicKey,
       stellar_tx_hash: updated.stellarTxHash,
       payout_ref: updated.payoutRef,
       refund_tx_hash: updated.refundTxHash,

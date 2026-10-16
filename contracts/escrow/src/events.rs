@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Ronald Ajusan (Artisam Labs)
+
 use soroban_sdk::{contractevent, Address, BytesN};
 
 /// Payer funds locked in the escrow under `job_id`.

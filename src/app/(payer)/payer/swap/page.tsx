@@ -2,20 +2,14 @@ import { requireRole } from "@/server/auth/sessions";
 import { Role } from "@/generated/prisma/client";
 import { displayAsset } from "@/lib/money";
 import { stellarTxUrl } from "@/lib/stellar-explorer";
+import { formatDayTime } from "@/lib/dates";
 import { getWalletSummary } from "@/server/payer/data";
 import { getRecentSwaps, swapsAvailable } from "@/server/payer/swap";
 import { walletService } from "@/server/stellar/wallet";
+import { getOwnWallet, nonCustodialEnabled, ownWalletAccount } from "@/server/wallet/external";
 import { Card } from "@/components/ui";
 import { SwapPanel } from "@/components/payer/SwapPanel";
-
-function formatDate(date: Date): string {
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+import { OwnWalletNotice } from "@/components/payer/OwnWalletNotice";
 
 export default async function PayerSwapPage() {
   const user = await requireRole(Role.PAYER);
@@ -44,12 +38,18 @@ export default async function PayerSwapPage() {
   const available = (asset: "XLM" | "USDC") =>
     wallet.balances.find((b) => b.asset === asset)?.available.toFixed(7) ?? "0.0000000";
   const swaps = await getRecentSwaps(user.id);
+  const paysFromOwn = nonCustodialEnabled() ? ownWalletAccount(await getOwnWallet(user.id)) : null;
   const network = process.env.STELLAR_NETWORK;
   const testnet = network !== "mainnet" && network !== "public";
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-stack-lg">
       <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Swap</h1>
+      {paysFromOwn && (
+        <OwnWalletNotice>
+          You pay with Freighter now. This swaps your HeyPay wallet; swap in Freighter instead.
+        </OwnWalletNotice>
+      )}
       <SwapPanel
         balances={{ XLM: available("XLM"), USDC: available("USDC") }}
         usdcOn={usdcOn}
@@ -73,7 +73,9 @@ export default async function PayerSwapPage() {
                     {displayAsset(s.sent, s.from)}
                     {s.received && s.to && ` → ${displayAsset(s.received, s.to)}`}
                   </p>
-                  <p className="text-body-sm text-on-surface-variant">{formatDate(s.createdAt)}</p>
+                  <p className="text-body-sm text-on-surface-variant">
+                    {formatDayTime(s.createdAt)}
+                  </p>
                 </div>
                 <a
                   href={stellarTxUrl(s.txHash)}

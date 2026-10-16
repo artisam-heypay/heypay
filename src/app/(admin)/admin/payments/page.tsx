@@ -55,7 +55,7 @@ export default async function AdminPaymentsPage({
       </form>
 
       <div className="mt-stack-lg overflow-x-auto tonal-card rounded-lg">
-        <table className="w-full text-left">
+        <table className="w-full min-w-[40rem] text-left">
           <thead>
             <tr className="bg-surface-container-low">
               <th className="px-stack-md py-3 text-label-md uppercase text-outline">Reference</th>

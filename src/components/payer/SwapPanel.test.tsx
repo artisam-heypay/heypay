@@ -69,7 +69,7 @@ describe("SwapPanel", () => {
 
     await userEvent.type(screen.getByLabelText("Amount in XLM"), "10");
     expect(await screen.findByText("9.3514012 USDC")).toBeInTheDocument();
-    expect(screen.getByText("Minimum received")).toBeInTheDocument();
+    expect(screen.getByText("You get at least")).toBeInTheDocument();
     expect(screen.getByText("9.4458598 USDC")).toBeInTheDocument();
     expect(String(fetchMock.mock.calls[0]![0])).toBe("/api/wallet/swap/quote?from=XLM&amount=10");
 

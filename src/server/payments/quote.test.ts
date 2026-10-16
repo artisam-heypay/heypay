@@ -62,7 +62,7 @@ function liveQuote({ sell, phpAmount }: { sell: PaymentAsset; phpAmount: Decimal
   });
 }
 
-import { createQuote } from "./quote";
+import { createQuote, payableAssets } from "./quote";
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -663,5 +663,70 @@ describe("createQuote (USDC edge cases)", () => {
       message: "Not enough XLM — add more.",
       details: { reason: "insufficient_balance", asset: "XLM" },
     });
+  });
+
+  it("an XLM payment short of XLM is offered the USDC the wallet holds", async () => {
+    const { user } = await makePayer({
+      cachedXlm: "1.0000000",
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    const { merchant } = await makeMerchant();
+
+    await expect(
+      createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: "Not enough XLM — add more or pay with USDC.",
+      details: { reason: "insufficient_balance", asset: "XLM", payWith: "USDC" },
+    });
+  });
+
+  it("an XLM payment short of XLM is not offered USDC that is all on hold", async () => {
+    const { user } = await makePayer({
+      cachedXlm: "1.0000000",
+      assets: { USDC: { cached: "5.0000000", reserved: "5.0000000" } },
+    });
+    const { merchant } = await makeMerchant();
+
+    await expect(
+      createQuote({ payerId: user.id, merchantId: merchant.id, amountPhp: dec("100") }),
+    ).rejects.toMatchObject({ message: "Not enough XLM — add more." });
+  });
+});
+
+describe("payableAssets", () => {
+  beforeEach(() => {
+    process.env.PAYMENT_ASSETS = "XLM,USDC";
+  });
+
+  it("lists each coin the wallet can pay the amount in, with about what it takes", async () => {
+    const { user } = await makePayer({
+      cachedXlm: "100.0000000",
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    const options = await payableAssets(user.id, dec("100"));
+    expect(options.map((o) => [o.asset, o.amountAsset.toFixed(7), o.available.toFixed(7)])).toEqual(
+      [
+        ["XLM", "8.3333334", "100.0000000"],
+        ["USDC", "1.6041066", "50.0000000"],
+      ],
+    );
+    expect(await db.payment.count()).toBe(0); // no price is locked
+  });
+
+  it("leaves out a coin the wallet holds too little of", async () => {
+    const { user } = await makePayer({
+      cachedXlm: "5.0000000", // needs ~8.33 XLM
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    expect((await payableAssets(user.id, dec("100"))).map((o) => o.asset)).toEqual(["USDC"]);
+  });
+
+  it("leaves out USDC when there is no XLM for its network fee", async () => {
+    const { user } = await makePayer({
+      cachedXlm: "0.0000000",
+      assets: { USDC: { cached: "50.0000000" } },
+    });
+    expect(await payableAssets(user.id, dec("100"))).toEqual([]);
   });
 });

@@ -166,4 +166,20 @@ describe("listMerchantTransactions", () => {
     expect(page2.items).toHaveLength(1);
     expect(page2.nextCursor).toBeNull();
   });
+
+  it("leaves out payments that never took any money, unless that status is asked for", async () => {
+    const { merchant } = await seedMerchantUser({});
+    const settled = await seedPayment(merchant.id, { status: "SETTLED", netSettledPhp: "10.00" });
+    const failed = await seedPayment(merchant.id, { status: "FAILED" });
+    // A payer switching coins, cancelling, or leaving a price unconfirmed.
+    await seedPayment(merchant.id, { status: "CANCELLED" });
+    const quoted = await seedPayment(merchant.id, { status: "QUOTED" });
+    await seedPayment(merchant.id, { status: "CREATED" });
+
+    const all = await listMerchantTransactions(merchant.id, { limit: 10 });
+    expect(all.items.map((t) => t.id).sort()).toEqual([settled.id, failed.id].sort());
+
+    const asked = await listMerchantTransactions(merchant.id, { status: "QUOTED", limit: 10 });
+    expect(asked.items.map((t) => t.id)).toEqual([quoted.id]);
+  });
 });

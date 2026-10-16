@@ -16,7 +16,25 @@ const LABELS: Record<PaymentStatus, string> = {
   FAILED: "Failed",
   REFUND_PENDING: "Refund Pending",
   REFUNDED: "Refunded",
+  CANCELLED: "Cancelled",
 };
+
+/**
+ * A payment in one of these never took any money: a price the payer did not
+ * confirm, or one they called off, for example by picking another coin. Payer
+ * and shop lists leave them out; admins still see them.
+ */
+export const NEVER_PAID: PaymentStatus[] = ["CREATED", "QUOTED", "CANCELLED"];
+
+/** The failure reason recorded when the shop's bank refuses a payout. Admins read it. */
+export function payoutFailedReason(payoutRef: string, code: string | null | undefined): string {
+  return `Payout ${payoutRef} failed: ${code ?? "unknown reason"}`;
+}
+
+/** Whether a payment's failure reason says the shop's bank refused the payout. */
+export function bankRefusedPayout(failureReason: string | null | undefined): boolean {
+  return /^Payout \S+ failed: /.test(failureReason ?? "");
+}
 
 export function statusLabel(s: PaymentStatus | string): string {
   return LABELS[s as PaymentStatus] ?? String(s);
@@ -25,6 +43,6 @@ export function statusLabel(s: PaymentStatus | string): string {
 export function statusTone(s: PaymentStatus | string): StatusTone {
   if (s === "SETTLED" || s === "REFUNDED") return "settled";
   if (s === "FAILED" || s === "REFUND_PENDING") return "failed";
-  if (s === "CREATED" || s === "QUOTED") return "neutral";
+  if (s === "CREATED" || s === "QUOTED" || s === "CANCELLED") return "neutral";
   return "pending";
 }
