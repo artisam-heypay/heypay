@@ -29,7 +29,7 @@ export default async function AdminUsersPage({
           defaultValue={sp.q ?? ""}
           placeholder="Search username"
           aria-label="Search users"
-          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-2 text-body-md focus:ring-4 focus:ring-primary/10"
+          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-2 text-body-md"
         />
         <button type="submit" className="rounded-lg bg-primary px-stack-lg py-2 text-on-primary">
           Search

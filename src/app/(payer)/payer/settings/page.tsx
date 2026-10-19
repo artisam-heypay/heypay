@@ -54,7 +54,7 @@ export default async function PayerSettingsPage() {
         </Card>
       )}
       <ChangePasswordForm />
-      <LogoutButton className="flex min-h-11 items-center justify-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-error hover:bg-error/5 focus:outline-none focus:ring-4 focus:ring-primary/10 lg:hidden">
+      <LogoutButton className="flex min-h-11 items-center justify-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-error hover:bg-error/5 lg:hidden">
         <Icon name="logout" />
         Logout
       </LogoutButton>

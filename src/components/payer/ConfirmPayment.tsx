@@ -415,7 +415,7 @@ export function ConfirmPayment(props: {
             onClick={props.ownWallet ? signAndPay : confirm}
             disabled={expired || insufficient || processing || switching || signingStep !== null}
             aria-busy={processing || signingStep !== null || undefined}
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60"
           >
             {props.ownWallet ? "Sign with Freighter" : payLabel}
             <Icon name={props.ownWallet ? "account_balance_wallet" : "lock"} />
@@ -425,7 +425,7 @@ export function ConfirmPayment(props: {
             type="button"
             onClick={cancel}
             disabled={processing || signingStep !== null}
-            className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-4 font-display font-bold text-primary hover:bg-primary/5 disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-4 font-display font-bold text-primary hover:bg-primary/5 disabled:opacity-60"
           >
             Cancel
           </button>

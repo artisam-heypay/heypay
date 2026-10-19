@@ -297,12 +297,12 @@ export function Scanner({
         <button
           type="button"
           onClick={startCamera}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary"
         >
           <Icon name="photo_camera" />
           Use camera
         </button>
-        <label className="inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-stack-sm rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary hover:bg-primary/5 focus-within:ring-4 focus-within:ring-primary/10">
+        <label className="inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-stack-sm rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary hover:bg-primary/5">
           <Icon name="upload" />
           Upload image
           <input type="file" accept="image/*" onChange={onFile} className="sr-only" />

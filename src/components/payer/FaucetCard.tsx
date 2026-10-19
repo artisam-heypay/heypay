@@ -64,12 +64,7 @@ export function FaucetCard({ amountXlm }: { amountXlm: string }) {
           <Icon name="check_circle" filled />
           {amount} is on its way to your wallet.
           {txUrl && (
-            <a
-              href={txUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded underline focus:outline-none focus:ring-4 focus:ring-primary/10"
-            >
+            <a href={txUrl} target="_blank" rel="noopener noreferrer" className="rounded underline">
               View transaction
             </a>
           )}

@@ -114,7 +114,7 @@ export function EarningsChart({
 
       <div
         ref={wrap}
-        className="relative touch-pan-y select-none overflow-hidden rounded-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
+        className="relative touch-pan-y select-none overflow-hidden rounded-lg"
         tabIndex={0}
         role="img"
         aria-label={`Settled payouts chart, ${series.length} points. Use arrow keys to read values.`}

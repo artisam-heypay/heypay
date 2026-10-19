@@ -4,7 +4,7 @@ import { Button } from "@/components/ui";
 import type { RefusedRequest } from "@/lib/payment-refusal";
 import { TurnOnAsset } from "./TurnOnAsset";
 
-const linkClass = "rounded underline focus:outline-none focus:ring-4 focus:ring-primary/10";
+const linkClass = "rounded underline";
 
 /**
  * A refused payment on the confirm screen: what went wrong, then the one thing

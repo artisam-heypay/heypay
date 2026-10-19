@@ -53,7 +53,7 @@ export function SwapList({
               href={item.txUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-11 items-center rounded text-body-sm text-primary underline focus:outline-none focus:ring-4 focus:ring-primary/10"
+              className="inline-flex min-h-11 items-center rounded text-body-sm text-primary underline"
             >
               View transaction
             </a>
@@ -66,7 +66,7 @@ export function SwapList({
           type="button"
           onClick={more}
           aria-busy={busy || undefined}
-          className="mt-stack-md inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="mt-stack-md inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary disabled:opacity-60"
           disabled={busy}
         >
           {busy ? "Loading…" : "Load more"}

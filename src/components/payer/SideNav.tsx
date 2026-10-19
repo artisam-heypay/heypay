@@ -12,7 +12,7 @@ export function SideNav({ username }: { username: string }) {
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-surface-container-low px-stack-md py-stack-lg lg:flex">
       <Link
         href="/payer/dashboard"
-        className="mb-stack-lg flex items-center gap-stack-sm rounded-lg px-stack-sm focus:outline-none focus:ring-4 focus:ring-primary/10"
+        className="mb-stack-lg flex items-center gap-stack-sm rounded-lg px-stack-sm"
       >
         <Icon name="account_balance_wallet" filled className="text-3xl text-primary" />
         <span className="font-display text-headline-md font-bold text-primary">HeyPay</span>
@@ -20,7 +20,7 @@ export function SideNav({ username }: { username: string }) {
 
       <Link
         href="/payer/scan"
-        className="mb-stack-lg inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary shadow-lg shadow-primary/20 transition-[filter] hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-primary/10"
+        className="mb-stack-lg inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary shadow-lg shadow-primary/20 transition-[filter] hover:brightness-110"
       >
         Scan to Pay
         <Icon name="qr_code_scanner" />
@@ -35,7 +35,7 @@ export function SideNav({ username }: { username: string }) {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={clsx(
-                "flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md focus:outline-none focus:ring-4 focus:ring-primary/10",
+                "flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md",
                 active
                   ? "bg-primary-container font-bold text-on-primary-container"
                   : "text-on-surface-variant hover:bg-surface-container-high",
@@ -54,12 +54,12 @@ export function SideNav({ username }: { username: string }) {
         </span>
         <a
           href="/support"
-          className="flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-on-surface-variant hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-on-surface-variant hover:bg-surface-container-high"
         >
           <Icon name="support_agent" />
           Support
         </a>
-        <LogoutButton className="flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-error hover:bg-error/5 focus:outline-none focus:ring-4 focus:ring-primary/10">
+        <LogoutButton className="flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-error hover:bg-error/5">
           <Icon name="logout" />
           Logout
         </LogoutButton>

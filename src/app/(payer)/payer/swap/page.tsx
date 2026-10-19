@@ -81,7 +81,7 @@ export default async function PayerSwapPage() {
                   href={stellarTxUrl(s.txHash)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-11 items-center rounded text-body-sm text-primary underline focus:outline-none focus:ring-4 focus:ring-primary/10"
+                  className="inline-flex min-h-11 items-center rounded text-body-sm text-primary underline"
                 >
                   View transaction
                 </a>

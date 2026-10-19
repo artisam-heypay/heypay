@@ -56,7 +56,7 @@ export function AmountPrompt({
         onChange={(e) => setValue(e.target.value.trim())}
         placeholder="0.00"
         aria-describedby="pay-amount-hint"
-        className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-3 font-mono text-mono-data focus:outline-none focus:ring-4 focus:ring-primary/10"
+        className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-3 font-mono text-mono-data"
       />
       <p id="pay-amount-hint" className="text-body-sm text-on-surface-variant">
         The crypto amount and the exact rate are shown on the next step.
@@ -70,7 +70,7 @@ export function AmountPrompt({
         type="submit"
         aria-busy={busy || undefined}
         disabled={busy}
-        className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
+        className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60"
       >
         Continue
         <Icon name="arrow_forward" />

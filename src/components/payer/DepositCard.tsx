@@ -80,7 +80,7 @@ export function DepositCard({
               type="button"
               onClick={copy}
               aria-label="Copy deposit address"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high"
             >
               <Icon name="content_copy" />
             </button>
@@ -119,7 +119,7 @@ export function DepositCard({
               type="button"
               onClick={copyIssuer}
               aria-label="Copy asset issuer"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high"
             >
               <Icon name="content_copy" />
             </button>

@@ -17,7 +17,7 @@ export function TransactionRow({
       onClick={onOpen}
       aria-haspopup="dialog"
       aria-expanded={expanded ?? false}
-      className="flex w-full min-h-11 items-center justify-between gap-stack-md py-stack-md text-left hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+      className="flex w-full min-h-11 items-center justify-between gap-stack-md py-stack-md text-left hover:bg-surface-container-high"
     >
       <div className="min-w-0">
         <p className="truncate font-display text-body-md">{item.merchantName}</p>

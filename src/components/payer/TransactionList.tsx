@@ -41,7 +41,7 @@ export function TransactionList({
         <p className="text-body-md text-on-surface-variant">No transactions yet</p>
         <Link
           href="/payer/scan"
-          className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary"
         >
           Scan to Pay
           <Icon name="qr_code_scanner" />
@@ -69,7 +69,7 @@ export function TransactionList({
           type="button"
           onClick={more}
           aria-busy={busy || undefined}
-          className="mt-stack-md inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="mt-stack-md inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary disabled:opacity-60"
           disabled={busy}
         >
           {busy ? "Loading…" : "Load more"}

@@ -113,10 +113,10 @@ export function OwnWalletCard({
               disabled={busy !== null}
               onClick={() => setMode(useOwn ? "CUSTODIAL" : "EXTERNAL")}
               className={
-                "relative h-7 w-12 shrink-0 rounded-full transition-colors focus:outline-none " +
+                "relative h-7 w-12 shrink-0 rounded-full transition-colors " +
                 // The track stays 28px; the tap area around it is 44px tall.
                 "before:absolute before:-inset-x-1 before:-inset-y-2 before:content-[''] " +
-                "focus:ring-4 focus:ring-primary/10 disabled:opacity-60 " +
+                "disabled:opacity-60 " +
                 (useOwn ? "bg-primary" : "bg-outline-variant")
               }
             >

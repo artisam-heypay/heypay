@@ -17,11 +17,11 @@ export type OwnWalletView = {
 
 const iconButton =
   "-my-3 inline-flex h-11 w-11 items-center justify-center rounded-lg text-primary " +
-  "hover:bg-primary/5 focus:outline-none focus:ring-4 focus:ring-primary/10";
+  "hover:bg-primary/5";
 
 const pill =
   "inline-flex min-h-11 items-center gap-stack-sm rounded-full px-stack-md py-2 font-display font-bold " +
-  "focus:outline-none focus:ring-4 focus:ring-primary/10";
+  "";
 
 const twoDecimals = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,

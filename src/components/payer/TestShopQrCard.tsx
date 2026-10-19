@@ -27,7 +27,7 @@ export function TestShopQrCard() {
       <a
         href={TEST_SHOP_QR_PATH}
         download="heypay-test-shop.png"
-        className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full border-2 border-primary px-stack-md py-3 font-display font-bold text-primary hover:bg-primary/5 focus:outline-none focus:ring-4 focus:ring-primary/10"
+        className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full border-2 border-primary px-stack-md py-3 font-display font-bold text-primary hover:bg-primary/5"
       >
         Download QR
         <Icon name="download" />

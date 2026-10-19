@@ -89,7 +89,7 @@ export function ChangePasswordForm() {
           type="submit"
           aria-busy={busy || undefined}
           disabled={busy}
-          className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display font-bold text-on-primary disabled:opacity-60"
         >
           Update password
           <Icon name="lock" />
@@ -123,7 +123,7 @@ function Field({
         autoComplete={autoComplete}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-3 focus:outline-none focus:ring-4 focus:ring-primary/10"
+        className="min-h-11 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-3"
       />
     </div>
   );

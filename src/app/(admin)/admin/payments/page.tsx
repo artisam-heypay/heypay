@@ -34,7 +34,7 @@ export default async function AdminPaymentsPage({
           defaultValue={sp.q ?? ""}
           placeholder="Search reference / payer / merchant"
           aria-label="Search payments"
-          className="flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-2 text-body-md focus:ring-4 focus:ring-primary/10"
+          className="flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-2 text-body-md"
         />
         <select
           name="status"

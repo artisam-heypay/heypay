@@ -80,7 +80,6 @@ export function PayWithChoice({
                 "group flex min-h-11 flex-col gap-stack-md rounded-xl border-2 bg-surface-container-lowest p-stack-md text-left",
                 "transition-[border-color,box-shadow,opacity] duration-200 ease-out motion-reduce:transition-none",
                 "hover:border-primary hover:shadow-lg hover:shadow-primary/10",
-                "focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20",
                 "disabled:cursor-default disabled:hover:shadow-none",
                 picked ? "border-primary shadow-lg shadow-primary/10" : "border-outline-variant",
                 pending !== null && !picked && "opacity-50 disabled:hover:border-outline-variant",
@@ -151,7 +150,7 @@ export function PayWithChoice({
         type="button"
         onClick={onBack}
         disabled={pending !== null}
-        className="inline-flex min-h-11 items-center gap-1 self-start rounded-full px-stack-sm font-display text-body-md font-bold text-primary hover:bg-primary/5 focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 disabled:opacity-50"
+        className="inline-flex min-h-11 items-center gap-1 self-start rounded-full px-stack-sm font-display text-body-md font-bold text-primary hover:bg-primary/5 disabled:opacity-50"
       >
         <Icon name="arrow_back" />
         {backLabel}

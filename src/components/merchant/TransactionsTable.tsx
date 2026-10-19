@@ -40,7 +40,7 @@ export function TransactionsTable({ items }: { items: MerchantTxItem[] }) {
                     href={t.stellarTxUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-1 rounded text-body-sm text-primary after:absolute after:inset-0 focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
+                    className="mt-1 inline-flex items-center gap-1 rounded text-body-sm text-primary after:absolute after:inset-0"
                   >
                     View on Stellar
                     <span className="material-symbols-outlined text-base" aria-hidden>

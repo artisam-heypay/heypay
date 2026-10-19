@@ -69,7 +69,7 @@ export function PendingDepositWatcher({
       </span>
       <Link
         href="/payer/dashboard"
-        className="inline-flex min-h-11 items-center rounded-full bg-primary px-stack-md py-2 font-display font-bold text-on-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+        className="inline-flex min-h-11 items-center rounded-full bg-primary px-stack-md py-2 font-display font-bold text-on-primary"
       >
         Go to dashboard
       </Link>

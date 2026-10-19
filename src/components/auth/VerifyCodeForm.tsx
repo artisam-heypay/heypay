@@ -38,7 +38,7 @@ export function VerifyCodeForm({ email }: { email: string }) {
         <button
           type="submit"
           disabled={verifying}
-          className="rounded-full bg-primary py-4 text-headline-md font-display text-on-primary shadow-lg shadow-primary/20 transition hover:brightness-110 active:scale-95 disabled:opacity-60 focus:ring-4 focus:ring-primary/10"
+          className="rounded-full bg-primary py-4 text-headline-md font-display text-on-primary shadow-lg shadow-primary/20 transition hover:brightness-110 active:scale-95 disabled:opacity-60"
         >
           {verifying ? "Checking…" : "Confirm and create account"}
         </button>

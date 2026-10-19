@@ -56,7 +56,7 @@ export function ProcessingOverlay({
           </h2>
           <Link
             href="/payer/transactions"
-            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-secondary px-stack-lg py-4 font-display font-bold text-on-secondary focus:outline-none focus:ring-4 focus:ring-primary/10"
+            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-secondary px-stack-lg py-4 font-display font-bold text-on-secondary"
           >
             Done
           </Link>
@@ -95,14 +95,14 @@ export function ProcessingOverlay({
           <div className="flex gap-stack-md">
             <Link
               href="/payer/dashboard"
-              className="inline-flex min-h-11 items-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+              className="inline-flex min-h-11 items-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary"
             >
               Back
             </Link>
             {!refunding && (
               <Link
                 href="/payer/scan"
-                className="inline-flex min-h-11 items-center rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+                className="inline-flex min-h-11 items-center rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary"
               >
                 Pay again
               </Link>

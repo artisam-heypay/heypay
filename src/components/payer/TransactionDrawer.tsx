@@ -120,7 +120,7 @@ export function TransactionDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-surface-container-high"
           >
             <Icon name="close" />
           </button>
@@ -221,7 +221,7 @@ function TxLinkRow({ label, hash, href }: { label: string; hash: string; href: s
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex max-w-full items-center gap-1 rounded text-primary underline-offset-2 hover:underline focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="inline-flex max-w-full items-center gap-1 rounded text-primary underline-offset-2 hover:underline"
         >
           <span className="truncate font-mono text-mono-data">
             {hash.slice(0, 8)}…{hash.slice(-8)}
