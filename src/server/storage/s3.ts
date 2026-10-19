@@ -93,6 +93,13 @@ export function signedGetUrl(key: string): Promise<string> {
   });
 }
 
+/** Resolves once the bucket answers; throws when it is missing or unreachable. */
+export async function pingStorage(timeoutMs: number): Promise<void> {
+  await getS3().send(new HeadBucketCommand({ Bucket: bucket() }), {
+    abortSignal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
 export async function ensureBucket(): Promise<void> {
   const name = bucket();
   try {

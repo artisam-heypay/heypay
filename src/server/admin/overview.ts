@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/server/db";
 import { dec, Decimal } from "@/lib/money";
+import type { PaymentStatus, Prisma } from "@/generated/prisma/client";
 
 export type AdminOverview = {
   counts: {
@@ -19,8 +20,21 @@ export type AdminOverview = {
     merchantName: string;
     amountPhp: Decimal;
     failureReason: string | null;
+    status: PaymentStatus;
     createdAt: Date;
   }>;
+};
+
+/**
+ * Payments that went wrong: those that failed outright, and those whose payout
+ * failed and were refunded (or are being refunded) to the payer. A payment the
+ * payer called off is CANCELLED, not a failure.
+ */
+const FAILED_WHERE: Prisma.PaymentWhereInput = {
+  OR: [
+    { status: "FAILED" },
+    { status: { in: ["REFUND_PENDING", "REFUNDED"] }, failureReason: { not: null } },
+  ],
 };
 
 export async function getOverview(): Promise<AdminOverview> {
@@ -42,7 +56,7 @@ export async function getOverview(): Promise<AdminOverview> {
     prisma.merchant.count({ where: { status: "ACTIVE" } }),
     prisma.payment.count(),
     prisma.payment.count({ where: { status: "SETTLED" } }),
-    prisma.payment.count({ where: { status: "FAILED" } }),
+    prisma.payment.count({ where: FAILED_WHERE }),
     // `amountAsset` is denominated in the payment's asset, so an XLM total must
     // filter to XLM-funded payments rather than summing USDT into it. PHP settled
     // is asset-independent and stays a plain sum.
@@ -55,7 +69,7 @@ export async function getOverview(): Promise<AdminOverview> {
       _sum: { netSettledPhp: true },
     }),
     prisma.payment.findMany({
-      where: { status: "FAILED" },
+      where: FAILED_WHERE,
       orderBy: { createdAt: "desc" },
       take: 5,
       include: { merchant: { select: { businessName: true } } },
@@ -82,6 +96,7 @@ export async function getOverview(): Promise<AdminOverview> {
       merchantName: p.merchant.businessName,
       amountPhp: dec(p.amountPhp.toString()),
       failureReason: p.failureReason,
+      status: p.status,
       createdAt: p.createdAt,
     })),
   };

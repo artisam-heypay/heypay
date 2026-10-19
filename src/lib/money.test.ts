@@ -5,6 +5,7 @@ import {
   formatPhp,
   displayPhp,
   displayXlm,
+  displayAssetTotal,
   phpToXlm,
   availableXlm,
   Decimal,
@@ -46,6 +47,16 @@ describe("displayPhp / displayXlm", () => {
   });
   it("suffixes XLM with the unit at 7dp", () => {
     expect(displayXlm(dec("12.5"))).toBe("12.5000000 XLM");
+  });
+  it("keeps the minus sign in front of the peso sign", () => {
+    expect(displayPhp(dec("-1234.5"))).toBe("-₱1,234.50");
+  });
+});
+
+describe("displayAssetTotal", () => {
+  it("rounds a total to 2dp and groups thousands", () => {
+    expect(displayAssetTotal(dec("294.2857146"), "XLM")).toBe("294.29 XLM");
+    expect(displayAssetTotal(dec("12345.005"), "USDC")).toBe("12,345.01 USDC");
   });
 });
 
