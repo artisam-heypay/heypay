@@ -13,7 +13,6 @@ import { ConversionBreakdown } from "./ConversionBreakdown";
 import { PaymentRefusalNotice } from "./PaymentRefusalNotice";
 import { WalletSourceRow } from "./WalletSourceRow";
 import { ProcessingOverlay } from "./ProcessingOverlay";
-import type { PaymentReceipt } from "./SettledReceipt";
 import type { PaymentStatus } from "@/generated/prisma/client";
 
 const TERMINAL = new Set(["SETTLED", "FAILED", "REFUNDED"]);
@@ -112,8 +111,6 @@ export function ConfirmPayment(props: {
   const [failureReason, setFailureReason] = useState<string | null>(null);
   // The shop's bank refused the payout. Read from the status poll.
   const [bankRefused, setBankRefused] = useState(false);
-  // The settled payment's details, for its receipt. Read from the status poll.
-  const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
   // The last quote or confirmation the server turned down, and why.
   const [refused, setRefused] = useState<RefusedRequest | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
@@ -227,27 +224,10 @@ export function ConfirmPayment(props: {
         const res = await fetch(`/api/payments/${props.paymentId}`);
         if (!res.ok) return;
         const { payment } = (await res.json()) as {
-          payment: {
-            status: PaymentStatus;
-            failureReason?: string | null;
-            reference?: string;
-            settledAt?: string | null;
-            asset?: string;
-            amountAsset?: string;
-            stellarTxUrl?: string | null;
-          };
+          payment: { status: PaymentStatus; failureReason?: string | null };
         };
         setStatus(payment.status);
         setBankRefused(bankRefusedPayout(payment.failureReason));
-        if (payment.status === "SETTLED" && payment.reference && payment.asset) {
-          setReceipt({
-            reference: payment.reference,
-            settledAt: payment.settledAt ?? null,
-            asset: payment.asset,
-            amountAsset: payment.amountAsset ?? "0",
-            stellarTxUrl: payment.stellarTxUrl ?? null,
-          });
-        }
         if (TERMINAL.has(payment.status) && pollRef.current) {
           clearInterval(pollRef.current);
           pollRef.current = null;
@@ -459,7 +439,6 @@ export function ConfirmPayment(props: {
           amountPhpDisplay={displayPhp(amountPhp)}
           failureReason={failureReason}
           bankRefused={bankRefused}
-          receipt={receipt}
         />
       )}
     </>
