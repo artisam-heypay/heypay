@@ -12,6 +12,8 @@ import { EarningsChart } from "@/components/merchant/EarningsChart";
 import { RangeFilter } from "@/components/merchant/RangeFilter";
 import { TransactionsTable } from "@/components/merchant/TransactionsTable";
 import { BusinessSummaryCard } from "@/components/merchant/BusinessSummaryCard";
+import { LiveQrCard } from "@/components/merchant/LiveQrCard";
+import { SUPPORTED_BANKS } from "@/server/merchant/banks";
 
 export default async function MerchantDashboard({
   searchParams,
@@ -27,6 +29,7 @@ export default async function MerchantDashboard({
   ]);
 
   const isLive = merchant.status === "ACTIVE";
+  const bank = SUPPORTED_BANKS.find((b) => b.code === merchant.settlementBankCode);
   const statusLabel = isLive ? "Live" : merchant.status.replace(/_/g, " ").toLowerCase();
 
   return (
@@ -47,6 +50,9 @@ export default async function MerchantDashboard({
           {statusLabel}
         </span>
       </div>
+      {isLive && txPage.items.length === 0 && (
+        <LiveQrCard payoutTo={bank ? `your ${bank.short} account` : "your account"} />
+      )}
       <RangeFilter current={range} />
       <EarningsCards earnings={earnings} />
       <EarningsChart series={earnings.series} bucket={earnings.bucket} />

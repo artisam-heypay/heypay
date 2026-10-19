@@ -38,14 +38,20 @@ test("merchant completes onboarding, goes live, and sees a settlement", async ({
   // matching the file-upload input that also mentions "QRPH".
   await page.getByLabel(/paste raw qrph/i).fill(DEMO_QRPH_RAW);
   await page.getByRole("button", { name: /next|continue/i }).click();
-  await expect(page.getByText(DEMO_QRPH_MERCHANT_NAME)).toBeVisible();
+  await expect(page.getByRole("heading", { name: /review/i })).toBeVisible();
+  await expect(page.getByRole("main").getByText(DEMO_QRPH_MERCHANT_NAME).first()).toBeVisible();
+  // The sidebar names the business already: the layout refreshes after each saved step.
+  await expect(page.getByRole("complementary").getByText(DEMO_QRPH_MERCHANT_NAME)).toBeVisible();
 
   // Step 4 — Review → Go Live
   await page.getByRole("button", { name: /go live/i }).click();
 
-  // Dashboard reflects ACTIVE status
+  // Dashboard reflects ACTIVE status, with no "finish setting up" left over
+  // from before going live, and offers the QR to print.
   await page.waitForURL(/\/merchant\/dashboard/);
-  await expect(page.getByText(/active|live/i)).toBeVisible();
+  await expect(page.getByText("Live", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /You're live/i })).toBeVisible();
+  await expect(page.getByText("Finish setting up your business")).toHaveCount(0);
 
   // Confirm ACTIVE via API
   const me = await merchantCtx.get("/api/merchant/me");
