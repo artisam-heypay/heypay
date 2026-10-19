@@ -192,7 +192,7 @@ export function qrStandeePdf(input: {
     ...nameLines,
     input.city ? centredText(input.city.toUpperCase(), 11, nameBottom - 20, MUTED) : "",
     qrSquares(input.raw, qrX, qrY, qrSide),
-    centredText("Pay with HeyPay or any QR Ph app", 12, 96, MUTED),
+    centredText("Pay with HeyPay or any QRPH app", 12, 96, MUTED),
     centredText("HeyPay", 16, 56, TEAL),
   ]
     .filter(Boolean)

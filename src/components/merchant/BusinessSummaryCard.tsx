@@ -6,7 +6,7 @@ export function BusinessSummaryCard({ merchant }: { merchant: MerchantDto }) {
     <div className="tonal-card flex flex-col gap-stack-md rounded-xl p-stack-lg">
       <div className="flex items-center gap-stack-md">
         <span className="material-symbols-outlined icon-filled text-primary">qr_code_2</span>
-        <p className="text-headline-md">Business QR &amp; settlement</p>
+        <p className="font-display text-headline-md">Business QR &amp; settlement</p>
       </div>
       <div className="rounded-lg bg-surface-container-low p-stack-md">
         <p className="text-label-md uppercase text-on-surface-variant">Settles to</p>

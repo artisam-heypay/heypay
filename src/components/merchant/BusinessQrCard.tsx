@@ -21,8 +21,8 @@ export function BusinessQrCard({
 
   return (
     <div className="tonal-card mx-auto flex max-w-lg flex-col items-center gap-stack-lg rounded-xl p-margin-desktop">
-      <h1 className="text-headline-lg-mobile lg:text-headline-lg">My Business QR</h1>
-      <p className="text-headline-md text-on-surface">{businessName}</p>
+      <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">My Business QR</h1>
+      <p className="text-center font-display text-headline-md text-on-surface">{businessName}</p>
       <div
         className="w-64 rounded-xl border border-outline-variant bg-surface-container-lowest p-stack-lg [&_svg]:h-full [&_svg]:w-full"
         aria-label="Business QRPH code"

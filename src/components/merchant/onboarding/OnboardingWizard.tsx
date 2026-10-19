@@ -51,8 +51,8 @@ function validate(schema: z.ZodTypeAny, value: unknown): void {
 }
 
 const QRPH_UNREADABLE = {
-  qrph: "This isn't a QR Ph code we can use. Upload a clear photo of your QR Ph standee.",
-  qrphText: "This isn't a QR Ph code we can use. Check that you pasted the whole code.",
+  qrph: "This isn't a QRPH code we can use. Upload a clear photo of your QRPH standee.",
+  qrphText: "This isn't a QRPH code we can use. Check that you pasted the whole code.",
 };
 const QRPH_NO_CODE_IN_PHOTO =
   "We couldn't find a QR code in that photo. Try a closer, sharper photo of the whole code.";
@@ -81,7 +81,7 @@ async function linkQrph(field: "qrph" | "qrphText", body: { raw: string; imageKe
     return await callApi("/api/merchant/qrph", "POST", body);
   } catch (e) {
     // A code another merchant owns is explained by the server; anything else
-    // it refuses is a code that is not a usable QR Ph.
+    // it refuses is a code that is not a usable QRPH.
     if (e instanceof FormError && e.status === 400) {
       throw new FormError("", 400, { [field]: QRPH_UNREADABLE[field] });
     }
@@ -185,7 +185,7 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
       }
       if (!raw) {
         throw new FormError("", 400, {
-          qrph: "Upload a photo of your QR Ph standee, or paste its text.",
+          qrph: "Upload a photo of your QRPH standee, or paste its text.",
         });
       }
       setStep(4);
@@ -219,7 +219,9 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
         <div className="mt-stack-lg flex flex-col gap-stack-lg">
           {step === 1 && (
             <>
-              <h1 className="text-headline-lg-mobile lg:text-headline-lg">Business identity</h1>
+              <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">
+                Business identity
+              </h1>
               <FloatingInput
                 id="businessName"
                 label="Business name"
@@ -233,7 +235,9 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
 
           {step === 2 && (
             <>
-              <h1 className="text-headline-lg-mobile lg:text-headline-lg">Settlement account</h1>
+              <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">
+                Settlement account
+              </h1>
               <p className="text-body-sm text-on-surface-variant">
                 PHP from each payment lands here.
               </p>
@@ -326,7 +330,9 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
 
           {step === 3 && (
             <>
-              <h1 className="text-headline-lg-mobile lg:text-headline-lg">Link your QRPH</h1>
+              <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">
+                Link your QRPH
+              </h1>
               <p className="text-body-sm text-on-surface-variant">
                 Upload a photo of your existing QRPH standee.
               </p>
@@ -377,7 +383,9 @@ export function OnboardingWizard({ initial }: { initial: MerchantDto | null }) {
 
           {step === 4 && (
             <>
-              <h1 className="text-headline-lg-mobile lg:text-headline-lg">Review &amp; go live</h1>
+              <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">
+                Review &amp; go live
+              </h1>
               <dl className="flex flex-col gap-stack-md">
                 <Row label="Business" value={businessName} />
                 <Row label="Settlement" value={`${bankCode} •••• ${last4}`} />

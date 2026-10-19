@@ -35,7 +35,7 @@ export default async function MerchantDashboard({
   return (
     <div className="flex flex-col gap-stack-lg">
       <div className="flex items-center gap-stack-md">
-        <h1 className="text-headline-lg-mobile lg:text-headline-lg">Dashboard</h1>
+        <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Dashboard</h1>
         <span
           className={`inline-flex items-center gap-stack-sm rounded-full px-stack-md py-1 text-label-md uppercase ${
             isLive
@@ -59,7 +59,7 @@ export default async function MerchantDashboard({
       <div className="grid grid-cols-1 gap-stack-lg lg:grid-cols-3">
         <section className="lg:col-span-2">
           <div className="mb-stack-md flex items-center justify-between">
-            <h2 className="text-headline-md">Business transactions</h2>
+            <h2 className="font-display text-headline-md">Recent transactions</h2>
             <Link
               href="/merchant/transactions"
               className="-my-3 inline-flex min-h-11 items-center text-body-sm text-primary"
@@ -74,7 +74,7 @@ export default async function MerchantDashboard({
           <div className="tonal-card flex flex-col gap-stack-sm rounded-xl p-stack-lg">
             <div className="flex items-center gap-stack-md">
               <span className="material-symbols-outlined text-primary">support_agent</span>
-              <p className="text-headline-md">Need help?</p>
+              <p className="font-display text-headline-md">Need help?</p>
             </div>
             <p className="text-body-sm text-on-surface-variant">
               Our team is here for settlement or QR questions.

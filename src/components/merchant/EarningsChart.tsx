@@ -106,7 +106,7 @@ export function EarningsChart({
   return (
     <div className="tonal-card rounded-xl p-stack-lg">
       <div className="mb-stack-md">
-        <h2 className="text-headline-md">Settled payouts</h2>
+        <h2 className="font-display text-headline-md">Settled payouts</h2>
         <p className="text-body-sm text-on-surface-variant">
           PHP paid out to your account, by {bucket} (Philippine time)
         </p>

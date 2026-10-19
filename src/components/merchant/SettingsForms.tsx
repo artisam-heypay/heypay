@@ -21,7 +21,7 @@ async function call(path: string, method: string, body?: unknown) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="tonal-card flex flex-col gap-stack-md rounded-xl p-stack-lg">
-      <h2 className="text-headline-md">{title}</h2>
+      <h2 className="font-display text-headline-md">{title}</h2>
       {children}
     </section>
   );

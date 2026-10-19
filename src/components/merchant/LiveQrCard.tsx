@@ -16,11 +16,11 @@ export function LiveQrCard({ payoutTo }: { payoutTo: string }) {
           verified
         </span>
         <div className="flex flex-col gap-1">
-          <h2 id="live-qr-heading" className="text-headline-md text-on-surface">
+          <h2 id="live-qr-heading" className="font-display text-headline-md text-on-surface">
             You&apos;re live — print your QR
           </h2>
           <p className="text-body-sm text-on-surface-variant">
-            Put it where customers pay. They scan it with HeyPay or any QR Ph app, and you get pesos
+            Put it where customers pay. They scan it with HeyPay or any QRPH app, and you get pesos
             in {payoutTo}.{" "}
             <Link href="/merchant/qr" className="font-medium text-primary underline">
               See your QR

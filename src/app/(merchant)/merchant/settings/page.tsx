@@ -9,11 +9,11 @@ export default async function MerchantSettingsPage() {
   const merchant = await requireMerchant(user.id);
   return (
     <div className="flex flex-col gap-stack-lg">
-      <h1 className="text-headline-lg-mobile lg:text-headline-lg">Settings</h1>
+      <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Settings</h1>
       <SettingsForms merchant={serializeMerchant(merchant)} />
       <LogoutButton className="flex min-h-11 items-center justify-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-error hover:bg-error/5 lg:hidden">
         <Icon name="logout" />
-        Logout
+        Log out
       </LogoutButton>
     </div>
   );

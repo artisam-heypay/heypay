@@ -61,7 +61,7 @@ export function SideNav({ username }: { username: string }) {
         </a>
         <LogoutButton className="flex min-h-11 items-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-error hover:bg-error/5">
           <Icon name="logout" />
-          Logout
+          Log out
         </LogoutButton>
       </div>
     </aside>

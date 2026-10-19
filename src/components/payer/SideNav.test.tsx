@@ -12,7 +12,7 @@ describe("SideNav", () => {
     expect(dashboard).toHaveAttribute("aria-current", "page");
     expect(dashboard.className).toContain("bg-primary-container");
 
-    const logout = screen.getByRole("button", { name: /Logout/ });
+    const logout = screen.getByRole("button", { name: /Log out/ });
     expect(logout.className).toContain("text-error");
   });
 

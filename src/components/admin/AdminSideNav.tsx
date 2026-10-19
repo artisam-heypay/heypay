@@ -64,7 +64,7 @@ export function AdminSideNav({ active }: { active?: AdminNavKey }) {
       </ul>
       <LogoutButton className="mt-stack-md flex items-center gap-stack-md rounded-lg px-stack-md py-3 text-body-md text-error hover:bg-surface-container-high">
         <span className="material-symbols-outlined">logout</span>
-        Logout
+        Log out
       </LogoutButton>
     </nav>
   );
