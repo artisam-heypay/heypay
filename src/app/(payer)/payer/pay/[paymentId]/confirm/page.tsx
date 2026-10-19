@@ -1,4 +1,4 @@
-import { notFound, forbidden } from "@/lib/errors";
+import { notFound } from "next/navigation";
 import { requireRole } from "@/server/auth/sessions";
 import { Role } from "@/generated/prisma/client";
 import { db } from "@/server/db";
@@ -36,8 +36,10 @@ export default async function ConfirmPaymentPage({
     where: { id: paymentId },
     include: { merchant: { select: { businessName: true, qrphMerchantCity: true } } },
   });
-  if (!payment) throw notFound("payment not found");
-  if (payment.payerId !== user.id) throw forbidden("not your payment");
+  // A page has no API wrapper to turn an AppError into a status, so a thrown one
+  // renders the 500 error page. Someone else's payment reads as missing too, so
+  // the page does not confirm which ids exist.
+  if (!payment || payment.payerId !== user.id) notFound();
 
   // A payer who chose their own wallet pays from that account and signs the
   // payment in Freighter; everyone else pays from the HeyPay wallet.
