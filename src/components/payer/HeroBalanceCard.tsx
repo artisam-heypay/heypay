@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Icon, TonalCard } from "@/components/ui";
 import { HoldingsLive, type HoldingsSnapshot } from "./HoldingsLive";
 
-// On a phone the actions share one row as icon-over-label tiles, so a third one
-// never wraps onto a row of its own; from `sm` up they are pills.
+// On a phone the actions share one row as icon-over-label tiles; from `sm` up
+// they are pills. Paying is the Scan card and the scan button, not an action here.
 const action =
   "inline-flex min-h-11 min-w-0 flex-col-reverse items-center justify-center gap-1 rounded-2xl px-stack-sm py-3 " +
   "font-display text-body-sm font-bold sm:flex-row sm:gap-stack-sm sm:rounded-full sm:px-stack-lg sm:py-4 sm:text-body-md";
@@ -30,10 +30,6 @@ export function HeroBalanceCard({
         <Link href="/payer/prefund" className={primaryPill}>
           Prefund
           <Icon name="add_circle" />
-        </Link>
-        <Link href="/payer/scan" className={outlinePill}>
-          Send
-          <Icon name="send" />
         </Link>
         {canSwap && (
           <Link href="/payer/swap" className={outlinePill}>

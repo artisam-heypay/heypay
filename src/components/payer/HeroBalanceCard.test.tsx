@@ -14,14 +14,15 @@ const holdings = {
 };
 
 describe("HeroBalanceCard", () => {
-  it("shows the portfolio total, a row per token, and Prefund/Send CTAs", () => {
+  it("shows the portfolio total, a row per token, and a Prefund CTA", () => {
     render(<HeroBalanceCard holdings={holdings} live={false} />);
     expect(screen.getByText("₱14,850.00")).toBeInTheDocument();
     expect(screen.getByText("250.0000000 XLM")).toBeInTheDocument();
     expect(screen.getByText("200.0000000 USDC")).toBeInTheDocument();
     expect(screen.getByText(/₱13,025\.00/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Prefund/ })).toHaveAttribute("href", "/payer/prefund");
-    expect(screen.getByRole("link", { name: /Send/ })).toHaveAttribute("href", "/payer/scan");
+    // Paying is the Scan card's job: no "Send" that opened the same scanner.
+    expect(screen.queryByRole("link", { name: /Send/ })).not.toBeInTheDocument();
   });
 
   it("offers Swap only when the wallet lists USDC", () => {

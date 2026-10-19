@@ -9,7 +9,14 @@ import { WALLET_UPDATED_EVENT } from "./HoldingsLive";
  * try a payment straight away. Rendered only while the faucet is enabled and the
  * payer has not claimed yet; after a claim it stays as a receipt until reload.
  */
-export function FaucetCard({ amountXlm }: { amountXlm: string }) {
+export function FaucetCard({
+  amountXlm,
+  quiet = false,
+}: {
+  amountXlm: string;
+  /** The wallet already holds money: offer the claim without making it the page's main action. */
+  quiet?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txUrl, setTxUrl] = useState<string | null>(null);
@@ -55,7 +62,13 @@ export function FaucetCard({ amountXlm }: { amountXlm: string }) {
               )}
             </div>
           </div>
-          <Button size="md" onClick={claim} loading={busy} trailingIcon="redeem">
+          <Button
+            size="md"
+            variant={quiet ? "outline-pill" : "primary-pill"}
+            onClick={claim}
+            loading={busy}
+            trailingIcon="redeem"
+          >
             {busy ? "Claiming…" : `Claim ${amount}`}
           </Button>
         </>

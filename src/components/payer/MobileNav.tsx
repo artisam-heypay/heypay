@@ -24,9 +24,12 @@ export function MobileNav() {
       <Link
         href="/payer/scan"
         aria-label="Scan to Pay"
-        className="-mt-8 flex h-14 w-14 min-h-11 min-w-11 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg shadow-primary/30"
+        className="-mt-8 flex min-h-11 min-w-11 flex-col items-center gap-0.5 rounded-full text-label-md font-bold text-primary"
       >
-        <Icon name="qr_code_scanner" className="text-3xl" />
+        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg shadow-primary/30">
+          <Icon name="qr_code_scanner" className="text-3xl" />
+        </span>
+        Pay
       </Link>
 
       {PAYER_NAV_ITEMS.slice(2).map((item) => (

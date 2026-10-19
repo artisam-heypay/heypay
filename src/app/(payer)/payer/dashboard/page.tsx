@@ -48,7 +48,7 @@ export default async function PayerDashboardPage() {
       </div>
 
       {fundsHeyPay && faucet.enabled && !faucet.claimed && (
-        <FaucetCard amountXlm={faucet.amountXlm} />
+        <FaucetCard amountXlm={faucet.amountXlm} quiet={Number(snapshot.totalPhp) > 0} />
       )}
 
       <div className="grid grid-cols-1 gap-stack-lg lg:grid-cols-3">
