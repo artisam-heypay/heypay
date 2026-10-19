@@ -1,14 +1,17 @@
+"use client";
 import Link from "next/link";
-import { MERCHANT_NAV } from "./SideNav";
+import { usePathname } from "next/navigation";
+import { MERCHANT_NAV, isActive } from "./SideNav";
 
-export function MobileNav({ pathname }: { pathname: string }) {
+export function MobileNav() {
+  const pathname = usePathname();
   return (
     <nav
       aria-label="Merchant"
-      className="glass fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t border-outline-variant lg:hidden"
+      className="fixed inset-x-0 bottom-0 bg-surface-container-lowest shadow-[0_-4px_16px_rgba(0,0,0,0.06)] z-40 flex h-16 items-stretch border-t border-outline-variant lg:hidden"
     >
       {MERCHANT_NAV.map((item) => {
-        const active = pathname === item.href;
+        const active = isActive(pathname, item.href);
         return (
           <Link
             key={item.href}

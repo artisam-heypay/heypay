@@ -1,8 +1,12 @@
+"use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { SetupState } from "@/server/merchant/service";
 
 export function SetupBanner({ setup }: { setup: SetupState }) {
-  if (setup.isComplete) return null;
+  // The onboarding page is where the banner sends the merchant: not shown there.
+  const onOnboarding = usePathname()?.startsWith("/merchant/onboarding") ?? false;
+  if (setup.isComplete || onOnboarding) return null;
   const steps = [
     { done: setup.hasBusiness, label: "Business identity" },
     { done: setup.hasSettlement, label: "Settlement account" },

@@ -1,4 +1,6 @@
+"use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 
 export const MERCHANT_NAV = [
@@ -8,7 +10,15 @@ export const MERCHANT_NAV = [
   { href: "/merchant/settings", label: "Settings", icon: "settings" },
 ] as const;
 
-export function SideNav({ businessName, pathname }: { businessName: string; pathname: string }) {
+/** Whether `item` is the section the merchant is in, sub-pages included. */
+export function isActive(pathname: string | null, href: string): boolean {
+  return pathname === href || Boolean(pathname?.startsWith(`${href}/`));
+}
+
+export function SideNav({ businessName }: { businessName: string }) {
+  // Read in the browser: the layout around this does not render again when the
+  // merchant moves between its pages.
+  const pathname = usePathname();
   return (
     <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-outline-variant bg-surface-container-low p-stack-lg lg:flex">
       <div className="mb-stack-lg flex items-center gap-stack-sm">
@@ -23,7 +33,7 @@ export function SideNav({ businessName, pathname }: { businessName: string; path
       </div>
       <nav className="flex flex-1 flex-col gap-stack-sm" aria-label="Merchant">
         {MERCHANT_NAV.map((item) => {
-          const active = pathname === item.href;
+          const active = isActive(pathname, item.href);
           return (
             <Link
               key={item.href}
