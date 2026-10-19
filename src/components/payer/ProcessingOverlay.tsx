@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { clsx } from "clsx";
 import { Icon } from "@/components/ui";
+import { HeyPayLogo } from "@/components/ui/HeyPayLogo";
 import { PAYMENT_STEPS, stepState } from "@/lib/payment-steps";
 import type { PaymentStatus } from "@/generated/prisma/client";
 
@@ -50,13 +51,24 @@ export function ProcessingOverlay({
     >
       {settled ? (
         <>
-          <Icon name="check_circle" filled className="text-6xl text-secondary" />
-          <h2 className="text-center font-display text-headline-lg text-secondary">
-            {amountPhpDisplay} sent to {merchantName}
+          {/* The HeyPay mark with a check on its corner. */}
+          <span className="relative">
+            <HeyPayLogo size={88} className="drop-shadow-[0_10px_18px_rgba(29,27,26,0.14)]" />
+            <span className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-primary-ink text-white ring-4 ring-surface">
+              <Icon name="check" className="text-[22px]" />
+            </span>
+          </span>
+          <h2 className="flex max-w-md flex-col items-center gap-1 text-center">
+            <span className="font-display text-[2.5rem] font-bold leading-tight tracking-[-0.02em] text-on-surface tabular-nums">
+              {amountPhpDisplay}
+            </span>{" "}
+            <span className="text-body-lg text-on-surface-variant">
+              sent to <span className="font-semibold text-on-surface">{merchantName}</span>
+            </span>
           </h2>
           <Link
             href="/payer/transactions"
-            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-secondary px-stack-lg py-4 font-display font-bold text-on-secondary"
+            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-margin-desktop py-4 font-display text-body-lg font-bold text-on-primary-container shadow-lg shadow-primary/20 transition-[filter] hover:brightness-110"
           >
             Done
           </Link>

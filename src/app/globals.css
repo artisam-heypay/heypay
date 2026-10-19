@@ -33,8 +33,12 @@
   --color-error: #ba1a1a;
   --color-on-error: #ffffff;
 
+  /* ---- Primary as ink ---- */
+  /* Dark teal for primary-coloured text and marks: 6:1 against the page,
+     where primary itself is only 2.3:1. */
+  --color-primary-ink: #006874;
+
   /* ---- Keyboard focus ---- */
-  /* Dark teal: 6:1 against the page, where primary is only 2.3:1. */
   --color-focus: #006874;
 
   /* ---- Fonts ---- */

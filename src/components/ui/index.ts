@@ -5,3 +5,4 @@ export { FloatingInput } from "./FloatingInput";
 export { MoneyAmount } from "./MoneyAmount";
 export { Icon } from "./Icon";
 export { GlassHeader } from "./GlassHeader";
+export { HeyPayLogo } from "./HeyPayLogo";

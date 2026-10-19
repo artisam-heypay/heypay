@@ -19,8 +19,11 @@ describe("ProcessingOverlay", () => {
     render(
       <ProcessingOverlay status="SETTLED" merchantName="Sari Store" amountPhpDisplay="₱500.00" />,
     );
-    const heading = screen.getByRole("heading", { name: /₱500\.00 sent to Sari Store/ });
-    expect(heading.className).toContain("text-secondary");
+    expect(
+      screen.getByRole("heading", { name: /₱500\.00 sent to Sari Store/ }),
+    ).toBeInTheDocument();
+    // The HeyPay mark, not an orange check.
+    expect(document.querySelector('svg[viewBox="0 0 1000 1000"]')).not.toBeNull();
     expect(screen.getByRole("link", { name: "Done" })).toHaveAttribute(
       "href",
       "/payer/transactions",
