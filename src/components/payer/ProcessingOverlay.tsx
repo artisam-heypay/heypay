@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import { Icon } from "@/components/ui";
 import { PAYMENT_STEPS, stepState } from "@/lib/payment-steps";
 import type { PaymentStatus } from "@/generated/prisma/client";
+import { SettledReceipt, type PaymentReceipt } from "./SettledReceipt";
 
 /** The result screen's heading for a payment that did not reach the merchant. */
 const NOT_PAID_HEADING: Partial<Record<PaymentStatus, string>> = {
@@ -18,6 +19,7 @@ export function ProcessingOverlay({
   amountPhpDisplay,
   failureReason,
   bankRefused = false,
+  receipt = null,
 }: {
   status: PaymentStatus;
   merchantName: string;
@@ -29,6 +31,8 @@ export function ProcessingOverlay({
   failureReason?: string | null;
   /** The shop's bank refused the payout, which is why the shop was not paid. */
   bankRefused?: boolean;
+  /** A settled payment's details for its receipt; null until they are read. */
+  receipt?: PaymentReceipt | null;
 }) {
   const settled = status === "SETTLED";
   const failed = NOT_PAID_HEADING[status] !== undefined;
@@ -46,21 +50,18 @@ export function ProcessingOverlay({
       role="dialog"
       aria-modal="true"
       aria-live="polite"
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-stack-lg bg-surface/95 px-margin-mobile backdrop-blur-md"
+      className={clsx(
+        "fixed inset-0 z-50 flex flex-col items-center justify-center gap-stack-lg overflow-y-auto px-margin-mobile py-margin-mobile backdrop-blur-md transition-colors duration-500",
+        // The room dims so the receipt is the brightest thing on the screen.
+        settled ? "bg-[#141211]/92" : "bg-surface/95",
+      )}
     >
       {settled ? (
-        <>
-          <Icon name="check_circle" filled className="text-6xl text-secondary" />
-          <h2 className="text-center font-display text-headline-lg text-secondary">
-            {amountPhpDisplay} sent to {merchantName}
-          </h2>
-          <Link
-            href="/payer/transactions"
-            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-secondary px-stack-lg py-4 font-display font-bold text-on-secondary"
-          >
-            Done
-          </Link>
-        </>
+        <SettledReceipt
+          amountPhpDisplay={amountPhpDisplay}
+          merchantName={merchantName}
+          receipt={receipt}
+        />
       ) : failed ? (
         <>
           <Icon

@@ -15,12 +15,40 @@ describe("ProcessingOverlay", () => {
     expect(screen.getByText("Payment authorized")).toBeInTheDocument();
   });
 
+  it("shows the settled payment's details on its receipt", () => {
+    render(
+      <ProcessingOverlay
+        status="SETTLED"
+        merchantName="Sari Store"
+        amountPhpDisplay="₱500.00"
+        receipt={{
+          reference: "TXN-BPXRIWJS",
+          settledAt: "2026-10-19T14:42:00.000Z",
+          asset: "XLM",
+          amountAsset: "142.8571429",
+          stellarTxUrl: "https://stellar.expert/explorer/testnet/tx/abc",
+        }}
+      />,
+    );
+    // What a cashier checks: when, which payment, and in what.
+    expect(screen.getByText("Oct 19, 10:42 PM")).toBeInTheDocument();
+    expect(screen.getByText("TXN-BPXRIWJS")).toBeInTheDocument();
+    expect(screen.getByText("≈ 142.8571 XLM")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /View transaction/ })).toHaveAttribute(
+      "href",
+      "https://stellar.expert/explorer/testnet/tx/abc",
+    );
+  });
+
   it("shows success headline + Done on SETTLED", () => {
     render(
       <ProcessingOverlay status="SETTLED" merchantName="Sari Store" amountPhpDisplay="₱500.00" />,
     );
-    const heading = screen.getByRole("heading", { name: /₱500\.00 sent to Sari Store/ });
-    expect(heading.className).toContain("text-secondary");
+    expect(
+      screen.getByRole("heading", { name: /₱500\.00 sent to Sari Store/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Getting the details…")).toBeInTheDocument();
+    expect(screen.getByText("Show this screen to the cashier.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Done" })).toHaveAttribute(
       "href",
       "/payer/transactions",
