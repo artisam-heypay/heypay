@@ -254,11 +254,20 @@ export async function getMerchantEarnings(
   };
 }
 
-function mapTx(p: Payment & { payer: { username: string } }): MerchantTxItem {
+/**
+ * How a shop sees who paid: never the payer's username, which for a Google
+ * sign-up is the start of their email. The tag stays the same for the same
+ * payer, so repeat customers can still be told apart.
+ */
+export function customerTag(payerId: string): string {
+  return `Customer ••${payerId.slice(-4).toUpperCase()}`;
+}
+
+function mapTx(p: Payment): MerchantTxItem {
   return {
     id: p.id,
     reference: p.reference,
-    customer: p.payer.username,
+    customer: customerTag(p.payerId),
     asset: p.asset,
     amountAsset: formatAsset(dec(p.amountAsset.toString())),
     amountPhp: formatPhp(dec(p.amountPhp.toString())),
@@ -288,7 +297,6 @@ export async function listMerchantTransactions(
   const take = q.limit + 1;
   const rows = await prisma.payment.findMany({
     where: txWhere(merchantId, q),
-    include: { payer: { select: { username: true } } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
     take,
@@ -304,7 +312,6 @@ export async function allMerchantTransactions(
 ): Promise<MerchantTxItem[]> {
   const rows = await prisma.payment.findMany({
     where: txWhere(merchantId, q),
-    include: { payer: { select: { username: true } } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
   });
   return rows.map(mapTx);

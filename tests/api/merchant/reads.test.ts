@@ -40,6 +40,18 @@ it("transactions returns filtered settlement rows", async () => {
   expect(body.items[0].status).toBe("SETTLED");
 });
 
+it("transactions name the customer without their username", async () => {
+  const { merchant, user } = await seedMerchantUser({});
+  USER.id = user.id;
+  const payment = await seedPayment(merchant.id, { status: "SETTLED", netSettledPhp: "10.00" });
+  const { GET } = await import("@/app/api/merchant/transactions/route");
+  const body = await (
+    await GET(get("http://localhost:3000/api/merchant/transactions"), ctx)
+  ).json();
+  expect(body.items[0].customer).toBe(`Customer ••${payment.payerId.slice(-4).toUpperCase()}`);
+  expect(JSON.stringify(body)).not.toMatch(/payer\d+-/);
+});
+
 it("qr returns svg + payment link", async () => {
   const { user } = await seedMerchantUser({});
   USER.id = user.id;
