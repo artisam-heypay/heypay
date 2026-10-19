@@ -40,8 +40,10 @@ export default async function PayerDashboardPage() {
 
   return (
     <div className="flex flex-col gap-stack-lg">
-      <div className="flex flex-wrap items-center justify-between gap-stack-sm">
-        <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Dashboard</h1>
+      <div className="flex items-center justify-between gap-stack-sm">
+        <h1 className="min-w-0 font-display text-headline-lg-mobile lg:text-headline-lg">
+          Dashboard
+        </h1>
         <NetworkStatus />
       </div>
 
