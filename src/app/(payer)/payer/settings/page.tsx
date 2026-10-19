@@ -56,14 +56,13 @@ export default async function PayerSettingsPage() {
       <ChangePasswordForm />
       <LogoutButton className="flex min-h-11 items-center justify-center gap-stack-md rounded-lg px-stack-md py-2 text-body-md text-error hover:bg-error/5 lg:hidden">
         <Icon name="logout" />
-        Logout
+        Log out
       </LogoutButton>
-      <footer className="flex flex-col items-center gap-1 pt-stack-lg text-center">
-        <span className="flex items-center gap-stack-sm text-label-md uppercase text-on-surface-variant">
-          <Icon name="lock" />
-          End-to-end encrypted
-        </span>
-        <span className="text-body-sm text-on-surface-variant">HeyPay • Licensed by BSP</span>
+      {/* Only what is true of this deployment: no licence or encryption claims. */}
+      <footer className="pt-stack-lg text-center text-body-sm text-on-surface-variant">
+        {isMainnet()
+          ? "HeyPay on the Stellar network"
+          : "HeyPay on the Stellar testnet: test money only"}
       </footer>
     </div>
   );
