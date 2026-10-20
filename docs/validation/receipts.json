@@ -3,7 +3,8 @@
   "network": "testnet",
   "wasm": {
     "hash": "f3ccfe37fa39403a82bc835f18f0b68c83d1503a5d058ec02ae5878143872f60",
-    "release": "https://github.com/artisam-heypay/heypay/releases/tag/escrow-v0.3"
+    "release": "https://github.com/artisam-heypay/heypay/releases/tag/escrow-v1.0-testnet",
+    "tag": "escrow-v1.0-testnet"
   },
   "accounts": {
     "GDZ2BQPZQLLXTBFVKJX6UVZQAIZCIC4HDGT4XDLH5JOWO7WWP2KLIN37": "HeyPay treasury (escrow admin)",
@@ -14,7 +15,9 @@
     "GD67FCLR2H3OLN2ULWS6K3N374AFK3ABVOJCNXGKGHN3OYJBXJ2DGCLS": "payer's HeyPay wallet",
     "GDNWMLOGKZTQUPOA5DCLSE4CCUWYTK37ROMFZURPJEDYYBW6DKBVF5R6": "HeyPay sign-up sponsor",
     "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W": "CLI test payer",
-    "GAY7UUSQVUCNO32YEO6EQP74DYVT7VT7WOLYDDJTELOW6X4KCAS7S5RD": "CLI test admin"
+    "GAY7UUSQVUCNO32YEO6EQP74DYVT7VT7WOLYDDJTELOW6X4KCAS7S5RD": "CLI test admin",
+    "GC7RS4BJ4YUKLFX5BC2N6L2YRDG7IWG2UKFSVTVRBHPMLHVSGTJ436IQ": "payer's HeyPay wallet",
+    "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ": "payer's own wallet, test key in place of Freighter"
   },
   "contracts": [
     {
@@ -53,6 +56,154 @@
     }
   ],
   "sections": [
+    {
+      "deliverable": "D1",
+      "run": "final",
+      "title": "Soroban settlement escrow",
+      "receipts": [
+        {
+          "claim": "TXN-7VGHDCYD, PHP 50.00: the XLM is locked with a 3-ledger deadline, which passed before the payout started, so HeyPay cancelled the payment",
+          "call": "deposit",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "7e561a5e82a524cb392fd8f555529e4b1fe795e1ed8da53fbc30411b3927ee48"
+        },
+        {
+          "claim": "Deadline passed: the payer takes the XLM back with \"Get my money back\"; the admin plays no part",
+          "call": "refund_after_timeout",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "signer": "GC7RS4BJ4YUKLFX5BC2N6L2YRDG7IWG2UKFSVTVRBHPMLHVSGTJ436IQ",
+          "tx": "c6dff26caa74328dcb028b2471a03117de3bebcc16d6949ab1431e8a0e8c968d"
+        },
+        {
+          "claim": "Self-refund window set to 120 ledgers (about 10 minutes), so the next payouts finish before the deadline",
+          "call": "set_timeout",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "7e6c6bd9cc92e34df3d52ed966437d0fa2e223980274d2a89e770e246d3d1fde"
+        },
+        {
+          "claim": "Payment TXN-PBWHHZOW, PHP 50.00 from the HeyPay wallet: the XLM is locked in the escrow",
+          "call": "deposit",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "962bd508efc741b48daf6cd5d3d542b3db86e88f21f6557da6c1c9426048654c"
+        },
+        {
+          "claim": "Merchant paid, so the escrow releases it to the treasury",
+          "call": "release",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "bcdaeba93c9dfab9927eb5da405bae09eab378fd9953508d6035479206986842"
+        },
+        {
+          "claim": "Forced payout failure, TXN-WOWSKLRP (PHP 66.66): the XLM is locked",
+          "call": "deposit",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "34ffaf895e8e809a0c59058210ee216db2332dbfb76422571544d7f2b44ed4b0"
+        },
+        {
+          "claim": "Payout failed, so the escrow refunds the payer on-chain",
+          "call": "refund",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "595591a728023ef26ad7694adffc363180f7228b93826ae5b80fe5b2bae06bd1"
+        },
+        {
+          "claim": "Window set back to 3 ledgers, where it was before the run",
+          "call": "set_timeout",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "e0caf2164f3844e29b48df5c2caa1cbc05db2ae9d4a3e8f1e15ffad8b83d1f81"
+        }
+      ]
+    },
+    {
+      "deliverable": "D2",
+      "run": "final",
+      "title": "USDC held by the escrow end to end",
+      "receipts": [
+        {
+          "claim": "New payer wallet opened with a USDC trustline, sponsored by HeyPay",
+          "call": "change_trust",
+          "tx": "8899baa17bbd35573d1fb6f0f770583de33815af228345edf4d593e12d717482"
+        },
+        {
+          "claim": "Swap page, XLM to USDC (strict send)",
+          "call": "path_payment_strict_send",
+          "tx": "c677a50045eefd3b59baea3f5ee54b897a2965176350fcd783b3cea5d42e1770"
+        },
+        {
+          "claim": "USDC escrow self-refund window set to 120 ledgers for the run",
+          "call": "set_timeout",
+          "contract": "CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG",
+          "tx": "22d4757d117bab93020bafc1d3b76dbe0aa4039407d9cf08524e1e77298ff75b"
+        },
+        {
+          "claim": "USDC payment TXN-FXZVPCAZ, PHP 50.00: the USDC is locked in the USDC escrow",
+          "call": "deposit",
+          "contract": "CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG",
+          "tx": "4a588ee541669e7ce0448e181c0dbb7cd3344ed16aad572db9dbfc2b956a4ffb"
+        },
+        {
+          "claim": "Merchant paid, so the escrow releases the same USDC to the treasury",
+          "call": "release",
+          "contract": "CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG",
+          "tx": "32dfffa81fafedb506ee058683d3abe193c10a2844eb15ec0c2d4151b36ebad0"
+        },
+        {
+          "claim": "Forced payout failure, TXN-YFC4ZIII (PHP 66.66): the USDC is locked",
+          "call": "deposit",
+          "contract": "CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG",
+          "tx": "73fe2bae6c3fe2cf73a3b2b53002a928206432def76e40592380e57703b3cbda"
+        },
+        {
+          "claim": "Payout failed, so the escrow refunds USDC, not XLM",
+          "call": "refund",
+          "contract": "CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG",
+          "tx": "b5e3f7068ce1811c3a2a93857d227797ef21a8cf59e04560ed8d1c50391a5ecd"
+        },
+        {
+          "claim": "Swap page, USDC to XLM (strict receive)",
+          "call": "path_payment_strict_receive",
+          "tx": "2dc894e353bedab058e5244d2db041f07841147acc84dd38be85ff84a2885a9b"
+        },
+        {
+          "claim": "USDC escrow window set back to 3 ledgers",
+          "call": "set_timeout",
+          "contract": "CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG",
+          "tx": "92b8ea31a8705124afeb645b2c3d3c59ae9691c57b3c86e86b15d9c0a8e39af2"
+        }
+      ]
+    },
+    {
+      "deliverable": "D3",
+      "run": "final",
+      "title": "Payers sign with their own wallet",
+      "receipts": [
+        {
+          "claim": "Own-wallet payment TXN-H7CMWDED, PHP 50.00: the payer's own key signs the deposit, and HeyPay checks it and sends it",
+          "call": "deposit",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "signer": "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ",
+          "tx": "2940cb9b66bbf46bdc43f460ee9f13b0244c307dcf960fcd437851b5dea07d1f"
+        },
+        {
+          "claim": "Merchant paid, so the escrow releases it, without HeyPay ever holding the payer's key",
+          "call": "release",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "074ab81a82479bbb4c1cdf182f1a96d5f3fd80ca43f4815f76a67d4f87c779a7"
+        },
+        {
+          "claim": "Own-wallet payment TXN-QLHOMRUO, PHP 30.00, made while HeyPay's worker was stopped, so the merchant was never paid",
+          "call": "deposit",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "signer": "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ",
+          "tx": "e26d6da76bf0caf6f210cc7c32ebcd517c3e840064d91e235c887b3588241214"
+        },
+        {
+          "claim": "\"Get my money back\": the payer signs refund_after_timeout with their own key after the deadline",
+          "call": "refund_after_timeout",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "signer": "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ",
+          "tx": "fc59b4d72d6d3b13a6a7dce3930827c242f9b96b9a1372b1be28f78509cb79e5"
+        }
+      ]
+    },
     {
       "deliverable": "D1",
       "title": "Soroban settlement escrow",
@@ -308,5 +459,13 @@
         }
       ]
     }
-  ]
+  ],
+  "finalRun": {
+    "date": "2026-10-20",
+    "how": [
+      "HeyPay's `develop` branch as of 2026-10-20, run on a local machine with its own database, made every transaction below. It used the two app escrows listed above and the HeyPay treasury as their admin, the same ones the deployed app uses. The bank payout to the merchant was the app's test stand-in; a payment of PHP 66.66 makes it fail, to show the refund.",
+      "",
+      "For the own-wallet payments (D3), the app built each transaction as it does in the browser, and a test key held by the payer signed it, in place of the Freighter extension. HeyPay never had that key, and the script checked that the treasury did not sign. The earlier D3 receipts were approved in the real Freighter extension on the deployed app."
+    ]
+  }
 }

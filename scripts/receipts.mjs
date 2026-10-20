@@ -224,21 +224,37 @@ function render(data, contracts, sections, checkedAt) {
 
   const lines = [];
   const all = sections.flatMap((s) => s.rows);
+  const final = sections.filter((s) => s.run === "final");
+  const earlier = sections.filter((s) => s.run !== "final");
+  const finalRows = final.flatMap((s) => s.rows);
   const appIds = new Set(data.contracts.filter((c) => c.app).map((c) => c.id));
-  const count = (pred) => all.filter(pred).length;
-  const releases = count((r) => r.entry.call === "release" && appIds.has(r.entry.contract));
-  const refunds = count((r) => REFUND_CALLS.has(r.entry.call));
-  const timeoutRefunds = count((r) => r.entry.call === "refund_after_timeout");
   const usdcId = data.contracts.find((c) => c.app && c.asset === "USDC")?.id;
-  const usdcCalls = new Set(
-    all.filter((r) => r.entry.contract === usdcId).map((r) => r.entry.call),
-  );
-  const trustlines = count((r) => r.entry.call === "change_trust");
-  const freighterPayments = count(
-    (r) => r.entry.call === "deposit" && r.found.signerChecked && appIds.has(r.entry.contract),
-  );
-  const swaps = new Set(all.map((r) => r.found.direction).filter(Boolean));
+  // What a set of rows proves, target by target.
+  const tally = (rows) => {
+    const count = (pred) => rows.filter(pred).length;
+    const usdcCalls = new Set(
+      rows.filter((r) => r.entry.contract === usdcId).map((r) => r.entry.call),
+    );
+    return {
+      deposits: count((r) => r.entry.call === "deposit"),
+      allReleases: count((r) => r.entry.call === "release"),
+      releases: count((r) => r.entry.call === "release" && appIds.has(r.entry.contract)),
+      refunds: count((r) => REFUND_CALLS.has(r.entry.call)),
+      timeoutRefunds: count((r) => r.entry.call === "refund_after_timeout"),
+      usdc: ["deposit", "release", "refund"].filter((c) => usdcCalls.has(c)),
+      trustlines: count((r) => r.entry.call === "change_trust"),
+      ownWallet: count(
+        (r) => r.entry.call === "deposit" && r.found.signerChecked && appIds.has(r.entry.contract),
+      ),
+      swaps: new Set(rows.map((r) => r.found.direction).filter(Boolean)),
+    };
+  };
+  const t = tally(finalRows);
+  const a = tally(all);
   const ok = (b) => (b ? "Met" : "**Not met**");
+  const swapList = (swaps) => [...swaps].map((d) => d.replace(">", " → ")).join(", ");
+  const wasmOk = contracts.filter((c) => c.contract.app && c.wasmMatches).length >= 1;
+  const finalDate = data.finalRun.date;
 
   lines.push(
     "# On-chain receipt list (Stellar Testnet)",
@@ -256,16 +272,22 @@ function render(data, contracts, sections, checkedAt) {
     "checked the signature against the payer's key, and checked that the HeyPay",
     "treasury key did not sign.",
     "",
+    `The final run of ${finalDate} did every on-chain step of the sprint again, in`,
+    "one pass, so each SOW target has a fresh transaction. The earlier receipts,",
+    "from the days each deliverable was built, follow it.",
+    "",
     "## SOW targets",
     "",
-    "| Target | Found below | Status |",
-    "| ------ | ----------- | ------ |",
-    `| 1 escrow contract deployed with a published contract ID | ${appIds.size} app escrows (XLM and USDC), each running the published WASM | ${ok(contracts.filter((c) => c.contract.app && c.wasmMatches).length >= 1)} |`,
-    `| At least 3 escrow-routed settlements | ${releases} releases from the app escrows | ${ok(releases >= 3)} |`,
-    `| At least 2 on-chain refunds, one a payer-called \`refund_after_timeout()\` | ${refunds} refunds, ${timeoutRefunds} of them \`refund_after_timeout\` | ${ok(refunds >= 2 && timeoutRefunds >= 1)} |`,
-    `| USDC live end to end | ${trustlines} USDC trustlines; USDC escrow ${["deposit", "release", "refund"].filter((c) => usdcCalls.has(c)).join(", ")} | ${ok(trustlines > 0 && ["deposit", "release", "refund"].every((c) => usdcCalls.has(c)))} |`,
-    `| At least 1 non-custodial Freighter payment | ${freighterPayments} deposits into the app escrow signed by the payer's own key | ${ok(freighterPayments >= 1)} |`,
-    `| Both swap directions (XLM↔USDC) | ${[...swaps].map((d) => d.replace(">", " → ")).join(", ")} | ${ok(swaps.has("XLM>USDC") && swaps.has("USDC>XLM"))} |`,
+    'Status is for the final run alone. "All receipts" counts the final run and the earlier ones.',
+    "",
+    `| Target | Final run, ${finalDate} | All receipts | Status |`,
+    "| ------ | ----------------------- | ------------ | ------ |",
+    `| 1 escrow contract deployed with a published contract ID | ${appIds.size} app escrows (XLM and USDC), each running the published WASM | the same | ${ok(wasmOk)} |`,
+    `| At least 3 escrow-routed settlements | ${t.releases} releases from the app escrows | ${a.releases} | ${ok(t.releases >= 3)} |`,
+    `| At least 2 on-chain refunds, one a payer-called \`refund_after_timeout()\` | ${t.refunds} refunds, ${t.timeoutRefunds} of them \`refund_after_timeout\` | ${a.refunds}, ${a.timeoutRefunds} of them \`refund_after_timeout\` | ${ok(t.refunds >= 2 && t.timeoutRefunds >= 1)} |`,
+    `| USDC live end to end | ${t.trustlines} USDC trustline; USDC escrow ${t.usdc.join(", ")} | ${a.trustlines} trustlines | ${ok(t.trustlines > 0 && t.usdc.length === 3)} |`,
+    `| At least 1 non-custodial Freighter payment | ${t.ownWallet} deposits into the app escrow signed by the payer's own key | ${a.ownWallet}, of them ${a.ownWallet - t.ownWallet} approved in the Freighter extension | ${ok(t.ownWallet >= 1)} |`,
+    `| Both swap directions (XLM↔USDC) | ${swapList(t.swaps)} | ${swapList(a.swaps)} | ${ok(t.swaps.has("XLM>USDC") && t.swaps.has("USDC>XLM"))} |`,
     "",
     "## How to check a receipt yourself",
     "",
@@ -282,7 +304,7 @@ function render(data, contracts, sections, checkedAt) {
     "",
     "## Escrow contracts",
     "",
-    `The published WASM is \`escrow.wasm\` in release [\`escrow-v0.3\`](${data.wasm.release}),`,
+    `The published WASM is \`escrow.wasm\` in release [\`${data.wasm.tag}\`](${data.wasm.release}),`,
     `sha256 \`${data.wasm.hash}\`. For each contract, the script fetched the code`,
     "running on Testnet and compared its sha256 with that.",
     "",
@@ -303,17 +325,19 @@ function render(data, contracts, sections, checkedAt) {
     "HeyPay makes no separate attestation transaction. What attests to each escrow",
     "is on the chain already: the deploy transaction fixes the code it runs (checked",
     "against the published WASM above), and the `initialize` transaction fixes, for",
-    "good, its admin and the one token it holds. The `set_timeout` calls below are",
-    "the only changes ever made to the XLM escrow's settings. Every deposit,",
-    "release and refund also emits the escrow's own event (`escrow`/`deposit`,",
-    "`release`, `refund`, `refund_timeout`), which anyone can read from the",
-    "transaction.",
+    "good, its admin and the one token it holds. The only setting that can change",
+    "after that is the payer's self-refund window, through the admin's",
+    "`set_timeout`. It applies to later deposits only, so it never moves a held",
+    "job's deadline, and HeyPay's server sets it from its configuration before",
+    "deposits. Every deposit, release and refund also emits the escrow's own event",
+    "(`escrow`/`deposit`, `release`, `refund`, `refund_timeout`), which anyone can",
+    "read from the transaction.",
     "",
   );
 
-  for (const s of sections) {
+  const table = (s) => {
     lines.push(
-      `## ${s.deliverable}: ${s.title}`,
+      `### ${s.deliverable}: ${s.title}`,
       "",
       "| What it proves | Call | Contract | Amount | Job | Signed by | Date (UTC) | Transaction |",
       "| -------------- | ---- | -------- | ------ | --- | --------- | ---------- | ----------- |",
@@ -331,15 +355,21 @@ function render(data, contracts, sections, checkedAt) {
       );
     }
     lines.push("");
-  }
+  };
+
+  lines.push(`## Final run, ${finalDate}`, "", ...data.finalRun.how, "");
+  final.forEach(table);
+  lines.push("## Earlier receipts", "");
+  earlier.forEach(table);
 
   lines.push(
     "## Totals",
     "",
-    `${all.length} transactions and ${contracts.length} contracts, all checked on Testnet on ${checkedAt}:`,
-    `${count((r) => r.entry.call === "deposit")} deposits, ${count((r) => r.entry.call === "release")} releases,`,
-    `${refunds} refunds (${timeoutRefunds} by the payer after the deadline), ${trustlines} USDC trustlines and`,
-    `${swaps.size} swap directions.`,
+    `${all.length} transactions and ${contracts.length} contracts, all checked on Testnet on ${checkedAt},`,
+    `${finalRows.length} of the transactions from the final run:`,
+    `${a.deposits} deposits, ${a.allReleases} releases,`,
+    `${a.refunds} refunds (${a.timeoutRefunds} by the payer after the deadline), ${a.trustlines} USDC trustlines and`,
+    `${a.swaps.size} swap directions.`,
     "",
   );
   return lines.join("\n");
