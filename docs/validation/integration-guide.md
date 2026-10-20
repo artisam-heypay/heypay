@@ -23,21 +23,22 @@ For the full function, error and event reference, see the
 
 ## What is published
 
-| Item                           | Where                                                                                                                                                                                  |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contract source (MIT)          | [`contracts/escrow`](../../contracts/escrow)                                                                                                                                           |
-| Compiled WASM                  | `escrow.wasm` in release [`escrow-v0.3`](https://github.com/artisam-heypay/heypay/releases/tag/escrow-v0.3), sha256 `f3ccfe37fa39403a82bc835f18f0b68c83d1503a5d058ec02ae5878143872f60` |
-| Interface (ABI)                | [`contracts/escrow/INTERFACE.md`](../../contracts/escrow/INTERFACE.md), exported from the deployed contract                                                                            |
-| Sample event payloads          | [`contracts/escrow/events.sample.json`](../../contracts/escrow/events.sample.json)                                                                                                     |
-| SDK / API reference            | [`escrow-sdk.md`](escrow-sdk.md)                                                                                                                                                       |
-| Route-check module (MIT)       | [`packages/settlement-route`](../../packages/settlement-route)                                                                                                                         |
-| HeyPay's XLM escrow (Testnet)  | [`CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J`](https://stellar.expert/explorer/testnet/contract/CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J)                |
-| HeyPay's USDC escrow (Testnet) | [`CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG`](https://stellar.expert/explorer/testnet/contract/CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG)                |
+| Item                           | Where                                                                                                                                                                         |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract source (MIT)          | [`contracts/escrow`](../../contracts/escrow)                                                                                                                                  |
+| Release for independent checks | [`escrow-v1.0-testnet`](https://github.com/artisam-heypay/heypay/releases/tag/escrow-v1.0-testnet): `escrow.wasm`, `escrow.wasm.sha256`, `INTERFACE.md`, `events.sample.json` |
+| Compiled WASM                  | `escrow.wasm` in that release, sha256 `f3ccfe37fa39403a82bc835f18f0b68c83d1503a5d058ec02ae5878143872f60`                                                                      |
+| Interface (ABI)                | [`contracts/escrow/INTERFACE.md`](../../contracts/escrow/INTERFACE.md), exported from the deployed contract                                                                   |
+| Sample event payloads          | [`contracts/escrow/events.sample.json`](../../contracts/escrow/events.sample.json)                                                                                            |
+| SDK / API reference            | [`escrow-sdk.md`](escrow-sdk.md)                                                                                                                                              |
+| Route-check module (MIT)       | [`packages/settlement-route`](../../packages/settlement-route)                                                                                                                |
+| HeyPay's XLM escrow (Testnet)  | [`CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J`](https://stellar.expert/explorer/testnet/contract/CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J)       |
+| HeyPay's USDC escrow (Testnet) | [`CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG`](https://stellar.expert/explorer/testnet/contract/CAR76EFULGIFGWV4UQIFP5J5GUSRUMBQ3CH4TY5GW4FJCXKDXNYI66EG)       |
 
 ### Check that the deployed contract is the published code
 
 ```sh
-curl -sSLO https://github.com/artisam-heypay/heypay/releases/download/escrow-v0.3/escrow.wasm
+curl -sSLO https://github.com/artisam-heypay/heypay/releases/download/escrow-v1.0-testnet/escrow.wasm
 shasum -a 256 escrow.wasm
 
 stellar contract fetch --network testnet -o deployed.wasm \
@@ -45,7 +46,11 @@ stellar contract fetch --network testnet -o deployed.wasm \
 shasum -a 256 deployed.wasm
 ```
 
-Both print `f3ccfe37…2f60`. The USDC instance runs the same WASM.
+Both print `f3ccfe37…2f60`. The USDC instance runs the same WASM. The release
+also carries `escrow.wasm.sha256`, so `shasum -a 256 -c escrow.wasm.sha256`
+checks the download. Building `contracts/escrow` from the tag with
+`stellar contract build --package escrow` (Stellar CLI 28.1.0, rustc 1.98.0)
+gives the same hash.
 
 ## Before you start
 

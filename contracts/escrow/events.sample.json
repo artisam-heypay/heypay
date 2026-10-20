@@ -1,5 +1,5 @@
 {
-  "description": "Real contract events from the 2026-09-29 Testnet CLI run (contracts/escrow/README.md, Testnet evidence). Fetched with `stellar tx fetch events --hash <hash> --network testnet --output json`; contract_events is the parsed XDR, including the native XLM SAC transfer each call makes. refund_timeout has no sample yet: its tx comes from the Friday manual run.",
+  "description": "Real contract events from Stellar Testnet. The deposit, release and refund samples are from the 2026-09-29 CLI run (contracts/escrow/README.md, Testnet evidence) on the CLI test escrow; the refund_timeout sample is from the 2026-10-20 final run on HeyPay's XLM escrow, where a payer took a held payment back with their own key after the deadline. Fetched with `stellar tx fetch events --hash <hash> --network testnet --output json`; contract_events is the parsed XDR, including the native XLM SAC transfer each call makes. A call whose escrow or payer differs from the top-level ones names its own.",
   "network": "testnet",
   "escrow_contract_id": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E",
   "token_contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
@@ -317,6 +317,84 @@
                     },
                     "val": {
                       "address": "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "function": "refund_after_timeout",
+      "job_label": "d4-final-own-wallet-timeout",
+      "escrow_contract_id": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+      "payer": "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ",
+      "job_id": "6baac344de9f9005421d9b90fa1539ba3d56e0df64616ecefae6f8720070fec4",
+      "tx_hash": "fc59b4d72d6d3b13a6a7dce3930827c242f9b96b9a1372b1be28f78509cb79e5",
+      "ledger": 5292092,
+      "stellar_expert": "https://stellar.expert/explorer/testnet/tx/fc59b4d72d6d3b13a6a7dce3930827c242f9b96b9a1372b1be28f78509cb79e5",
+      "contract_events": [
+        {
+          "ext": "v0",
+          "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "transfer"
+                },
+                {
+                  "address": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J"
+                },
+                {
+                  "address": "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ"
+                },
+                {
+                  "string": "native"
+                }
+              ],
+              "data": {
+                "i128": "85714286"
+              }
+            }
+          }
+        },
+        {
+          "ext": "v0",
+          "contract_id": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "type": "contract",
+          "body": {
+            "v0": {
+              "topics": [
+                {
+                  "symbol": "escrow"
+                },
+                {
+                  "symbol": "refund_timeout"
+                },
+                {
+                  "bytes": "6baac344de9f9005421d9b90fa1539ba3d56e0df64616ecefae6f8720070fec4"
+                }
+              ],
+              "data": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "amount"
+                    },
+                    "val": {
+                      "i128": "85714286"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "to"
+                    },
+                    "val": {
+                      "address": "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ"
                     }
                   }
                 ]

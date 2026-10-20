@@ -23,7 +23,7 @@ Reference files:
 - [`contracts/escrow/README.md`](../../contracts/escrow/README.md): auth rules,
   deadline and TTL, deployments and Testnet evidence.
 - WASM: `escrow.wasm` in release
-  [`escrow-v0.3`](https://github.com/artisam-heypay/heypay/releases/tag/escrow-v0.3),
+  [`escrow-v1.0-testnet`](https://github.com/artisam-heypay/heypay/releases/tag/escrow-v1.0-testnet),
   WASM hash `f3ccfe37fa39403a82bc835f18f0b68c83d1503a5d058ec02ae5878143872f60`.
 
 ## Contract

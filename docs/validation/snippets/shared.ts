@@ -31,7 +31,7 @@ export const HORIZON_URL = process.env.HORIZON_URL ?? "https://horizon-testnet.s
 
 /**
  * The escrow WASM HeyPay runs, already installed on Testnet: the `escrow.wasm`
- * of release escrow-v0.3. A new instance is created from this hash, so nothing
+ * of release escrow-v1.0-testnet. A new instance is created from this hash, so nothing
  * has to be built or uploaded.
  */
 export const ESCROW_WASM_HASH = "f3ccfe37fa39403a82bc835f18f0b68c83d1503a5d058ec02ae5878143872f60";
