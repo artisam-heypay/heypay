@@ -19,7 +19,11 @@ runs on Testnet with no keys or setup, and prints Stellar Expert links for every
 transaction it makes.
 
 For the full function, error and event reference, see the
-[SDK and API reference](escrow-sdk.md).
+[SDK and API reference](escrow-sdk.md). To check HeyPay's own transactions on
+Stellar Expert, claim by claim and without reading code, see the
+[verification page](verify.md).
+
+Technical demo video: link to come.
 
 ## What is published
 

@@ -306,6 +306,7 @@ sequenceDiagram
 - [Contract README](contracts/escrow/README.md): functions, auth rules, errors, deadline and TTL behaviour, deployment and Testnet evidence
 - [Interface](contracts/escrow/INTERFACE.md): the deployed contract's spec
 - [Sample events](contracts/escrow/events.sample.json): real `deposit` / `release` / `refund` event payloads from Testnet
+- [Validation package](docs/validation/README.md): the integration guide, SDK reference and on-chain receipt list, plus a [verification page](docs/validation/verify.md) that takes a non-technical reviewer through each claim on Stellar Expert
 
 The settle job uses the escrow when `ESCROW_ENABLED=true` (XLM payments only for now; `src/server/queue/jobs/settle.ts`, client in `src/server/stellar/escrow.ts`). With it off, the crypto goes straight to the custodial treasury through classic Horizon payments (`src/server/stellar/wallet.ts`).
 
