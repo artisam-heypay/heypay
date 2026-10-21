@@ -154,25 +154,26 @@ treasury; the call `refund_after_timeout`; the event `escrow` /
 
 **On screen:** the final-run USDC transactions, one after another.
 
-| What                                 | Transaction                                                                                                                |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| USDC trustline, sponsored at sign-up | [`8899baa1…`](https://stellar.expert/explorer/testnet/tx/8899baa17bbd35573d1fb6f0f770583de33815af228345edf4d593e12d717482) |
-| Swap XLM → USDC (strict send)        | [`c677a500…`](https://stellar.expert/explorer/testnet/tx/c677a50045eefd3b59baea3f5ee54b897a2965176350fcd783b3cea5d42e1770) |
-| USDC deposit, TXN-FXZVPCAZ           | [`4a588ee5…`](https://stellar.expert/explorer/testnet/tx/4a588ee541669e7ce0448e181c0dbb7cd3344ed16aad572db9dbfc2b956a4ffb) |
-| USDC release                         | [`32dfffa8…`](https://stellar.expert/explorer/testnet/tx/32dfffa81fafedb506ee058683d3abe193c10a2844eb15ec0c2d4151b36ebad0) |
-| USDC refund after a failed payout    | [`b5e3f706…`](https://stellar.expert/explorer/testnet/tx/b5e3f7068ce1811c3a2a93857d227797ef21a8cf59e04560ed8d1c50391a5ecd) |
-| Swap USDC → XLM (strict receive)     | [`2dc894e3…`](https://stellar.expert/explorer/testnet/tx/2dc894e353bedab058e5244d2db041f07841147acc84dd38be85ff84a2885a9b) |
+| What                                         | Transaction                                                                                                                |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| USDC turned on by the payer ("Turn on USDC") | [`861bc97b…`](https://stellar.expert/explorer/testnet/tx/861bc97b25a1e9a9bdcf9d37bfe8e0f0f69f1c7b9e7aece651ed0c1f3181dc97) |
+| Swap XLM → USDC (strict send)                | [`c677a500…`](https://stellar.expert/explorer/testnet/tx/c677a50045eefd3b59baea3f5ee54b897a2965176350fcd783b3cea5d42e1770) |
+| USDC deposit, TXN-FXZVPCAZ                   | [`4a588ee5…`](https://stellar.expert/explorer/testnet/tx/4a588ee541669e7ce0448e181c0dbb7cd3344ed16aad572db9dbfc2b956a4ffb) |
+| USDC release                                 | [`32dfffa8…`](https://stellar.expert/explorer/testnet/tx/32dfffa81fafedb506ee058683d3abe193c10a2844eb15ec0c2d4151b36ebad0) |
+| USDC refund after a failed payout            | [`b5e3f706…`](https://stellar.expert/explorer/testnet/tx/b5e3f7068ce1811c3a2a93857d227797ef21a8cf59e04560ed8d1c50391a5ecd) |
+| Swap USDC → XLM (strict receive)             | [`2dc894e3…`](https://stellar.expert/explorer/testnet/tx/2dc894e353bedab058e5244d2db041f07841147acc84dd38be85ff84a2885a9b) |
 
-**Point at:** the `change_trust` operation and its sponsor; the path payment's
+**Point at:** the `change_trust` operation, sent and signed by the payer's own account with no sponsor; the path payment's
 two assets; the USDC escrow `CAR7…66EG` on the deposit, release and refund,
 and that the refund's transfer is USDC.
 
 **Say:**
 
-> USDC works the same way, with its own escrow instance. A new wallet gets a
-> USDC trustline, its reserve paid by HeyPay. The swap page trades XLM for USDC
-> on the Stellar DEX, and back. A USDC payment is held as USDC, released as
-> USDC, and when the payout fails, refunded as USDC, not converted to XLM.
+> USDC works the same way, with its own escrow instance. The payer turns it on
+> in the app: one trustline, sent from the payer's own account, which sets aside
+> its own reserve. The swap page trades XLM for USDC on the Stellar DEX, and
+> back. A USDC payment is held as USDC, released as USDC, and when the payout
+> fails, refunded as USDC, not converted to XLM.
 
 ### 7. A payment signed in Freighter (3:25–4:05)
 

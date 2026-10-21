@@ -28,15 +28,15 @@ start with G, contract addresses with C.
 
 These are the addresses you will meet on this page:
 
-| Shown as    | What it is                                                                    |
-| ----------- | ----------------------------------------------------------------------------- |
-| `CA3I…BT7J` | HeyPay's escrow contract for XLM                                              |
-| `CAR7…66EG` | HeyPay's escrow contract for USDC                                             |
-| `GDZ2…IN37` | the HeyPay treasury, the escrow's operator ("admin")                          |
-| `GC7R…36IQ` | a payer's HeyPay wallet, used in the final run of 2026-10-20                  |
-| `GCGE…RXJO` | HeyPay's sponsor account, which pays the small XLM reserve a new wallet needs |
-| `GDY2…UBH6` | a payer's own Freighter wallet; HeyPay never had its key                      |
-| `GBBD…FLA5` | the issuer of Circle's Testnet USDC                                           |
+| Shown as    | What it is                                                       |
+| ----------- | ---------------------------------------------------------------- |
+| `CA3I…BT7J` | HeyPay's escrow contract for XLM                                 |
+| `CAR7…66EG` | HeyPay's escrow contract for USDC                                |
+| `GDZ2…IN37` | the HeyPay treasury, the escrow's operator ("admin")             |
+| `GC7R…36IQ` | a payer's HeyPay wallet, used in the final run of 2026-10-20     |
+| `GAJU…O7GG` | a payer's HeyPay wallet that turned on USDC itself on 2026-10-21 |
+| `GDY2…UBH6` | a payer's own Freighter wallet; HeyPay never had its key         |
+| `GBBD…FLA5` | the issuer of Circle's Testnet USDC                              |
 
 ### How to read a transaction page
 
@@ -168,25 +168,22 @@ call with their own key; those receipts are in the
 USDC is a dollar stablecoin. HeyPay has a second escrow for it,
 `CAR7…66EG`, so a USDC payment stays USDC from start to end.
 
-### 6. A new payer wallet can hold USDC, and HeyPay pays for it
+### 6. A payer turns on USDC from their own wallet
 
 On Stellar, an account must agree to hold an asset such as USDC before it can
-receive it. That agreement is called a trustline, and it ties up a small XLM
-reserve. HeyPay pays that reserve for new wallets.
+receive it. That agreement is called a trustline, and it sets aside a small XLM
+reserve. In HeyPay the payer adds it with "Turn on USDC" in Settings, and the
+reserve comes out of the payer's own wallet.
 
-**Link:** [Transaction `8899baa1…` on Stellar Expert](https://stellar.expert/explorer/testnet/tx/8899baa17bbd35573d1fb6f0f770583de33815af228345edf4d593e12d717482)
+**Link:** [Transaction `861bc97b…` on Stellar Expert](https://stellar.expert/explorer/testnet/tx/861bc97b25a1e9a9bdcf9d37bfe8e0f0f69f1c7b9e7aece651ed0c1f3181dc97)
 
 **What you should see:**
 
-- Source Account `GCGEGL…GBRXJO`: HeyPay's sponsor account.
-- Four lines: "`GCGE…RXJO` sponsored reserves for `GC7R…36IQ`",
-  "`GCGE…RXJO` created account `GC7R…36IQ` with starting
-  balance 0 XLM", "`GC7R…36IQ` established trustline to USDC
-  `GBBD…FLA5`", and "Finished sponsoring reserves for
-  `GC7R…36IQ`".
-- Under Signatures, `GCGEGL…GBRXJO` and `GC7RS4…J436IQ`: HeyPay pays,
-  and the payer agrees to hold USDC.
-- Processed 2026-10-20 08:01:17 UTC.
+- Source Account `GAJUZD…63O7GG`: the payer's own wallet.
+- "`GAJU…O7GG` established trustline to USDC `GBBD…FLA5`", and no
+  "sponsored reserves" line: no other account pays the reserve.
+- Under Signatures, only `GAJUZD…63O7GG`.
+- Processed 2026-10-21 13:46:32 UTC.
 
 ### 7. The swap page trades XLM for USDC
 

@@ -18,7 +18,8 @@
     "GAY7UUSQVUCNO32YEO6EQP74DYVT7VT7WOLYDDJTELOW6X4KCAS7S5RD": "CLI test admin",
     "GC7RS4BJ4YUKLFX5BC2N6L2YRDG7IWG2UKFSVTVRBHPMLHVSGTJ436IQ": "payer's HeyPay wallet",
     "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ": "payer's own wallet, test key in place of Freighter",
-    "GD3YCP33TYKJ4N4NAP2EFVLEDWMPZRKR4LMQR4K556W4NNLX7AEWSNMA": "payer's HeyPay wallet"
+    "GD3YCP33TYKJ4N4NAP2EFVLEDWMPZRKR4LMQR4K556W4NNLX7AEWSNMA": "payer's HeyPay wallet",
+    "GAJUZDY4H2N37TNLIXNXZNZDIT3VOOQNFHFWY7JY5FI4KKBJEK63O7GG": "payer's HeyPay wallet"
   },
   "contracts": [
     {
@@ -312,6 +313,12 @@
       "deliverable": "D2",
       "title": "USDC held by the escrow end to end",
       "receipts": [
+        {
+          "claim": "Payer turns on USDC in Settings (\"Turn on USDC\"): one trustline from the payer's own account, which sets aside its own reserve; no sponsor",
+          "call": "change_trust",
+          "signer": "GAJUZDY4H2N37TNLIXNXZNZDIT3VOOQNFHFWY7JY5FI4KKBJEK63O7GG",
+          "tx": "861bc97b25a1e9a9bdcf9d37bfe8e0f0f69f1c7b9e7aece651ed0c1f3181dc97"
+        },
         {
           "claim": "New payer wallet opened with a USDC trustline, sponsored by HeyPay at sign-up",
           "call": "change_trust",
