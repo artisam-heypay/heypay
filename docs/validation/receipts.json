@@ -17,7 +17,8 @@
     "GBUWDVRQOSSD3O4SW5ZGGQB7GSQMMMSLVYAWI5Q5RJ7XSFAZDSOX7P4W": "CLI test payer",
     "GAY7UUSQVUCNO32YEO6EQP74DYVT7VT7WOLYDDJTELOW6X4KCAS7S5RD": "CLI test admin",
     "GC7RS4BJ4YUKLFX5BC2N6L2YRDG7IWG2UKFSVTVRBHPMLHVSGTJ436IQ": "payer's HeyPay wallet",
-    "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ": "payer's own wallet, test key in place of Freighter"
+    "GCDHY2CI6TQTKDSSAZYVWEAGA5A4LL3OGBTTJ54OPKJ7HSVNGMZPHVAJ": "payer's own wallet, test key in place of Freighter",
+    "GD3YCP33TYKJ4N4NAP2EFVLEDWMPZRKR4LMQR4K556W4NNLX7AEWSNMA": "payer's HeyPay wallet"
   },
   "contracts": [
     {
@@ -292,6 +293,18 @@
           "call": "refund",
           "contract": "CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E",
           "tx": "a476d1ffd2c361a0e19e16fe5d1acb8a4c6f2f75f39b5117476382bc2789a6a9"
+        },
+        {
+          "claim": "Demo video payment TXN-42R4KKMT, PHP 50.00, deployed app: XLM locked",
+          "call": "deposit",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "875cd8cb978d9befed0fb9e8bba7b2a9796433b5640cdd32ea7e3277f554d754"
+        },
+        {
+          "claim": "Merchant paid, so the escrow releases to the treasury",
+          "call": "release",
+          "contract": "CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J",
+          "tx": "fec0c1f3cf1635cdfb142826c67a4c19151b7490633d577b8544797048196cd4"
         }
       ]
     },

@@ -6,7 +6,7 @@ Each on-chain claim of HeyPay's Instawards sprint, with the Testnet transaction
 that proves it. Click any link to open the transaction on Stellar Expert, the
 public Stellar explorer: no account or login is needed.
 
-Checked against Stellar Testnet on 2026-10-20. For every transaction below,
+Checked against Stellar Testnet on 2026-10-21. For every transaction below,
 the script confirmed on the chain that it succeeded and that it made the call
 named, on the contract named. Amounts, dates and signers are read from the
 chain, not typed in. Where a row says the payer's own key signed, the script
@@ -24,7 +24,7 @@ Status is for the final run alone. "All receipts" counts the final run and the e
 | Target                                                                   | Final run, 2026-10-20                                         | All receipts                                     | Status |
 | ------------------------------------------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------ | ------ |
 | 1 escrow contract deployed with a published contract ID                  | 2 app escrows (XLM and USDC), each running the published WASM | the same                                         | Met    |
-| At least 3 escrow-routed settlements                                     | 3 releases from the app escrows                               | 12                                               | Met    |
+| At least 3 escrow-routed settlements                                     | 3 releases from the app escrows                               | 13                                               | Met    |
 | At least 2 on-chain refunds, one a payer-called `refund_after_timeout()` | 4 refunds, 2 of them `refund_after_timeout`                   | 10, 4 of them `refund_after_timeout`             | Met    |
 | USDC live end to end                                                     | 1 USDC trustline; USDC escrow deposit, release, refund        | 3 trustlines                                     | Met    |
 | At least 1 non-custodial Freighter payment                               | 2 deposits into the app escrow signed by the payer's own key  | 7, of them 5 approved in the Freighter extension | Met    |
@@ -131,6 +131,8 @@ For the own-wallet payments (D3), the app built each transaction as it does in t
 | Command-line run: released to the admin                                            | `release`              | [`CDGI…LE5E`](https://stellar.expert/explorer/testnet/contract/CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E) | 10 XLM        | `41ad2c61` | CLI test admin (GAY7…S5RD)                     | 2026-09-29 00:55 | [`eebbc0d8…`](https://stellar.expert/explorer/testnet/tx/eebbc0d815c89218ece50c330db8f9fca4d6b7768ac50ff6e53033ba6fb8282e) |
 | Command-line run: 5 XLM locked                                                     | `deposit`              | [`CDGI…LE5E`](https://stellar.expert/explorer/testnet/contract/CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E) | 5 XLM         | `3db82dac` | CLI test payer (GBUW…7P4W)                     | 2026-09-29 00:55 | [`83706e01…`](https://stellar.expert/explorer/testnet/tx/83706e017492ec92930a4bc8d47135e631fa32e42bc17657f0c358a7825f6282) |
 | Command-line run: refunded to the payer                                            | `refund`               | [`CDGI…LE5E`](https://stellar.expert/explorer/testnet/contract/CDGIYVERJJ7JWIZBHNV3BYGKFOFHNTRAS4XW4KKV4ROTWQAGENI3LE5E) | 5 XLM         | `3db82dac` | CLI test admin (GAY7…S5RD)                     | 2026-09-29 00:55 | [`a476d1ff…`](https://stellar.expert/explorer/testnet/tx/a476d1ffd2c361a0e19e16fe5d1acb8a4c6f2f75f39b5117476382bc2789a6a9) |
+| Demo video payment TXN-42R4KKMT, PHP 50.00, deployed app: XLM locked               | `deposit`              | [`CA3I…BT7J`](https://stellar.expert/explorer/testnet/contract/CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J) | 4.3569288 XLM | `df0cf412` | payer's HeyPay wallet (GD3Y…SNMA)              | 2026-10-21 03:09 | [`875cd8cb…`](https://stellar.expert/explorer/testnet/tx/875cd8cb978d9befed0fb9e8bba7b2a9796433b5640cdd32ea7e3277f554d754) |
+| Merchant paid, so the escrow releases to the treasury                              | `release`              | [`CA3I…BT7J`](https://stellar.expert/explorer/testnet/contract/CA3IHLNNIMJEOXGQ4NNJIQCTWGW3X4NEQWVIVFWM3EHVCEFBZ73OBT7J) | 4.3569288 XLM | `df0cf412` | HeyPay treasury (escrow admin) (GDZ2…IN37)     | 2026-10-21 03:09 | [`fec0c1f3…`](https://stellar.expert/explorer/testnet/tx/fec0c1f3cf1635cdfb142826c67a4c19151b7490633d577b8544797048196cd4) |
 
 ### D2: USDC held by the escrow end to end
 
@@ -169,8 +171,8 @@ For the own-wallet payments (D3), the app built each transaction as it does in t
 
 ## Totals
 
-60 transactions and 4 contracts, all checked on Testnet on 2026-10-20,
+62 transactions and 4 contracts, all checked on Testnet on 2026-10-21,
 21 of the transactions from the final run:
-23 deposits, 13 releases,
+24 deposits, 14 releases,
 10 refunds (4 by the payer after the deadline), 3 USDC trustlines and
 2 swap directions.
