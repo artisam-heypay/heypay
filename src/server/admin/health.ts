@@ -126,17 +126,18 @@ async function checkQueue(): Promise<ComponentHealth> {
   }
 }
 
-// Merchant logos and QRPH photos are uploaded here; with it down, onboarding
-// cannot take a QRPH photo.
+// Merchant logos and QRPH photos are uploaded here. With it down, onboarding
+// still links a QRPH (the photo is kept only when it uploads) and payments are
+// unaffected, so it degrades the system rather than taking it down.
 async function checkStorage(): Promise<ComponentHealth> {
   if (!process.env.S3_BUCKET) {
-    return { name: "storage", status: "down", detail: "S3_BUCKET unset" };
+    return { name: "storage", status: "degraded", detail: "S3_BUCKET unset" };
   }
   try {
     const { ms } = await timed(() => pingStorage(3000));
     return { name: "storage", status: "ok", detail: "Bucket reachable", latencyMs: ms };
   } catch {
-    return { name: "storage", status: "down", detail: "Storage unreachable" };
+    return { name: "storage", status: "degraded", detail: "Storage unreachable" };
   }
 }
 
