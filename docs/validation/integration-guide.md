@@ -23,7 +23,7 @@ For the full function, error and event reference, see the
 Stellar Expert, claim by claim and without reading code, see the
 [verification page](verify.md).
 
-Technical demo video: link to come.
+Technical demo video: [watch it on Google Drive](https://drive.google.com/file/d/1QuXKWpW_r29HIIi2ehwIjAyvF1LV4suV/view) (4 min 24 s).
 
 ## What is published
 

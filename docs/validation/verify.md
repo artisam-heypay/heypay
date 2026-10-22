@@ -324,7 +324,7 @@ the earlier ones from the real extension.)
 - A "What is published" table linking the compiled contract, its interface,
   sample events, and the [SDK and API reference](escrow-sdk.md).
 
-Technical demo video: link to come.
+Technical demo video: [watch it on Google Drive](https://drive.google.com/file/d/1QuXKWpW_r29HIIi2ehwIjAyvF1LV4suV/view) (4 min 24 s).
 
 The demo walks through the same claims on Stellar Expert. Its script is
 [demo-script.md](demo-script.md).

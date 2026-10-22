@@ -8,4 +8,4 @@ each claim of its Instawards sprint, on Stellar Testnet.
 - [On-chain receipt list](receipts.md): every settlement, refund and contract transaction of the sprint, checked on Testnet.
 - [Verification page](verify.md): each claim with one Stellar Expert link and what you should see there, for a non-technical reviewer.
 - [Demo script](demo-script.md): the shot list and narration of the technical demo.
-- Technical demo video: link to come.
+- [Technical demo video](https://drive.google.com/file/d/1QuXKWpW_r29HIIi2ehwIjAyvF1LV4suV/view): the 4 min 24 s walkthrough of the escrow, USDC and Freighter claims on Testnet.
