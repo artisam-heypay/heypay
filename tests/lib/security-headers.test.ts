@@ -43,6 +43,31 @@ describe("buildCsp", () => {
   });
 });
 
+describe("WalletConnect, for Freighter's mobile app", () => {
+  const directive = (name: string) =>
+    buildCsp()
+      .split("; ")
+      .find((d) => d.startsWith(`${name} `));
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+  });
+
+  it("is out of reach until a project id is set", () => {
+    expect(buildCsp()).not.toContain("walletconnect");
+    expect(directive("frame-src")).toBeUndefined();
+  });
+
+  it("can reach its relay, its modal's API and fonts, and frame its verify page once set", () => {
+    process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = "wc-project";
+    expect(directive("connect-src")).toContain(" wss://relay.walletconnect.org");
+    expect(directive("connect-src")).toContain(" https://api.web3modal.org");
+    expect(directive("font-src")).toContain(" https://fonts.reown.com");
+    expect(directive("frame-src")).toContain(" https://verify.walletconnect.org");
+    expect(buildCsp()).not.toContain("; ;"); // nothing empty left between directives
+  });
+});
+
 describe("applySecurityHeaders", () => {
   const headersOf = () => {
     const res = { headers: new Headers() };

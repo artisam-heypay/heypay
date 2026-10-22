@@ -7,6 +7,9 @@
 // connect-src adds the Soroban RPC server only while payers can use their own
 // wallet (NONCUSTODIAL_ENABLED): their browser builds the escrow deposit itself
 // and asks that server to simulate it.
+// WalletConnect's relay, its modal's API and fonts, and its verify frame are
+// allowed only while NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is set: Freighter's
+// mobile app reaches HeyPay only through them (src/components/wallet/freighter.ts).
 // NOTE: 'unsafe-inline' for scripts is a known trade-off; a nonce/'strict-dynamic'
 // CSP (nonce generated in proxy.ts per request) is the stricter hardening follow-up.
 export function buildCsp(): string {
@@ -14,23 +17,54 @@ export function buildCsp(): string {
   const scriptSrc = ["'self'", "'unsafe-inline'", dev ? "'unsafe-eval'" : ""]
     .filter(Boolean)
     .join(" ");
-  const connectSrc = ["'self'", dev ? "ws: http://localhost:*" : "", sorobanRpcOrigin()]
+  const walletConnect = Boolean(process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim());
+  const connectSrc = [
+    "'self'",
+    dev ? "ws: http://localhost:*" : "",
+    sorobanRpcOrigin(),
+    walletConnect ? WALLETCONNECT_CONNECT : "",
+  ]
     .filter(Boolean)
     .join(" ");
   return [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    `font-src 'self' https://fonts.gstatic.com${walletConnect ? " https://fonts.reown.com" : ""}`,
     "img-src 'self' data: blob: https:",
     `connect-src ${connectSrc}`,
+    walletConnect ? `frame-src 'self' ${WALLETCONNECT_FRAME}` : "",
     "worker-src 'self' blob:",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
     "object-src 'none'",
-  ].join("; ");
+  ]
+    .filter(Boolean)
+    .join("; ");
 }
+
+/** What WalletConnect's client and modal fetch from, as Reown's CSP guide lists it. */
+const WALLETCONNECT_CONNECT = [
+  "https://rpc.walletconnect.org",
+  "https://rpc.walletconnect.com",
+  "https://relay.walletconnect.org",
+  "https://relay.walletconnect.com",
+  "wss://relay.walletconnect.org",
+  "wss://relay.walletconnect.com",
+  "https://pulse.walletconnect.org",
+  "https://pulse.walletconnect.com",
+  "https://api.web3modal.org",
+  "https://api.web3modal.com",
+  "https://keys.walletconnect.org",
+  "https://keys.walletconnect.com",
+].join(" ");
+
+/** The frame WalletConnect checks the page's origin with. */
+const WALLETCONNECT_FRAME = [
+  "https://verify.walletconnect.org",
+  "https://verify.walletconnect.com",
+].join(" ");
 
 /** The Soroban RPC server's origin while the browser needs it, or "" otherwise. */
 function sorobanRpcOrigin(): string {
