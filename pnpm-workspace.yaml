@@ -7,8 +7,8 @@ overrides:
   "@hono/node-server@<1.19.13": ">=1.19.13"
   # Dedupe ioredis so bullmq and the app share one copy (avoids type clash).
   ioredis: 5.11.1
-  # Transitive security fixes (pnpm audit --prod), pulled in by prisma, next and
-  # @stellar/stellar-sdk before they bump them themselves.
+  # Transitive security fixes (pnpm audit --prod), pulled in by prisma, next,
+  # @stellar/stellar-sdk and the wallets kit before they bump them themselves.
   fast-uri@<3.1.8: ">=3.1.8"
   deepmerge-ts@<8.0.0: ">=8.0.0"
   browserslist@<4.28.7: ">=4.28.7"
@@ -16,6 +16,7 @@ overrides:
   baseline-browser-mapping@<2.11.0: ">=2.11.0"
   smol-toml@<1.7.1: ">=1.7.1"
   axios@<1.20.0: ">=1.20.0"
+  follow-redirects@<1.16.1: ">=1.16.1"
   source-map-js@<1.2.2: ">=1.2.2"
   # Transitive security fixes for the dev tools (pnpm audit), pulled in by eslint,
   # typescript-eslint, @tailwindcss/postcss, jsdom and concurrently. Each stays on
