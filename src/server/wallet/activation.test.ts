@@ -8,10 +8,12 @@ import { requestWalletActivation } from "./activation";
 describe("requestWalletActivation", () => {
   beforeEach(() => {
     enqueueWalletActivation.mockReset().mockResolvedValue(undefined);
+    process.env.WALLET_SPONSOR_ENABLED = "true";
     process.env.WALLET_SPONSOR_SECRET_ENC = "v1:sponsor";
   });
 
   afterEach(() => {
+    delete process.env.WALLET_SPONSOR_ENABLED;
     delete process.env.WALLET_SPONSOR_SECRET_ENC;
   });
 
@@ -27,6 +29,12 @@ describe("requestWalletActivation", () => {
 
   it("queues nothing without a sponsor account", async () => {
     delete process.env.WALLET_SPONSOR_SECRET_ENC;
+    await requestWalletActivation({ id: "user_1", role: "PAYER" });
+    expect(enqueueWalletActivation).not.toHaveBeenCalled();
+  });
+
+  it("queues nothing while sponsorship is paused, even with a sponsor account", async () => {
+    process.env.WALLET_SPONSOR_ENABLED = "false";
     await requestWalletActivation({ id: "user_1", role: "PAYER" });
     expect(enqueueWalletActivation).not.toHaveBeenCalled();
   });

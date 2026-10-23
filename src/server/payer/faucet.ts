@@ -28,6 +28,8 @@ export type FaucetStatus =
 export type FaucetClaimResult = { amountXlm: string; txHash: string; txUrl: string };
 
 function faucetSecret(): string | null {
+  // Paused for now: off unless FAUCET_ENABLED=true, even with an account set.
+  if (process.env.FAUCET_ENABLED?.trim() !== "true") return null;
   return process.env.FAUCET_SECRET_ENC?.trim() || null;
 }
 
@@ -54,7 +56,8 @@ function configuredAmountXlm(): Decimal | null {
 }
 
 /**
- * On only off mainnet, and only once a faucet account is configured. A bad
+ * On only off mainnet, only with FAUCET_ENABLED=true, and only once a faucet
+ * account is configured. A bad
  * FAUCET_AMOUNT_XLM turns the faucet off rather than failing the dashboard.
  */
 export function faucetEnabled(): boolean {
