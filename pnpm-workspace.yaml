@@ -8,8 +8,10 @@ overrides:
   # Dedupe ioredis so bullmq and the app share one copy (avoids type clash).
   ioredis: 5.11.1
   # Transitive security fixes (pnpm audit --prod), pulled in by prisma, next,
-  # @stellar/stellar-sdk and the wallets kit before they bump them themselves.
-  fast-uri@<3.1.8: ">=3.1.8"
+  # @stellar/stellar-sdk, posthog-js and the wallets kit before they bump them
+  # themselves.
+  # ajv asks for fast-uri 3; ">=" would pull in 4.x, which has its own advisories.
+  fast-uri@<3.1.8: ^3.1.8
   deepmerge-ts@<8.0.0: ">=8.0.0"
   browserslist@<4.28.7: ">=4.28.7"
   mysql2@<3.23.1: ">=3.23.1"
@@ -18,6 +20,7 @@ overrides:
   axios@<1.20.0: ">=1.20.0"
   follow-redirects@<1.16.1: ">=1.16.1"
   source-map-js@<1.2.2: ">=1.2.2"
+  dompurify@<3.4.17: ">=3.4.17"
   # Transitive security fixes for the dev tools (pnpm audit), pulled in by eslint,
   # typescript-eslint, @tailwindcss/postcss, jsdom and concurrently. Each stays on
   # the major its parent expects.
@@ -26,9 +29,18 @@ overrides:
   js-yaml@<4.3.2: ^4.3.2
   nanoid@<3.3.18: ^3.3.18
   shell-quote@<1.11.0: ^1.11.0
-  undici@<7.29.1: ^7.29.1
+  undici@<7.30.1: ^7.30.1
   # The wallets kit ships a module for every wallet it knows, and HeyPay loads
   # only Freighter's. The HOT wallet SDK it would otherwise pull in brings Solana
   # and NEAR packages with open advisories (pnpm audit --prod), one of them with
   # no fixed version, so that dependency is left out.
   "@creit.tech/stellar-wallets-kit>@hot-wallet/sdk": "-"
+# Zod before 4.6.6 can run out of memory validating a large array
+# (GHSA-mrhx-c7xc-m3w5), and there is no fixed 3.x release. HeyPay itself is on
+# zod 4. The only 3.x copies left come with the wallets kit's WalletConnect stack:
+# @reown/appkit-wallet pins zod 3.22.4 (still in its latest release), and
+# @coinbase/cdp-sdk uses 3.25.76. Both run in the browser and never parse a
+# request to our server. Drop this once Reown moves to zod 4.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-mrhx-c7xc-m3w5

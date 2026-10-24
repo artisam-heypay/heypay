@@ -36,9 +36,7 @@ export const patchMerchantSchema = z
   });
 
 export const settlementSchema = z.object({
-  bankCode: z.enum(BANK_CODES, {
-    errorMap: () => ({ message: "Choose the bank or e-wallet to be paid into" }),
-  }),
+  bankCode: z.enum(BANK_CODES, { error: "Choose the bank or e-wallet to be paid into" }),
   accountName: z
     .string()
     .trim()
