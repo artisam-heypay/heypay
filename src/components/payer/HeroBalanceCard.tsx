@@ -2,13 +2,13 @@ import Link from "next/link";
 import { Icon, TonalCard } from "@/components/ui";
 import { HoldingsLive, type HoldingsSnapshot } from "./HoldingsLive";
 
-const PILL_FOCUS = "focus:outline-none focus:ring-4 focus:ring-primary/10";
-const primaryPill =
-  `inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-stack-lg py-4 font-display ` +
-  `font-bold text-on-primary shadow-lg shadow-primary/20 hover:brightness-110 ${PILL_FOCUS}`;
-const outlinePill =
-  `inline-flex min-h-11 items-center gap-stack-sm rounded-full border-2 border-primary px-stack-lg py-4 ` +
-  `font-display font-bold text-primary hover:bg-primary/5 ${PILL_FOCUS}`;
+// On a phone the actions share one row as icon-over-label tiles; from `sm` up
+// they are pills. Paying is the Scan card and the scan button, not an action here.
+const action =
+  "inline-flex min-h-11 min-w-0 flex-col-reverse items-center justify-center gap-1 rounded-2xl px-stack-sm py-3 " +
+  "font-display text-body-sm font-bold sm:flex-row sm:gap-stack-sm sm:rounded-full sm:px-stack-lg sm:py-4 sm:text-body-md";
+const primaryPill = `${action} bg-primary text-on-primary shadow-lg shadow-primary/20 hover:brightness-110`;
+const outlinePill = `${action} border-2 border-primary text-primary hover:bg-primary/5`;
 
 export function HeroBalanceCard({
   holdings,
@@ -26,14 +26,10 @@ export function HeroBalanceCard({
         className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/5 blur-3xl"
       />
       <HoldingsLive initial={holdings} live={live} />
-      <div className="mt-stack-lg flex flex-wrap gap-stack-md">
+      <div className="mt-stack-lg grid auto-cols-fr grid-flow-col gap-stack-sm sm:flex sm:flex-wrap sm:gap-stack-md">
         <Link href="/payer/prefund" className={primaryPill}>
           Prefund
           <Icon name="add_circle" />
-        </Link>
-        <Link href="/payer/scan" className={outlinePill}>
-          Send
-          <Icon name="send" />
         </Link>
         {canSwap && (
           <Link href="/payer/swap" className={outlinePill}>

@@ -11,7 +11,7 @@ export default async function MerchantQrPage() {
   if (!merchant.qrphRaw) {
     return (
       <div className="tonal-card mx-auto max-w-lg rounded-xl p-margin-desktop text-center">
-        <p className="text-headline-md">No QRPH linked yet</p>
+        <p className="font-display text-headline-md">No QRPH linked yet</p>
         <Link href="/merchant/onboarding" className="mt-stack-md inline-block text-primary">
           Link your QRPH
         </Link>

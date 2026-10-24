@@ -1,16 +1,9 @@
 "use client";
 import { useState } from "react";
 import type { PayerSwapListItem } from "@/server/payer/swap";
+import { formatDay } from "@/lib/dates";
 
 type LoadMore = (cursor: string) => Promise<{ items: PayerSwapListItem[]; nextCursor?: string }>;
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 export function SwapList({
   initial,
@@ -54,13 +47,13 @@ export function SwapList({
                 {item.sent}
                 {item.received && ` → ${item.received}`}
               </p>
-              <p className="text-body-sm text-on-surface-variant">{formatDate(item.createdAt)}</p>
+              <p className="text-body-sm text-on-surface-variant">{formatDay(item.createdAt)}</p>
             </div>
             <a
               href={item.txUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-11 items-center rounded text-body-sm text-primary underline focus:outline-none focus:ring-4 focus:ring-primary/10"
+              className="inline-flex min-h-11 items-center rounded text-body-sm text-primary underline"
             >
               View transaction
             </a>
@@ -73,7 +66,7 @@ export function SwapList({
           type="button"
           onClick={more}
           aria-busy={busy || undefined}
-          className="mt-stack-md inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="mt-stack-md inline-flex min-h-11 items-center justify-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary disabled:opacity-60"
           disabled={busy}
         >
           {busy ? "Loading…" : "Load more"}

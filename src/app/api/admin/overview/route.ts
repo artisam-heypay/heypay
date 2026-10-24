@@ -20,6 +20,7 @@ export const GET = route(async () => {
       merchantName: f.merchantName,
       amountPhp: f.amountPhp.toFixed(2),
       failureReason: f.failureReason,
+      status: f.status,
       createdAt: f.createdAt.toISOString(),
     })),
   });

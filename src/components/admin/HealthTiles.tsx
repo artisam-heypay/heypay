@@ -11,6 +11,7 @@ const ICON: Record<string, string> = {
   rates: "currency_exchange",
   redis: "memory",
   queue: "stacks",
+  storage: "cloud",
 };
 
 export function HealthTiles({ initial }: { initial: SystemHealth }) {
@@ -60,11 +61,12 @@ export function HealthTiles({ initial }: { initial: SystemHealth }) {
         </span>
       </div>
 
-      <div className="mt-stack-lg grid grid-cols-1 gap-stack-lg sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-stack-lg grid grid-cols-1 gap-stack-lg sm:grid-cols-2 xl:grid-cols-3">
         {health.components.map((c) => (
           <div key={c.name} className="tonal-card rounded-lg p-stack-lg">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-stack-sm font-display text-headline-md capitalize text-on-surface">
+            {/* The chip wraps under a long name rather than running into it. */}
+            <div className="flex flex-wrap items-center justify-between gap-stack-sm">
+              <span className="flex min-w-0 items-center gap-stack-sm font-display text-headline-md capitalize text-on-surface">
                 <span className="material-symbols-outlined text-primary" aria-hidden="true">
                   {ICON[c.name]}
                 </span>

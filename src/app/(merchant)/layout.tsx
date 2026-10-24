@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { requireRole } from "@/server/auth/sessions";
 import { getMerchantForUserOrNull, merchantSetupState } from "@/server/merchant/service";
 import { SideNav } from "@/components/merchant/SideNav";
@@ -9,7 +8,6 @@ import { AnalyticsIdentify } from "@/components/analytics/PostHogProvider";
 export default async function MerchantLayout({ children }: { children: React.ReactNode }) {
   const user = await requireRole("MERCHANT");
   const merchant = await getMerchantForUserOrNull(user.id);
-  const pathname = (await headers()).get("x-pathname") ?? "";
   const setup = merchant
     ? merchantSetupState(merchant)
     : { hasBusiness: false, hasSettlement: false, hasQrph: false, isComplete: false };
@@ -17,15 +15,14 @@ export default async function MerchantLayout({ children }: { children: React.Rea
   return (
     <div className="min-h-screen bg-background text-on-background">
       <AnalyticsIdentify userId={user.id} role={user.role} username={user.username} />
-      <SideNav businessName={merchant?.businessName || "Your business"} pathname={pathname} />
+      <SideNav businessName={merchant?.businessName || "Your business"} />
       <main className="px-margin-mobile pb-24 pt-stack-lg lg:ml-64 lg:px-margin-desktop lg:pb-stack-lg">
         <div className="mx-auto max-w-7xl">
-          {/* Onboarding route renders its own focused shell; banner shown on all others. */}
-          {!pathname.endsWith("/onboarding") && <SetupBanner setup={setup} />}
+          <SetupBanner setup={setup} />
           {children}
         </div>
       </main>
-      <MobileNav pathname={pathname} />
+      <MobileNav />
     </div>
   );
 }

@@ -22,7 +22,7 @@ export default async function AdminPasswordPage() {
         </p>
       </div>
       <ChangePasswordForm />
-      <LogoutButton className="text-center text-body-sm text-error">Log out</LogoutButton>
+      <LogoutButton className="min-h-11 text-center text-body-sm text-error">Log out</LogoutButton>
     </main>
   );
 }

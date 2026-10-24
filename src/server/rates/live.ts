@@ -28,6 +28,7 @@ const bookTickerSchema = z.object({ symbol: z.string(), bidPrice: z.string() });
 const cmcSchema = z.object({
   status: z.object({ error_code: z.number() }),
   data: z.record(
+    z.string(),
     z.array(z.object({ quote: z.object({ PHP: z.object({ price: z.number() }) }) })).min(1),
   ),
 });

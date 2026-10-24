@@ -25,7 +25,7 @@ export default function ErrorPage({
       <button
         type="button"
         onClick={() => unstable_retry()}
-        className="rounded-full bg-primary py-4 text-headline-md font-display text-on-primary shadow-lg shadow-primary/20 transition hover:brightness-110 active:scale-95 focus:ring-4 focus:ring-primary/10"
+        className="rounded-full bg-primary py-4 text-headline-md font-display text-on-primary shadow-lg shadow-primary/20 transition hover:brightness-110 active:scale-95"
       >
         Try again
       </button>

@@ -33,7 +33,7 @@ type EventItem = {
 function tone(status: PaymentStatus): "settled" | "pending" | "error" | "neutral" {
   if (status === "SETTLED") return "settled";
   if (status === "FAILED" || status === "REFUND_PENDING" || status === "REFUNDED") return "error";
-  if (status === "CREATED") return "neutral";
+  if (status === "CREATED" || status === "CANCELLED") return "neutral";
   return "pending";
 }
 

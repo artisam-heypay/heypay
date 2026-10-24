@@ -70,7 +70,8 @@ test("payer pays a QRPH merchant from XLM balance through to SETTLED", async ({
   await page.goto(`/payer/pay/${paymentId}/confirm`);
   await expect(page.getByText(DEMO_QRPH_MERCHANT_NAME)).toBeVisible();
   await expect(page.getByText(/₱\s*250(\.00)?/).first()).toBeVisible();
-  await page.getByRole("button", { name: /confirm/i }).click();
+  // The button names the amount and coin it pays, e.g. "Pay up to 21.0000100 XLM".
+  await page.getByRole("button", { name: /^Pay (up to )?\d/ }).click();
 
   // Processing overlay appears
   await expect(page.getByText(/processing|sending|settl/i).first()).toBeVisible();

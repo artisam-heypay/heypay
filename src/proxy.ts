@@ -17,7 +17,9 @@ export async function proxy(req: NextRequest): Promise<NextResponse> {
     url.searchParams.set("next", pathname);
     res = NextResponse.redirect(url);
   } else if (decision === "forbidden") {
-    res = new NextResponse("Forbidden", { status: 403 });
+    // The branded page, with a way back to the account's own dashboard; the
+    // address bar keeps the URL that was asked for.
+    res = NextResponse.rewrite(new URL("/403", req.url), { status: 403 });
   } else {
     res = NextResponse.next();
   }

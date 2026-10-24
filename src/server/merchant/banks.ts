@@ -1,17 +1,24 @@
-export type SupportedBank = { code: string; name: string };
+export type SupportedBank = {
+  code: string;
+  name: string;
+  /** What a tile shows in large type; `name` goes under it when it says more. */
+  short: string;
+  kind: "wallet" | "bank";
+};
 
+// E-wallets first: most small shops are paid out to GCash or Maya.
 export const SUPPORTED_BANKS: readonly SupportedBank[] = [
-  { code: "BPI", name: "Bank of the Philippine Islands" },
-  { code: "BDO", name: "BDO Unibank" },
-  { code: "UBP", name: "UnionBank of the Philippines" },
-  { code: "METROBANK", name: "Metrobank" },
-  { code: "LANDBANK", name: "Land Bank of the Philippines" },
-  { code: "PNB", name: "Philippine National Bank" },
-  { code: "SECURITYBANK", name: "Security Bank" },
-  { code: "CTBC", name: "CTBC Bank Philippines" },
-  { code: "RCBC", name: "Rizal Commercial Banking Corp." },
-  { code: "GCASH", name: "GCash" },
-  { code: "MAYA", name: "Maya" },
+  { code: "GCASH", name: "GCash", short: "GCash", kind: "wallet" },
+  { code: "MAYA", name: "Maya", short: "Maya", kind: "wallet" },
+  { code: "BPI", name: "Bank of the Philippine Islands", short: "BPI", kind: "bank" },
+  { code: "BDO", name: "BDO Unibank", short: "BDO", kind: "bank" },
+  { code: "UBP", name: "UnionBank of the Philippines", short: "UnionBank", kind: "bank" },
+  { code: "METROBANK", name: "Metrobank", short: "Metrobank", kind: "bank" },
+  { code: "LANDBANK", name: "Land Bank of the Philippines", short: "Landbank", kind: "bank" },
+  { code: "PNB", name: "Philippine National Bank", short: "PNB", kind: "bank" },
+  { code: "SECURITYBANK", name: "Security Bank", short: "Security Bank", kind: "bank" },
+  { code: "CTBC", name: "CTBC Bank Philippines", short: "CTBC", kind: "bank" },
+  { code: "RCBC", name: "Rizal Commercial Banking Corp.", short: "RCBC", kind: "bank" },
 ] as const;
 
 const BY_CODE = new Map(SUPPORTED_BANKS.map((b) => [b.code, b.name]));

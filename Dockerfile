@@ -26,6 +26,8 @@ RUN pnpm prisma generate
 ARG NEXT_PUBLIC_POSTHOG_KEY
 ARG NEXT_PUBLIC_POSTHOG_UI_HOST
 ARG POSTHOG_HOST
+# WalletConnect project id (src/components/wallet/freighter.ts): how Freighter's mobile app connects.
+ARG NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Ronald Ajusan (Artisam Labs)
+
 import { describe, expect, it } from "vitest";
 import { createSettlementRouteResolver, type SettlementRouteChecks } from "./index";
 

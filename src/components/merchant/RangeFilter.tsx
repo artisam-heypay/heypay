@@ -25,7 +25,7 @@ export function RangeFilter({ current }: { current: EarningsRange }) {
             aria-current={active ? "page" : undefined}
             aria-label={o.long}
             title={o.long}
-            className={`min-h-9 min-w-12 rounded-full px-stack-md py-1.5 text-center text-body-sm font-semibold transition-colors focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 ${
+            className={`min-h-9 min-w-12 rounded-full px-stack-md py-1.5 text-center text-body-sm font-semibold transition-colors ${
               active
                 ? "bg-surface-container-lowest text-on-surface shadow-sm"
                 : "text-on-surface-variant hover:text-on-surface"

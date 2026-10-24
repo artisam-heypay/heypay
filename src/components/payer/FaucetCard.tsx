@@ -9,7 +9,14 @@ import { WALLET_UPDATED_EVENT } from "./HoldingsLive";
  * try a payment straight away. Rendered only while the faucet is enabled and the
  * payer has not claimed yet; after a claim it stays as a receipt until reload.
  */
-export function FaucetCard({ amountXlm }: { amountXlm: string }) {
+export function FaucetCard({
+  amountXlm,
+  quiet = false,
+}: {
+  amountXlm: string;
+  /** The wallet already holds money: offer the claim without making it the page's main action. */
+  quiet?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txUrl, setTxUrl] = useState<string | null>(null);
@@ -55,7 +62,13 @@ export function FaucetCard({ amountXlm }: { amountXlm: string }) {
               )}
             </div>
           </div>
-          <Button size="md" onClick={claim} loading={busy} trailingIcon="redeem">
+          <Button
+            size="md"
+            variant={quiet ? "outline-pill" : "primary-pill"}
+            onClick={claim}
+            loading={busy}
+            trailingIcon="redeem"
+          >
             {busy ? "Claiming…" : `Claim ${amount}`}
           </Button>
         </>
@@ -64,12 +77,7 @@ export function FaucetCard({ amountXlm }: { amountXlm: string }) {
           <Icon name="check_circle" filled />
           {amount} is on its way to your wallet.
           {txUrl && (
-            <a
-              href={txUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded underline focus:outline-none focus:ring-4 focus:ring-primary/10"
-            >
+            <a href={txUrl} target="_blank" rel="noopener noreferrer" className="rounded underline">
               View transaction
             </a>
           )}

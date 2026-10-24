@@ -22,7 +22,7 @@ export function AdminMobileNav() {
             Admin
           </span>
         </span>
-        <LogoutButton className="flex min-h-11 shrink-0 items-center gap-stack-sm rounded-lg px-stack-sm text-body-md text-error hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10">
+        <LogoutButton className="flex min-h-11 shrink-0 items-center gap-stack-sm rounded-lg px-stack-sm text-body-md text-error hover:bg-surface-container-high">
           <span className="material-symbols-outlined" aria-hidden="true">
             logout
           </span>
@@ -32,7 +32,7 @@ export function AdminMobileNav() {
 
       <nav
         aria-label="Admin"
-        className="glass fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t border-outline-variant lg:hidden"
+        className="fixed inset-x-0 bottom-0 bg-surface-container-lowest shadow-[0_-4px_16px_rgba(0,0,0,0.06)] z-40 flex h-16 items-stretch border-t border-outline-variant lg:hidden"
       >
         {ADMIN_NAV.map((item) => {
           const isActive = item.key === active;

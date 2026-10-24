@@ -13,11 +13,13 @@ describe("processWalletActivateJob", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await resetDb();
+    process.env.WALLET_SPONSOR_ENABLED = "true";
     process.env.WALLET_SPONSOR_SECRET_ENC = "v1:sponsor";
     process.env.PAYMENT_ASSETS = "XLM,USDC";
   });
 
   afterEach(() => {
+    delete process.env.WALLET_SPONSOR_ENABLED;
     delete process.env.WALLET_SPONSOR_SECRET_ENC;
     delete process.env.PAYMENT_ASSETS;
   });
@@ -65,6 +67,16 @@ describe("processWalletActivateJob", () => {
 
   it("does nothing without a sponsor account", async () => {
     delete process.env.WALLET_SPONSOR_SECRET_ENC;
+    const { user, wallet } = await makePayer();
+
+    await processWalletActivateJob({ data: { userId: user.id } });
+
+    expect(activateSponsored).not.toHaveBeenCalled();
+    expect(await usdcRow(wallet.id)).toBeNull();
+  });
+
+  it("does nothing while sponsorship is paused, even with a sponsor account", async () => {
+    delete process.env.WALLET_SPONSOR_ENABLED;
     const { user, wallet } = await makePayer();
 
     await processWalletActivateJob({ data: { userId: user.id } });

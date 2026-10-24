@@ -45,7 +45,7 @@ export function AssetPicker({
               onClick={() => onChange(opt.asset)}
               className={clsx(
                 "flex min-h-11 flex-col items-start rounded-lg border-2 px-stack-md py-2 text-left",
-                "focus:outline-none focus:ring-4 focus:ring-primary/10 disabled:opacity-50",
+                "disabled:opacity-50",
                 selected
                   ? "border-primary bg-primary/5"
                   : "border-outline-variant hover:border-primary/50",

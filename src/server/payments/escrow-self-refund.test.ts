@@ -50,7 +50,11 @@ vi.mock("@/server/queue/queues", () => ({
   enqueueSettle,
 }));
 
-import { escrowSelfRefundState, selfRefundEscrow } from "./escrow-self-refund";
+import {
+  AUTO_REFUND_GRACE_MS,
+  escrowSelfRefundState,
+  selfRefundEscrow,
+} from "./escrow-self-refund";
 import { processSettleJob } from "@/server/queue/jobs/settle";
 import { escrowJobId, EscrowContractError } from "@/server/stellar/escrow";
 
@@ -611,6 +615,67 @@ describe("escrowSelfRefundState", () => {
     // Past the deadline the payer can take it themselves: the payout has failed.
     escrow.getLatestLedger.mockResolvedValue(DEADLINE);
     getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "MOCK_FAILURE" });
+    expect(await escrowSelfRefundState(payment)).toEqual({
+      available: true,
+      secondsUntilAvailable: 0,
+      waitingOnPayout: false,
+    });
+  });
+
+  it("offers nothing while HeyPay's own refund of a failed payout has just started", async () => {
+    const { wallet, payment } = await makeEscrowed("REFUND_PENDING");
+    await db.paymentEvent.create({
+      data: {
+        paymentId: payment.id,
+        fromStatus: "PAYOUT_SUBMITTED",
+        toStatus: "REFUND_PENDING",
+        detail: { failureReason: "Payout disb-1 failed: INVALID_DESTINATION" },
+      },
+    });
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "INVALID_DESTINATION" });
+
+    expect(await escrowSelfRefundState(payment)).toBeNull();
+    expect(escrow.getJob).not.toHaveBeenCalled(); // nothing to offer, so nothing to read
+  });
+
+  it("offers the payer's own refund once HeyPay's is taking longer than usual", async () => {
+    const { wallet, payment } = await makeEscrowed("REFUND_PENDING");
+    await db.paymentEvent.create({
+      data: {
+        paymentId: payment.id,
+        fromStatus: "PAYOUT_SUBMITTED",
+        toStatus: "REFUND_PENDING",
+        createdAt: new Date(Date.now() - AUTO_REFUND_GRACE_MS - 1000),
+      },
+    });
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "INVALID_DESTINATION" });
+
+    expect(await escrowSelfRefundState(payment)).toEqual({
+      available: true,
+      secondsUntilAvailable: 0,
+      waitingOnPayout: false,
+      refundDelayed: true,
+    });
+  });
+
+  it("offers the refund at once for a payment cancelled at the deadline", async () => {
+    const { wallet, payment } = await makeEscrowed("REFUND_PENDING");
+    await db.paymentEvent.create({
+      data: {
+        paymentId: payment.id,
+        fromStatus: "PAYOUT_SUBMITTED",
+        toStatus: "REFUND_PENDING",
+        detail: { awaitsPayerRefund: true },
+      },
+    });
+    escrow.getJob.mockResolvedValue(heldJob(wallet.stellarPublicKey));
+    escrow.getLatestLedger.mockResolvedValue(DEADLINE);
+    getPayoutStatus.mockResolvedValue({ state: "FAILED", failureCode: "CANCELLED" });
+
     expect(await escrowSelfRefundState(payment)).toEqual({
       available: true,
       secondsUntilAvailable: 0,

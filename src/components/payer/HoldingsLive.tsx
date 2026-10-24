@@ -12,10 +12,14 @@ export type HoldingRow = {
   asset: string;
   /** 7dp string. */
   balance: string;
+  /** What a payment can use now (7dp string), when known. */
+  available?: string;
   /** 2dp string, or null when the rail cannot price this token. */
   valuePhp: string | null;
   /** 1 unit in PHP (8dp string); null or absent when unpriced. */
   rate?: string | null;
+  /** False for an issued asset the wallet has no trustline to yet. */
+  canReceive?: boolean;
 };
 
 export type HoldingsSnapshot = {

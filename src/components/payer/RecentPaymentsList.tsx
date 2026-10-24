@@ -1,15 +1,8 @@
 import Link from "next/link";
 import { Card, Icon, MoneyAmount, StatusBadge } from "@/components/ui";
 import type { RecentPayment } from "@/server/payer/data";
+import { formatDay } from "@/lib/dates";
 import { PaymentDetailButton } from "./PaymentDetailButton";
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 export function RecentPaymentsList({ payments }: { payments: RecentPayment[] }) {
   return (
@@ -18,7 +11,7 @@ export function RecentPaymentsList({ payments }: { payments: RecentPayment[] }) 
         <h2 className="font-display text-headline-md">Recent Payments</h2>
         <Link
           href="/payer/transactions"
-          className="rounded-lg text-body-sm text-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="-my-3 inline-flex min-h-11 items-center rounded-lg text-body-sm text-primary"
         >
           View all
         </Link>
@@ -30,7 +23,7 @@ export function RecentPaymentsList({ payments }: { payments: RecentPayment[] }) 
           <p className="text-body-md text-on-surface-variant">No payments yet</p>
           <Link
             href="/payer/scan"
-            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary"
           >
             Scan to Pay
             <Icon name="qr_code_scanner" />
@@ -43,13 +36,13 @@ export function RecentPaymentsList({ payments }: { payments: RecentPayment[] }) 
               <PaymentDetailButton
                 paymentId={p.id}
                 label={`Payment to ${p.merchantName}, view details`}
-                className="flex w-full min-h-11 items-center justify-between gap-stack-md py-stack-md text-left hover:bg-surface-container-high focus:outline-none focus:ring-4 focus:ring-primary/10"
+                className="flex w-full min-h-11 items-center justify-between gap-stack-md py-stack-md text-left hover:bg-surface-container-high"
               >
                 <div className="min-w-0">
                   <p className="truncate font-display text-body-md">{p.merchantName}</p>
                   <p className="text-body-sm text-on-surface-variant">
                     {p.merchantCity ? `${p.merchantCity} · ` : ""}
-                    {formatDate(p.createdAt)}
+                    {formatDay(p.createdAt)}
                   </p>
                   <div className="mt-1">
                     <StatusBadge status={p.status} />

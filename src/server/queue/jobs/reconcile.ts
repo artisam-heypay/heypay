@@ -33,6 +33,14 @@ const STUCK_STATES: PaymentStatus[] = [
   PaymentStatus.REFUND_PENDING,
 ];
 const IN_FLIGHT: PaymentStatus[] = [...PAYOUT_STATES, ...STUCK_STATES];
+// A deposit the payer signed with their own wallet was handed to the network
+// before its settle job was queued, so it may sit in the escrow while the
+// payment is still in one of these states. If that job is lost, nothing else
+// moves the payment on. A custodial payment this early has sent nothing yet.
+const PAYER_SIGNED_STATES: PaymentStatus[] = [
+  PaymentStatus.AUTHORIZED,
+  PaymentStatus.STELLAR_SUBMITTED,
+];
 
 export type ReconcileResult = {
   checked: number; // wallets checked (XLM leg)
@@ -120,8 +128,11 @@ async function reconcileWallets(): Promise<{ checked: number; drift: number }> {
 async function reconcilePayments(): Promise<{ checked: number; drift: number }> {
   const stale = await db.payment.findMany({
     where: {
-      status: { in: IN_FLIGHT },
       updatedAt: { lt: new Date(Date.now() - STALE_MS) },
+      OR: [
+        { status: { in: IN_FLIGHT } },
+        { status: { in: PAYER_SIGNED_STATES }, externalPublicKey: { not: null } },
+      ],
     },
     orderBy: { updatedAt: "asc" },
     take: MAX_PAYMENTS_PER_RUN,
@@ -168,6 +179,7 @@ async function inspectPayment(p: {
     // Xendit is terminal but we're still PAYOUT_SUBMITTED → local is behind.
     return s.state === "PENDING" ? null : { railKind: "payout", railState: s.state };
   }
-  // STELLAR_CONFIRMED / REFUND_PENDING with no advance: stuck job.
+  // STELLAR_CONFIRMED / REFUND_PENDING with no advance, or a payer-signed
+  // deposit nobody has looked for: stuck job.
   return { railKind: "none", railState: "stuck" };
 }

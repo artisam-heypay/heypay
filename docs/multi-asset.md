@@ -397,6 +397,9 @@ before HeyPay saw it has no hash and shows no link.
 
 ### On from sign-up, on a sponsored reserve
 
+Paused for now: sign-ups are sponsored only with `WALLET_SPONSOR_ENABLED=true`
+as well as the account below. Without it every new wallet takes the path above.
+
 With `WALLET_SPONSOR_SECRET_ENC` set, a new payer does not wait to be funded.
 Sign-up queues a `wallet-activate` job, and the worker sends one transaction
 from the sponsor account that creates the wallet's account and adds the

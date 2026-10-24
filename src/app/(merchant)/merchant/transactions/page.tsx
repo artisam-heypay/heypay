@@ -30,7 +30,7 @@ export default async function MerchantTransactionsPage({
 
   return (
     <div className="flex flex-col gap-stack-lg">
-      <h1 className="text-headline-lg-mobile lg:text-headline-lg">Settlement history</h1>
+      <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Transactions</h1>
       <TransactionFilters status={sp.status} from={sp.from} to={sp.to} />
       <TransactionsTable items={page.items} />
       {page.nextCursor && (

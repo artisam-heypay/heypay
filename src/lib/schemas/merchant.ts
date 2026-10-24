@@ -15,13 +15,20 @@ const STATUSES = [
   "REFUNDED",
 ] as const;
 
+// Shown next to the field in the onboarding wizard, so written for the merchant.
+const businessName = z
+  .string()
+  .trim()
+  .min(2, "Enter your business name (at least 2 characters)")
+  .max(120, "Keep the business name under 120 characters");
+
 export const createMerchantSchema = z.object({
-  businessName: z.string().trim().min(2).max(120),
+  businessName,
 });
 
 export const patchMerchantSchema = z
   .object({
-    businessName: z.string().trim().min(2).max(120).optional(),
+    businessName: businessName.optional(),
     logoKey: z.string().trim().min(1).max(256).optional(),
   })
   .refine((v) => v.businessName !== undefined || v.logoKey !== undefined, {
@@ -29,14 +36,23 @@ export const patchMerchantSchema = z
   });
 
 export const settlementSchema = z.object({
-  bankCode: z.enum(BANK_CODES),
-  accountName: z.string().trim().min(2).max(120),
+  bankCode: z.enum(BANK_CODES, { error: "Choose the bank or e-wallet to be paid into" }),
+  accountName: z
+    .string()
+    .trim()
+    .min(2, "Enter the name on the account")
+    .max(120, "Keep the account name under 120 characters"),
   accountNumber: z
     .string()
     .trim()
-    .regex(/^[0-9]{6,20}$/, "6–20 digits"),
+    .regex(/^[0-9]{6,20}$/, "Enter the account or mobile number: 6 to 20 digits"),
   // Receives Xendit's payout receipt for every settled payment.
-  payoutEmail: z.string().trim().toLowerCase().email("Enter a valid email").max(254),
+  payoutEmail: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Enter a valid email, like name@example.com")
+    .max(254, "Enter a shorter email"),
 });
 
 export const qrphSchema = z.object({

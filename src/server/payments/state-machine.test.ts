@@ -49,8 +49,17 @@ describe("state machine (pure)", () => {
     expect(XLM_MOVED.has("PDAX_TRADING")).toBe(false);
   });
 
+  it("lets the payer cancel only before any crypto is submitted", () => {
+    expect(canTransition("CREATED", "CANCELLED")).toBe(true);
+    expect(canTransition("QUOTED", "CANCELLED")).toBe(true);
+    expect(canTransition("AUTHORIZED", "CANCELLED")).toBe(true);
+    expect(canTransition("STELLAR_SUBMITTED", "CANCELLED")).toBe(false);
+    expect(canTransition("STELLAR_CONFIRMED", "CANCELLED")).toBe(false);
+    expect(TRANSITIONS.CANCELLED).toEqual([]);
+  });
+
   it("marks terminal states", () => {
-    expect([...TERMINAL].sort()).toEqual(["FAILED", "REFUNDED", "SETTLED"]);
+    expect([...TERMINAL].sort()).toEqual(["CANCELLED", "FAILED", "REFUNDED", "SETTLED"]);
     expect(isTerminal("SETTLED")).toBe(true);
     expect(isTerminal("PAYOUT_SUBMITTED")).toBe(false);
   });

@@ -22,14 +22,19 @@ export function formatPhp(value: Decimal): string {
   return dec(value).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
 }
 
-/** Display helper: "₱1,234.50" (grouped, 2dp). */
-export function displayPhp(value: Decimal): string {
-  const fixed = formatPhp(value);
+/** "1234.50" -> "1,234.50"; the sign stays in front. */
+function groupThousands(fixed: string): string {
   const negative = fixed.startsWith("-");
   const unsigned = negative ? fixed.slice(1) : fixed;
   const [intPart = "", frac = ""] = unsigned.split(".");
   const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${negative ? "-" : ""}₱${grouped}.${frac}`;
+  return `${negative ? "-" : ""}${grouped}.${frac}`;
+}
+
+/** Display helper: "₱1,234.50" (grouped, 2dp). */
+export function displayPhp(value: Decimal): string {
+  const grouped = groupThousands(formatPhp(value));
+  return grouped.startsWith("-") ? `-₱${grouped.slice(1)}` : `₱${grouped}`;
 }
 
 /** Display helper: "12.5000000 XLM" (7dp). */
@@ -45,6 +50,11 @@ export const formatAsset = formatXlm;
 /** Display helper: "12.5000000 USDT". */
 export function displayAsset(value: Decimal, asset: string): string {
   return `${formatAsset(value)} ${asset}`;
+}
+
+/** Display helper for a total read at a glance: "1,294.29 XLM" (grouped, 2dp). */
+export function displayAssetTotal(value: Decimal, asset: string): string {
+  return `${groupThousands(formatPhp(value))} ${asset}`;
 }
 
 /** Quote math: phpAmount / rate -> asset units needed (7dp, ROUND_UP so payer always covers). */

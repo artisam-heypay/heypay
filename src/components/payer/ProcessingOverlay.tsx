@@ -1,22 +1,46 @@
 import Link from "next/link";
 import { clsx } from "clsx";
 import { Icon } from "@/components/ui";
+import { HeyPayLogo } from "@/components/ui/HeyPayLogo";
 import { PAYMENT_STEPS, stepState } from "@/lib/payment-steps";
 import type { PaymentStatus } from "@/generated/prisma/client";
+
+/** The result screen's heading for a payment that did not reach the merchant. */
+const NOT_PAID_HEADING: Partial<Record<PaymentStatus, string>> = {
+  FAILED: "Payment didn't go through",
+  REFUND_PENDING: "Payment didn't go through",
+  REFUNDED: "Payment refunded",
+  CANCELLED: "Payment cancelled",
+};
 
 export function ProcessingOverlay({
   status,
   merchantName,
   amountPhpDisplay,
   failureReason,
+  bankRefused = false,
 }: {
   status: PaymentStatus;
   merchantName: string;
   amountPhpDisplay: string;
+  /**
+   * Why the payment could not be confirmed, written for the payer. Server-side
+   * failure reasons are meant for admins and are not passed here.
+   */
   failureReason?: string | null;
+  /** The shop's bank refused the payout, which is why the shop was not paid. */
+  bankRefused?: boolean;
 }) {
   const settled = status === "SETTLED";
-  const failed = status === "FAILED" || status === "REFUND_PENDING" || status === "REFUNDED";
+  const failed = NOT_PAID_HEADING[status] !== undefined;
+  // Paying again before the last payment's money is back would spend money the
+  // payer does not have yet.
+  const refunding = status === "REFUND_PENDING";
+  // The money is back: the shop was not paid, but nothing is wrong for the payer.
+  const refunded = status === "REFUNDED";
+  const notPaid = bankRefused
+    ? `We couldn't pay ${merchantName}: their bank didn't accept the transfer.`
+    : `We couldn't pay ${merchantName}.`;
 
   return (
     <div
@@ -27,39 +51,74 @@ export function ProcessingOverlay({
     >
       {settled ? (
         <>
-          <Icon name="check_circle" filled className="text-6xl text-secondary" />
-          <h2 className="text-center font-display text-headline-lg text-secondary">
-            {amountPhpDisplay} sent to {merchantName}
+          {/* The HeyPay mark with a check on its corner. */}
+          <span className="relative">
+            <HeyPayLogo size={88} className="drop-shadow-[0_10px_18px_rgba(29,27,26,0.14)]" />
+            <span className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-primary-ink text-white ring-4 ring-surface">
+              <Icon name="check" className="text-[22px]" />
+            </span>
+          </span>
+          <h2 className="flex max-w-md flex-col items-center gap-1 text-center">
+            <span className="font-display text-[2.5rem] font-bold leading-tight tracking-[-0.02em] text-on-surface tabular-nums">
+              {amountPhpDisplay}
+            </span>{" "}
+            <span className="text-body-lg text-on-surface-variant">
+              sent to <span className="font-semibold text-on-surface">{merchantName}</span>
+            </span>
           </h2>
           <Link
             href="/payer/transactions"
-            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-secondary px-stack-lg py-4 font-display font-bold text-on-secondary focus:outline-none focus:ring-4 focus:ring-primary/10"
+            className="inline-flex min-h-11 items-center gap-stack-sm rounded-full bg-primary px-margin-desktop py-4 font-display text-body-lg font-bold text-on-primary-container shadow-lg shadow-primary/20 transition-[filter] hover:brightness-110"
           >
             Done
           </Link>
         </>
       ) : failed ? (
         <>
-          <Icon name="error" filled className="text-6xl text-error" />
-          <h2 className="text-center font-display text-headline-md text-error">
-            {status === "REFUNDED" ? "Payment refunded" : "Payment failed"}
+          <Icon
+            name={refunded ? "undo" : "error"}
+            filled={!refunded}
+            className={clsx("text-6xl", refunded ? "text-primary" : "text-error")}
+          />
+          <h2
+            className={clsx(
+              "text-center font-display text-headline-md",
+              refunded ? "text-on-surface" : "text-error",
+            )}
+          >
+            {NOT_PAID_HEADING[status]}
           </h2>
           <p className="max-w-sm text-center text-body-md text-on-surface-variant">
-            {failureReason ?? "Something went wrong while settling your payment."}
+            {status === "CANCELLED"
+              ? `You cancelled this payment. Nothing was sent to ${merchantName}.`
+              : status === "FAILED"
+                ? (failureReason ?? notPaid)
+                : notPaid}
           </p>
+          {refunding ? (
+            <p className="max-w-sm text-center text-body-md font-bold text-on-surface">
+              Your {amountPhpDisplay} is being returned to your wallet.
+            </p>
+          ) : refunded ? (
+            <p className="max-w-sm text-center text-body-md font-bold text-on-surface">
+              Your {amountPhpDisplay} is back in your wallet.
+            </p>
+          ) : null}
           <div className="flex gap-stack-md">
             <Link
               href="/payer/dashboard"
-              className="inline-flex min-h-11 items-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+              className="inline-flex min-h-11 items-center rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary"
             >
               Back
             </Link>
-            <Link
-              href="/payer/scan"
-              className="inline-flex min-h-11 items-center rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
-            >
-              Try again
-            </Link>
+            {!refunding && (
+              <Link
+                href="/payer/scan"
+                className="inline-flex min-h-11 items-center rounded-full bg-primary px-stack-lg py-3 font-display font-bold text-on-primary"
+              >
+                Pay again
+              </Link>
+            )}
           </div>
         </>
       ) : (

@@ -6,7 +6,7 @@ export function GoogleButton({ role }: { role?: "PAYER" | "MERCHANT" }) {
   return (
     <a
       href={href}
-      className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary hover:bg-primary/5 focus:outline-none focus:ring-4 focus:ring-primary/10"
+      className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full border-2 border-primary px-stack-lg py-3 font-display font-bold text-primary hover:bg-primary/5"
     >
       <svg aria-hidden="true" viewBox="0 0 18 18" className="h-5 w-5">
         <path

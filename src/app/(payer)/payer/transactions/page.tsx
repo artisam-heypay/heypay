@@ -18,7 +18,7 @@ export default async function PayerTransactionsPage() {
 
   return (
     <div className="flex flex-col gap-stack-lg">
-      <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Transactions</h1>
+      <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">History</h1>
       <Card className="flex flex-col gap-stack-md">
         {showSwaps && <h2 className="font-display text-headline-md">Payments</h2>}
         <div>

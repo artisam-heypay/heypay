@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { QrDownloads } from "./QrDownloads";
 
 export function BusinessQrCard({
   qrSvg,
@@ -12,16 +13,6 @@ export function BusinessQrCard({
 }) {
   const [copied, setCopied] = useState(false);
 
-  function download() {
-    const blob = new Blob([qrSvg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${businessName.replace(/\s+/g, "-").toLowerCase()}-qrph.svg`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
   async function copy() {
     await navigator.clipboard.writeText(paymentLink);
     setCopied(true);
@@ -30,8 +21,8 @@ export function BusinessQrCard({
 
   return (
     <div className="tonal-card mx-auto flex max-w-lg flex-col items-center gap-stack-lg rounded-xl p-margin-desktop">
-      <h1 className="text-headline-lg-mobile lg:text-headline-lg">My Business QR</h1>
-      <p className="text-headline-md text-on-surface">{businessName}</p>
+      <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">My Business QR</h1>
+      <p className="text-center font-display text-headline-md text-on-surface">{businessName}</p>
       <div
         className="w-64 rounded-xl border border-outline-variant bg-surface-container-lowest p-stack-lg [&_svg]:h-full [&_svg]:w-full"
         aria-label="Business QRPH code"
@@ -42,21 +33,14 @@ export function BusinessQrCard({
           {paymentLink}
         </span>
       </div>
-      <div className="flex w-full gap-stack-md">
-        <button
-          onClick={download}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full bg-primary px-stack-lg py-stack-sm text-body-md font-semibold text-on-primary shadow-lg shadow-primary/20"
-        >
-          <span className="material-symbols-outlined">download</span>Download
-        </button>
-        <button
-          onClick={copy}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-stack-sm rounded-full border-2 border-primary px-stack-lg py-stack-sm text-body-md font-medium text-primary"
-        >
-          <span className="material-symbols-outlined">{copied ? "check" : "content_copy"}</span>
-          {copied ? "Copied" : "Copy link"}
-        </button>
-      </div>
+      <QrDownloads />
+      <button
+        onClick={copy}
+        className="inline-flex min-h-11 items-center justify-center gap-stack-sm rounded-full px-stack-lg py-stack-sm text-body-md font-medium text-primary hover:bg-primary/5"
+      >
+        <span className="material-symbols-outlined">{copied ? "check" : "content_copy"}</span>
+        {copied ? "Copied" : "Copy link"}
+      </button>
     </div>
   );
 }

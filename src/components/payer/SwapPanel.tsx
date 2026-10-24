@@ -196,12 +196,17 @@ function SwapForm({
               ) : (
                 <QuoteRow label="You pay at most" value={`${current.amount} ${from}`} />
               )}
-              <QuoteRow label="Minimum received" value={`${current.minReceived} ${to}`} strong />
+              <QuoteRow
+                // Sending a fixed amount gets at least this; asking for a fixed amount gets it exactly.
+                label={current.mode === "strict_send" ? "You get at least" : "You get"}
+                value={`${current.minReceived} ${to}`}
+                strong
+              />
             </dl>
             <p className="text-body-sm text-on-surface-variant">
               {current.mode === "strict_send"
-                ? `You pay exactly ${current.amount} ${from}. If the price moves and you would get less than the minimum, nothing is swapped.`
-                : `You receive exactly the minimum. Any ${from} the swap does not need stays in your wallet.`}
+                ? `You pay exactly ${current.amount} ${from}. If the price moves and you would get less than that, nothing is swapped.`
+                : `You get exactly this amount. Any ${from} the swap does not need stays in your wallet.`}
             </p>
           </>
         ) : (
@@ -248,7 +253,7 @@ function SwapForm({
               href={done.txUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded underline focus:outline-none focus:ring-4 focus:ring-primary/10"
+              className="rounded underline"
             >
               View transaction
             </a>

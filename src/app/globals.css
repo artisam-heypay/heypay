@@ -33,6 +33,14 @@
   --color-error: #ba1a1a;
   --color-on-error: #ffffff;
 
+  /* ---- Primary as ink ---- */
+  /* Dark teal for primary-coloured text and marks: 6:1 against the page,
+     where primary itself is only 2.3:1. */
+  --color-primary-ink: #006874;
+
+  /* ---- Keyboard focus ---- */
+  --color-focus: #006874;
+
   /* ---- Fonts ---- */
   --font-display: "Lexend", system-ui, sans-serif;
   --font-headline: "Lexend", system-ui, sans-serif;
@@ -98,6 +106,13 @@
       "wght" 400,
       "GRAD" 0,
       "opsz" 24;
+  }
+  /* Every control shows where keyboard focus is; a mouse click shows nothing. */
+  :focus-visible,
+  /* A visually hidden input (file pickers, radio cards) shows it on its label. */
+  label:has(> .sr-only:focus-visible) {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
   }
   .icon-filled {
     font-variation-settings:

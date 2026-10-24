@@ -2,9 +2,10 @@ import "server-only";
 import { Queue } from "bullmq";
 import { redis } from "@/server/redis";
 import { QUEUE_NAMES } from "@/server/queue/queues";
+import { pingStorage } from "@/server/storage/s3";
 
 export type ComponentHealth = {
-  name: "stellar" | "payouts" | "rates" | "redis" | "queue";
+  name: "stellar" | "payouts" | "rates" | "redis" | "queue" | "storage";
   status: "ok" | "degraded" | "down";
   detail: string;
   latencyMs?: number;
@@ -125,6 +126,21 @@ async function checkQueue(): Promise<ComponentHealth> {
   }
 }
 
+// Merchant logos and QRPH photos are uploaded here. With it down, onboarding
+// still links a QRPH (the photo is kept only when it uploads) and payments are
+// unaffected, so it degrades the system rather than taking it down.
+async function checkStorage(): Promise<ComponentHealth> {
+  if (!process.env.S3_BUCKET) {
+    return { name: "storage", status: "degraded", detail: "S3_BUCKET unset" };
+  }
+  try {
+    const { ms } = await timed(() => pingStorage(3000));
+    return { name: "storage", status: "ok", detail: "Bucket reachable", latencyMs: ms };
+  } catch {
+    return { name: "storage", status: "degraded", detail: "Storage unreachable" };
+  }
+}
+
 export async function checkHealth(): Promise<SystemHealth> {
   const components = await Promise.all([
     checkStellar(),
@@ -132,6 +148,7 @@ export async function checkHealth(): Promise<SystemHealth> {
     checkRates(),
     checkRedis(),
     checkQueue(),
+    checkStorage(),
   ]);
   const anyDown = components.some((c) => c.status === "down");
   const anyDegraded = components.some((c) => c.status === "degraded");

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Ronald Ajusan (Artisam Labs)
+
 // @heypay/settlement-route
 //
 // Whether a payment in a given asset can settle, decided at quote time.

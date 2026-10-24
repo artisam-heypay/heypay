@@ -12,6 +12,8 @@ import { EarningsChart } from "@/components/merchant/EarningsChart";
 import { RangeFilter } from "@/components/merchant/RangeFilter";
 import { TransactionsTable } from "@/components/merchant/TransactionsTable";
 import { BusinessSummaryCard } from "@/components/merchant/BusinessSummaryCard";
+import { LiveQrCard } from "@/components/merchant/LiveQrCard";
+import { SUPPORTED_BANKS } from "@/server/merchant/banks";
 
 export default async function MerchantDashboard({
   searchParams,
@@ -27,12 +29,13 @@ export default async function MerchantDashboard({
   ]);
 
   const isLive = merchant.status === "ACTIVE";
+  const bank = SUPPORTED_BANKS.find((b) => b.code === merchant.settlementBankCode);
   const statusLabel = isLive ? "Live" : merchant.status.replace(/_/g, " ").toLowerCase();
 
   return (
     <div className="flex flex-col gap-stack-lg">
       <div className="flex items-center gap-stack-md">
-        <h1 className="text-headline-lg-mobile lg:text-headline-lg">Dashboard</h1>
+        <h1 className="font-display text-headline-lg-mobile lg:text-headline-lg">Dashboard</h1>
         <span
           className={`inline-flex items-center gap-stack-sm rounded-full px-stack-md py-1 text-label-md uppercase ${
             isLive
@@ -47,14 +50,20 @@ export default async function MerchantDashboard({
           {statusLabel}
         </span>
       </div>
+      {isLive && txPage.items.length === 0 && (
+        <LiveQrCard payoutTo={bank ? `your ${bank.short} account` : "your account"} />
+      )}
       <RangeFilter current={range} />
       <EarningsCards earnings={earnings} />
       <EarningsChart series={earnings.series} bucket={earnings.bucket} />
       <div className="grid grid-cols-1 gap-stack-lg lg:grid-cols-3">
         <section className="lg:col-span-2">
           <div className="mb-stack-md flex items-center justify-between">
-            <h2 className="text-headline-md">Business transactions</h2>
-            <Link href="/merchant/transactions" className="text-body-sm text-primary">
+            <h2 className="font-display text-headline-md">Recent transactions</h2>
+            <Link
+              href="/merchant/transactions"
+              className="-my-3 inline-flex min-h-11 items-center text-body-sm text-primary"
+            >
               View all
             </Link>
           </div>
@@ -65,12 +74,15 @@ export default async function MerchantDashboard({
           <div className="tonal-card flex flex-col gap-stack-sm rounded-xl p-stack-lg">
             <div className="flex items-center gap-stack-md">
               <span className="material-symbols-outlined text-primary">support_agent</span>
-              <p className="text-headline-md">Need help?</p>
+              <p className="font-display text-headline-md">Need help?</p>
             </div>
             <p className="text-body-sm text-on-surface-variant">
               Our team is here for settlement or QR questions.
             </p>
-            <Link href="/merchant/settings" className="text-body-sm font-medium text-primary">
+            <Link
+              href="/merchant/settings"
+              className="inline-flex min-h-11 items-center self-start text-body-sm font-medium text-primary"
+            >
               Contact support
             </Link>
           </div>

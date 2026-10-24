@@ -62,12 +62,7 @@ export function TurnOnAsset({
         <Icon name="check_circle" filled />
         {asset} is on
         {link && (
-          <a
-            href={link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded underline focus:outline-none focus:ring-4 focus:ring-primary/10"
-          >
+          <a href={link} target="_blank" rel="noopener noreferrer" className="rounded underline">
             View transaction
           </a>
         )}

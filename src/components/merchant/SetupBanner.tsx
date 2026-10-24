@@ -1,8 +1,12 @@
+"use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { SetupState } from "@/server/merchant/service";
 
 export function SetupBanner({ setup }: { setup: SetupState }) {
-  if (setup.isComplete) return null;
+  // The onboarding page is where the banner sends the merchant: not shown there.
+  const onOnboarding = usePathname()?.startsWith("/merchant/onboarding") ?? false;
+  if (setup.isComplete || onOnboarding) return null;
   const steps = [
     { done: setup.hasBusiness, label: "Business identity" },
     { done: setup.hasSettlement, label: "Settlement account" },
@@ -12,7 +16,7 @@ export function SetupBanner({ setup }: { setup: SetupState }) {
     <div className="mb-stack-lg rounded-xl border border-secondary/30 bg-secondary-container/40 p-stack-lg">
       <div className="flex flex-wrap items-center justify-between gap-stack-md">
         <div>
-          <p className="text-headline-md text-on-secondary-container">
+          <p className="font-display text-headline-md text-on-secondary-container">
             Finish setting up your business
           </p>
           <p className="text-body-sm text-on-surface-variant">

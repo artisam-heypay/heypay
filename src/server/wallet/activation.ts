@@ -8,9 +8,11 @@ import { captureException } from "@/server/observability/error-tracking";
 
 /**
  * Envelope-encrypted secret of the account that pays the network reserves of
- * new custodial wallets, or null when none is configured.
+ * new custodial wallets, or null when none is configured. Sponsorship is paused
+ * for now: null unless WALLET_SPONSOR_ENABLED=true, even with an account set.
  */
 export function walletSponsorSecret(): string | null {
+  if (process.env.WALLET_SPONSOR_ENABLED?.trim() !== "true") return null;
   return process.env.WALLET_SPONSOR_SECRET_ENC?.trim() || null;
 }
 

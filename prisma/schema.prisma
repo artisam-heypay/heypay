@@ -36,6 +36,9 @@ enum PaymentStatus {
   FAILED
   REFUND_PENDING
   REFUNDED
+  // The payer called it off before any crypto was sent. Not a failure, so it is
+  // kept apart from FAILED.
+  CANCELLED
 }
 
 enum WalletTxType {
@@ -50,6 +53,11 @@ enum FaucetClaimStatus {
   PENDING
   SENT
   FAILED
+}
+
+enum WalletMode {
+  CUSTODIAL
+  EXTERNAL
 }
 
 enum MerchantStatus {
@@ -73,6 +81,14 @@ model User {
   passwordHash String?                     // argon2id; null for a Google-only account
   role         Role
   isActive     Boolean  @default(true)
+  // Who signs this payer's escrow deposits. An EXTERNAL payer signs in their own
+  // wallet (Freighter) and HeyPay never holds that key; everyone else keeps the
+  // custodial wallet. Only offered while NONCUSTODIAL_ENABLED is on.
+  walletMode        WalletMode @default(CUSTODIAL)
+  // The payer's own account (G...), as their wallet reported it on connecting.
+  // No signature proves it: a key its payer cannot sign for only ever yields
+  // transactions that payer cannot send.
+  externalPublicKey String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -286,6 +302,12 @@ model Payment {
   // escrowed, so release/refund go through the contract instead of the treasury.
   escrowJobId         String?     @unique
   escrowReleaseTxHash String?     @unique
+  // Set when the payer signed the escrow deposit with their own wallet: the
+  // account it was paid from. HeyPay holds no key to that account and keeps no
+  // balance for it, so nothing is reserved, debited or credited for the
+  // payment, and a refund from the escrow lands in this account. Null when the
+  // custodial wallet paid.
+  externalPublicKey   String?
 
   quoteExpiresAt    DateTime?
   createdAt         DateTime      @default(now())

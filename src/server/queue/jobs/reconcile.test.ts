@@ -33,11 +33,18 @@ vi.mock("@/server/payer/swap", () => ({
 import { processReconcileJob } from "./reconcile";
 
 async function makeInFlightPayment(opts: {
-  status: "PAYOUT_SUBMITTED" | "STELLAR_CONFIRMED" | "REFUND_PENDING";
+  status:
+    | "AUTHORIZED"
+    | "STELLAR_SUBMITTED"
+    | "PAYOUT_SUBMITTED"
+    | "STELLAR_CONFIRMED"
+    | "REFUND_PENDING";
   payoutRef?: string;
   ageMs?: number; // how far in the past updatedAt sits (default: fresh)
   escrowJobId?: string;
   asset?: "USDC";
+  /** The payer's own account, when they signed the deposit themselves. */
+  externalPublicKey?: string;
 }) {
   const { user } = await makePayer();
   const { merchant } = await makeMerchant();
@@ -54,6 +61,7 @@ async function makeInFlightPayment(opts: {
       status: opts.status,
       payoutRef: opts.payoutRef ?? null,
       escrowJobId: opts.escrowJobId ?? null,
+      externalPublicKey: opts.externalPublicKey ?? null,
       ...(opts.ageMs ? { updatedAt: new Date(Date.now() - opts.ageMs) } : {}),
     },
   });
@@ -211,6 +219,36 @@ describe("processReconcileJob — payout leg (missed-webhook fallback)", () => {
       where: { action: "reconcile.payment_drift", target: payment.id },
     });
     expect(log.metadata).toMatchObject({ railState: "stuck", escrowJobId: "cd".repeat(32) });
+  });
+
+  it.each(["AUTHORIZED", "STELLAR_SUBMITTED"] as const)(
+    "re-drives a payer-signed payment left %s, whose deposit may be in the escrow",
+    async (status) => {
+      const payment = await makeInFlightPayment({
+        status,
+        ageMs: 5 * 60_000,
+        escrowJobId: "ef".repeat(32),
+        externalPublicKey: "GOWNWALLETXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      });
+
+      const res = await processReconcileJob();
+
+      expect(res.paymentDrift).toBe(1);
+      expect(enqueueSettle).toHaveBeenCalledWith(payment.id);
+      const log = await db.auditLog.findFirstOrThrow({
+        where: { action: "reconcile.payment_drift", target: payment.id },
+      });
+      expect(log.metadata).toMatchObject({ localStatus: status, railState: "stuck" });
+    },
+  );
+
+  it("leaves a custodial payment that early alone: it has sent nothing yet", async () => {
+    await makeInFlightPayment({ status: "AUTHORIZED", ageMs: 5 * 60_000 });
+
+    const res = await processReconcileJob();
+
+    expect(res.paymentsChecked).toBe(0);
+    expect(enqueueSettle).not.toHaveBeenCalled();
   });
 
   it("re-drives a USDC payment stuck mid-refund, naming its asset", async () => {

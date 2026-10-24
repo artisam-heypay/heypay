@@ -49,6 +49,7 @@ const req = () =>
 describe("POST /api/wallet/faucet", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    process.env.FAUCET_ENABLED = "true";
     process.env.FAUCET_SECRET_ENC = encryptSecret("SFAUCETSECRET");
     delete process.env.FAUCET_AMOUNT_XLM;
     delete process.env.STELLAR_NETWORK_PASSPHRASE;
@@ -58,6 +59,7 @@ describe("POST /api/wallet/faucet", () => {
     await resetDb();
   });
   afterEach(() => {
+    delete process.env.FAUCET_ENABLED;
     delete process.env.FAUCET_SECRET_ENC;
     delete process.env.FAUCET_AMOUNT_XLM;
     delete process.env.STELLAR_NETWORK;
@@ -140,6 +142,15 @@ describe("POST /api/wallet/faucet", () => {
 
   it("is off when no faucet account is configured", async () => {
     delete process.env.FAUCET_SECRET_ENC;
+    const { user } = await signIn();
+    expect((await postFaucet(req(), noParams)).status).toBe(404);
+    expect(fundXlm).not.toHaveBeenCalled();
+    expect(await getFaucetStatus(user.id)).toEqual({ enabled: false });
+  });
+
+  it.each([undefined, "false"])("is paused unless FAUCET_ENABLED=true (%s)", async (flag) => {
+    if (flag === undefined) delete process.env.FAUCET_ENABLED;
+    else process.env.FAUCET_ENABLED = flag;
     const { user } = await signIn();
     expect((await postFaucet(req(), noParams)).status).toBe(404);
     expect(fundXlm).not.toHaveBeenCalled();

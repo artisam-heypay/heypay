@@ -35,7 +35,7 @@ export default async function AdminMerchantsPage({
           defaultValue={sp.q ?? ""}
           placeholder="Search business name"
           aria-label="Search merchants"
-          className="flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-2 text-body-md focus:ring-4 focus:ring-primary/10"
+          className="flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-stack-md py-2 text-body-md"
         />
         <select
           name="status"
@@ -56,7 +56,7 @@ export default async function AdminMerchantsPage({
       </form>
 
       <div className="mt-stack-lg overflow-x-auto tonal-card rounded-lg">
-        <table className="w-full text-left">
+        <table className="w-full min-w-[40rem] text-left">
           <thead>
             <tr className="bg-surface-container-low">
               <th className="px-stack-md py-3 text-label-md uppercase text-outline">Business</th>

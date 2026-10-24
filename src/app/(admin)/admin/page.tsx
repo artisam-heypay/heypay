@@ -1,5 +1,5 @@
 import { getOverview } from "@/server/admin/overview";
-import { displayXlm, displayPhp } from "@/lib/money";
+import { displayAssetTotal, displayPhp } from "@/lib/money";
 import { StatCard } from "@/components/admin/StatCard";
 import { StatBadge } from "@/components/admin/StatBadge";
 
@@ -35,7 +35,11 @@ export default async function AdminOverviewPage() {
           sub={`${o.counts.settledPayments} settled · ${o.counts.failedPayments} failed`}
           icon="payments"
         />
-        <StatCard label="Settled Volume (XLM)" value={displayXlm(o.volume.totalXlm)} icon="star" />
+        <StatCard
+          label="Settled Volume (XLM)"
+          value={displayAssetTotal(o.volume.totalXlm, "XLM")}
+          icon="star"
+        />
         <StatCard
           label="Settled Volume (PHP)"
           value={displayPhp(o.volume.totalPhpSettled)}
@@ -79,7 +83,13 @@ export default async function AdminOverviewPage() {
                       {f.failureReason ?? "—"}
                     </td>
                     <td className="px-stack-md py-3">
-                      <StatBadge tone="error">Failed</StatBadge>
+                      {f.status === "FAILED" ? (
+                        <StatBadge tone="error">Failed</StatBadge>
+                      ) : f.status === "REFUND_PENDING" ? (
+                        <StatBadge tone="pending">Refunding</StatBadge>
+                      ) : (
+                        <StatBadge tone="neutral">Refunded</StatBadge>
+                      )}
                     </td>
                   </tr>
                 ))}

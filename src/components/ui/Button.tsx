@@ -6,8 +6,7 @@ type Variant = "primary-pill" | "outline-pill" | "secondary-pill" | "onboarding"
 
 const base =
   "inline-flex items-center justify-center gap-stack-sm font-display font-bold rounded-full " +
-  "transition-[filter,transform] focus:outline-none focus:ring-4 focus:ring-primary/10 " +
-  "disabled:opacity-60 disabled:pointer-events-none min-h-11";
+  "transition-[filter,transform] disabled:opacity-60 disabled:pointer-events-none min-h-11";
 
 const variants: Record<Variant, string> = {
   "primary-pill":
